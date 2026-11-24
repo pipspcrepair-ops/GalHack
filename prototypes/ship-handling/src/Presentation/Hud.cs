@@ -84,12 +84,11 @@ public partial class Hud : CanvasLayer
     {
         HandlingStats s = v.Stats;
         string build = (loadout.Lopsided ? "  LOPSIDED" : "") + (loadout.CargoMass > 0f ? $"  cargo {loadout.CargoMass:F0} t" : "");
-        _title.Text = $"{v.Structure.Name.ToUpperInvariant()}  ·  {s.ClassLabel}  ·  {s.Mass:F1} t  ·  {v.Structure.Thrusters.Count} thrusters{build}";
+        _title.Text = $"{v.Structure.Name.ToUpperInvariant()}  ·  {(s.IsHover ? "HOVER" : "FLIGHT")}  ·  {s.Mass:F1} t  ·  {v.Structure.Thrusters.Count} thrusters{build}";
         _numbers.Text = string.Join("\n", s.ConsoleLines());
 
         string gear = v.Gear == null ? "none (hover)"
-            : (v.Gear.Deployed ? "DOWN" : v.Gear.Extension > 0f ? (v.Gear.Down ? "lowering" : "raising") : "up")
-              + (v.Gear.Manual ? " (manual)" : " (auto)");
+            : v.Gear.Deployed ? "DOWN" : v.Gear.Extension > 0f ? (v.Gear.Down ? "lowering" : "raising") : "up";
         string state = v.Frozen ? "LANDED (not simulating)" : v.Settling ? "settling" : !seated ? "autopilot holding course" : "flying";
         string boost = v.State.Boosting ? $"BOOST {v.State.BoostLeft:F1} s"
             : v.State.BoostReady ? "boost ready" : $"boost in {v.State.BoostCooldown:F1} s";

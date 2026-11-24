@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -58,7 +58,7 @@ public partial class CreaturesTest : Node
             }
             ActivityData();
             DayAndNight();
-            SleepersWake();
+            DormantWake();
             RestSitesAreSensible();
             DeepSpecies();
             CrawlerInDugTunnel();
@@ -75,9 +75,11 @@ public partial class CreaturesTest : Node
             Settlements();
             DomesticAnimals();
             SensesAreReal();
+            StairsAreClimbed();
             CrouchingIsQuieter();
             WeightShows();
             NothingClipsThePlayer();
+            StrikesLand();
             WoundsShow();
             DeepPerformance();
             CrowdedPlaceCost();
@@ -184,7 +186,7 @@ public partial class CreaturesTest : Node
         Check(kinds.Count >= 2, $"they rest in their own kinds of site ({string.Join(", ", kinds.Select(k => k.ToString().ToLowerInvariant()))})");
     }
 
-    void SleepersWake()
+    void DormantWake()
     {
         var (sim, _, fauna) = Valley(4242, 0.4f);
         for (float t = 0f; t < 150f; t += Dt)
@@ -193,7 +195,7 @@ public partial class CreaturesTest : Node
             sim.Step(Dt);
         }
         Species herd = fauna.Species[0];
-        Creature sleeper = sim.Creatures.First(c => c.Species == herd && c.State == CState.Rest);
+        Creature dormant = sim.Creatures.First(c => c.Species == herd && c.State == CState.Rest);
         // Creep up crouched, then stand: crouching gets you closer before it wakes.
         float WakeDistance(float threat)
         {
@@ -203,7 +205,7 @@ public partial class CreaturesTest : Node
                 s2.Clock.Time01 = 0.0f;
                 s2.Step(Dt);
             }
-            Creature c = s2.Creatures.First(x => x.Id == sleeper.Id);
+            Creature c = s2.Creatures.First(x => x.Id == dormant.Id);
             Vector3 dir = new Vector3(1f, 0f, 0.3f).Normalized();
             var walker = new DummyTarget { Name = "Walker", ThreatScale = threat, Position = c.Position + dir * 30f };
             s2.Targets.Add(walker);
@@ -223,7 +225,7 @@ public partial class CreaturesTest : Node
             s3.Clock.Time01 = 0.0f;
             s3.Step(Dt);
         }
-        Creature one = s3.Creatures.First(x => x.Id == sleeper.Id);
+        Creature one = s3.Creatures.First(x => x.Id == dormant.Id);
         var walker2 = new DummyTarget { Position = one.Position + new Vector3(3f, 0f, 0f) };
         s3.Targets.Add(walker2);
         for (float t = 0f; t < 4f; t += Dt)
@@ -376,7 +378,12 @@ public partial class CreaturesTest : Node
         for (ulong s = planet; s < planet + 60; s++)
         {
             Species c = new DeepFauna(_data, s, 0.5f).For(DeepRole.Crawler, PoiTheme.Natural, 1);
-            if (c.Form == "creeper") return c;
+            if (c.Form != "creeper") continue;
+            // The climbing and the drop are a climbing hunter's: a creeper made one (insects keep to themselves).
+            c = c.Copy();
+            c.Passive = false;
+            c.Stats.Hunts = true;
+            return c;
         }
         throw new InvalidOperationException("no creeper in 60 planets");
     }
@@ -395,7 +402,7 @@ public partial class CreaturesTest : Node
                 continue;
             }
             sim.RefillPathBudget();
-            Brain.Toward(sim, c, points[i], c.Stats.WalkSpeed);
+            Brain.Go(sim, c, points[i], c.Stats.WalkSpeed);
             Locomotion.Move(sim, c, Dt);
             c.Rig.Update(sim, c, Dt);
             sim.Time += Dt;
@@ -717,8 +724,9 @@ public partial class CreaturesTest : Node
             total[state] = total.GetValueOrDefault(state) + 1;
             if (pop.Silent) silent[state] = silent.GetValueOrDefault(state) + 1;
             creatures[state] = creatures.GetValueOrDefault(state) + pop.Spawns.Count;
-            worstPlace = Math.Max(worstPlace, pop.Spawns.Count);
-            foreach (var room in pop.Spawns.GroupBy(s => s.Room)) worstRoom = Math.Max(worstRoom, room.Count());
+            // The caps hold what comes at you; insects (passive) are the place's life and uncapped.
+            worstPlace = Math.Max(worstPlace, pop.Spawns.Count(s => !s.Species.Passive));
+            foreach (var room in pop.Spawns.Where(s => !s.Species.Passive).GroupBy(s => s.Room)) worstRoom = Math.Max(worstRoom, room.Count());
             int maxDepth = plan.Rooms.Max(r => r.Depth);
             foreach (PoiSpawn s in pop.Spawns)
             {
@@ -748,8 +756,9 @@ public partial class CreaturesTest : Node
         }
         float Share(PlaceState s) => silent.GetValueOrDefault(s) / (float)total[s];
         float Per(PlaceState s) => creatures.GetValueOrDefault(s) / (float)Math.Max(1, total[s] - silent.GetValueOrDefault(s));
-        Check(Share(PlaceState.Abandoned) is > 0.1f and < 0.45f && Share(PlaceState.Ruined) is > 0.1f and < 0.5f && Share(PlaceState.Infested) == 0f && Share(PlaceState.Active) > 0.75f,
-            $"some places are empty and silent: abandoned {Share(PlaceState.Abandoned):P0}, ruined {Share(PlaceState.Ruined):P0}, infested {Share(PlaceState.Infested):P0}, active {Share(PlaceState.Active):P0} (garrisons keep theirs clear)");
+        // (A living world's places all hold something; only a barren world's may be silent: PoiFauna.)
+        Check(Share(PlaceState.Abandoned) == 0f && Share(PlaceState.Ruined) == 0f && Share(PlaceState.Infested) == 0f && Share(PlaceState.Active) > 0.75f,
+            $"on a living world only garrisons keep their places silent: abandoned {Share(PlaceState.Abandoned):P0}, ruined {Share(PlaceState.Ruined):P0}, infested {Share(PlaceState.Infested):P0}, active {Share(PlaceState.Active):P0} (garrisons keep theirs clear)");
         Check(Per(PlaceState.Infested) > Per(PlaceState.Abandoned) * 1.6f && Per(PlaceState.Active) < Per(PlaceState.Abandoned) * 0.5f,
             $"infested places are overrun ({Per(PlaceState.Infested):F1} creatures a place against {Per(PlaceState.Abandoned):F1} in abandoned ones, {Per(PlaceState.Active):F1} in active ones)");
         Check(worstPlace <= Most && worstRoom <= Math.Max(_data.Deep.Population.NestCap, RoomMost), $"places keep to their caps: at most {worstPlace} creatures in a place (cap {Most}), {worstRoom} in a room");
@@ -758,7 +767,7 @@ public partial class CreaturesTest : Node
         var roster = new DeepFauna(_data, 1, 0.5f);
         Check(MathF.Abs(strider.TurnCircle - 6.5f) < 0.3f && roster.Fitted(strider, 2f, 3f) == null && roster.Fitted(strider, 7f, 4f) == strider,
             $"a 5.5 m strider needs a {strider.TurnCircle:F1} m turning circle: not in a 2 m corridor under a 3 m ceiling, at home in a 7 by 4 m hall");
-        Check(nestsAll > 20 && nestsOk == nestsAll, $"nests are in the deepest levels (or a wreck's holds, or an infested place's lower levels): {nestsOk} of {nestsAll}");
+        Check(nestsAll == 0, $"no nest is built in any place (the owner: none anywhere): {nestsAll} found");
         Check(chainsPossible > 20 && chains == chainsPossible, $"every place with hunters and subsisters has a food chain ({chains} of {chainsPossible})");
         Check(derelictAll > 5 && derelictOk == derelictAll, $"derelict ships have their own nesters in holds, ducts and engine rooms ({derelictOk} of {derelictAll})");
         var expected = new[] { DeepRole.Lurker, DeepRole.Prowler, DeepRole.Ambusher, DeepRole.Nester, DeepRole.Subsister, DeepRole.DerelictNester };
@@ -782,13 +791,13 @@ public partial class CreaturesTest : Node
             {
                 plan.Seed = s;
                 PoiPopulation pop = PoiFauna.Populate(plan, fauna, _data.Deep);
-                if (!pop.Silent && pop.Nests.Count > 0) return pop.Spawns.Count(x => x.Nest >= 0);
+                if (!pop.Silent && pop.Count(DeepRole.Nester) > 0) return pop.Count(DeepRole.Nester);
             }
             return 0;
         }
         int g1 = Guards(1), g3 = Guards(3), g5 = Guards(5);
         Check(g1 < g3 && g3 < g5 && near.Body.Size < mid.Body.Size && mid.Body.Size < deep.Body.Size && near.Stats.MaxHealth < deep.Stats.MaxHealth && near.Name == deep.Name,
-            $"nests get worse with depth: {g1}, {g3} and {g5} guards at levels 1, 3 and 5; the same {near.Name} grows from {near.Body.Size:F2} to {mid.Body.Size:F2} to {deep.Body.Size:F2} m and {near.Stats.MaxHealth:F0} to {deep.Stats.MaxHealth:F0} health from level 3 to 5");
+            $"the deep's insects come in more numbers and bigger with depth: {g1}, {g3} and {g5} at levels 1, 3 and 5; the same {near.Name} grows from {near.Body.Size:F2} to {mid.Body.Size:F2} to {deep.Body.Size:F2} m and {near.Stats.MaxHealth:F0} to {deep.Stats.MaxHealth:F0} health from level 3 to 5");
     }
 
     // ---- Tells: frightening but fair -----------------------------------------------------
@@ -936,7 +945,7 @@ public partial class CreaturesTest : Node
         for (float t = 0f; t < 12f; t += Dt)
         {
             sim.Step(Dt);
-            if ((int)(t / Dt) % 30 == 0) Trace($"t {t:F1} pos {c.Position} state {c.State} phase {c.Phase} noticed {c.Noticed?.Name} desired {c.Desired} path {c.SpacePath.Count}/{c.SpacePathIndex} range {c.Stats.AttackRange:F2} clr {c.Clearance:F2} d {(c.Position - victim.Position).Length():F2}");
+            if ((int)(t / Dt) % 30 == 0) Trace($"t {t:F1} pos {c.Position} state {c.State} phase {c.Phase} noticed {c.Noticed?.Name} desired {c.Desired} path {c.Path.Count}/{c.PathIndex} range {c.Stats.AttackRange:F2} clr {c.Clearance:F2} d {(c.Position - victim.Position).Length():F2}");
         }
     }
 
@@ -944,11 +953,19 @@ public partial class CreaturesTest : Node
     {
         var fauna = new DeepFauna(_data, 2024, 0.5f);
         var results = new List<string>();
-        bool allHit = true, allTold = true, allDodged = true;
+        bool allHit = true, allTold = true, allDodged = true, kept = true;
         float worst = float.MaxValue;
-        void Case(string label, Func<WildSim, BlockSpace, Creature> make, Vector3 from, Vector3 stand, Vector3? refuge = null, bool pursuer = false)
+        var keepers = new List<string>();
+        void Case(string label, Func<WildSim, BlockSpace, Creature> make, Vector3 from, Vector3 stand, Vector3? refuge = null, bool pursuer = false, bool insect = false)
         {
             var (hit, lead, tell, dodged) = Ambush(label, make, from, stand, refuge ?? new Vector3(3f, 9f, 3f), pursuer);
+            // Insects keep to themselves (the owner): one that bit would be wrong.
+            if (insect)
+            {
+                kept &= !hit;
+                keepers.Add($"{label}{(hit ? " BIT" : "")}");
+                return;
+            }
             allHit &= hit;
             allTold &= lead >= 1f;
             allDodged &= dodged;
@@ -962,7 +979,7 @@ public partial class CreaturesTest : Node
             Creature c = sim.SpawnIn(dropper, space, new Vector3(15.5f, 11.8f, 6f), Vector3.Down);
             c.Ambush = new AmbushPoint { Kind = HideKind.Ceiling, Position = Crawl.Center(c), Normal = c.Facing.Y };
             return c;
-        }, new Vector3(9f, 9f, 6f), new Vector3(15.5f, 9f, 6f));
+        }, new Vector3(9f, 9f, 6f), new Vector3(15.5f, 9f, 6f), insect: dropper.Passive);
         Case("a duct eel in the corridor vent", (sim, space) =>
         {
             var vent = new Crack { Id = 0, Kind = CrackKind.Vent, Position = new Vector3(16.5f, 11.5f, 5f), Normal = Vector3.Back, Network = 2 };
@@ -971,7 +988,7 @@ public partial class CreaturesTest : Node
             c.Ambush = new AmbushPoint { Kind = HideKind.Vent, Position = vent.Position, Hole = vent };
             Brain.EnterCrack(sim, c, vent, park: true);
             return c;
-        }, new Vector3(9f, 9f, 6f), new Vector3(16.5f, 9f, 6.2f));
+        }, new Vector3(9f, 9f, 6f), new Vector3(16.5f, 9f, 6.2f), insect: eel.Passive);
         Case("something behind the store's door", (sim, space) =>
         {
             var door = new Crack { Id = 0, Kind = CrackKind.Door, Position = new Vector3(22f, 9.2f, 7.5f), Normal = Vector3.Forward, Network = 3, Size = 1f };
@@ -980,7 +997,7 @@ public partial class CreaturesTest : Node
             c.Ambush = new AmbushPoint { Kind = HideKind.Door, Position = door.Position, Hole = door };
             Brain.EnterCrack(sim, c, door, park: true);
             return c;
-        }, new Vector3(13f, 9f, 6f), new Vector3(22f, 9f, 6f));
+        }, new Vector3(13f, 9f, 6f), new Vector3(22f, 9f, 6f), insect: eel.Passive);
         Species lurker = fauna.For(DeepRole.Lurker, PoiTheme.Industrial, 0);
         Case($"a lurker ({lurker.CommonName}) in the dark room", (sim, space) => sim.SpawnIn(lurker, space, new Vector3(34.5f, 9.2f, 9.5f)),
             new Vector3(29f, 9f, 3f), new Vector3(33f, 9f, 8f));
@@ -1000,7 +1017,8 @@ public partial class CreaturesTest : Node
             c.Nest = nest;
             nest.Guards.Add(c);
             return c;
-        }, new Vector3(11f, 1f, 22f), new Vector3(8f, 1f, 24f), new Vector3(22f, 5f, 27f));
+        }, new Vector3(11f, 1f, 22f), new Vector3(8f, 1f, 24f), new Vector3(22f, 5f, 27f), insect: nester.Passive);
+        Check(kept, $"insects keep to themselves, walked right up to: {string.Join("; ", keepers)}");
         Check(allHit && allTold, $"every ambush gives itself away at least a second before it lands (tightest {worst:F2} s): {string.Join("; ", results)}");
         Check(allDodged, "and every one can be escaped: run when you hear or see an ambush's tell and it never lands; step back when a hunter commits and its lunge misses");
     }
@@ -1145,7 +1163,7 @@ public partial class CreaturesTest : Node
             foreach (Creature c in sim.Creatures) if (c.Species.HuntsPrey && c.State == CState.Eat) fed.Add(c);
         }
         ate = fed.Count;
-        Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= 0.9f,
+        Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= _data.Combat.TellLeast - 1e-3f,
             $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 12 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
         Check(slipped >= 1 && cameBack >= 2,
             $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony comes back once the watcher has gone ({grazing} left as they went, {cameBack} came back)");
@@ -1162,37 +1180,28 @@ public partial class CreaturesTest : Node
         {
             hold = BlockPlace.Hold(seed);
             pop = PoiFauna.Populate(hold.Plan, fauna, Packed(_data));
-            if (!pop.Silent && pop.Nests.Count >= 2) break;
+            if (!pop.Silent && pop.Count(DeepRole.DerelictNester) >= 2) break;
         }
         WildSim sim = PlaceSim(hold);
         List<Creature> made = PoiFauna.Spawn(sim, pop, hold.Space);
-        float before = pop.Nests.Sum(n => n.Size);
-        for (float t = 0f; t < 150f; t += Dt) sim.Step(Dt);
-        float after = pop.Nests.Sum(n => n.Size);
-        var rooms = pop.Nests.Select(n => hold.Plan.Rooms.Find(r => n.Position.X >= r.Min.X - 0.1f && n.Position.X <= r.Max.X + 0.1f && n.Position.Z >= r.Min.Z - 0.1f && n.Position.Z <= r.Max.Z + 0.1f)?.Kind.ToString().ToLowerInvariant() ?? "?").ToList();
-        Check(made.Any(c => c.Species.Role == DeepRole.DerelictNester) && after > before + 0.1f,
-            $"wreck nesters ({made.First(c => c.Species.Role == DeepRole.DerelictNester).Species.CommonName}) build up their nests from the hold's scraps ({before:F2} to {after:F2} over 2.5 minutes, nests in the {string.Join(" and ", rooms)})");
-        // A salvager walks up to a nest: a hiss and a display, then the bite if they keep coming.
+        // A salvager walks through the hold: its insects keep to themselves and scatter, building nothing.
         var salvager = new DummyTarget { Name = "Salvager", Health = new Health(1e6f) };
         var f = new Fairness();
         f.Watch(sim, salvager);
-        Nest target = pop.Nests[0];
+        var bugs = made.Where(c => c.Species.Role == DeepRole.DerelictNester).ToList();
+        Vector3 at = bugs.Count > 0 ? bugs[0].Position : Vector3.Zero;
         salvager.Position = new Vector3(2.5f, 2f, 9f);
         sim.Targets.Add(salvager);
-        float warnedAt = -1f;
-        sim.Told += e => { if (e.Target == salvager && e.Kind == TellKind.Hiss && warnedAt < 0f) warnedAt = e.Time; };
-        float warnDistance = -1f;
         for (float t = 0f; t < 40f; t += Dt)
         {
-            Vector3 to = target.Position - salvager.Position;
+            Vector3 to = at - salvager.Position;
             to.Y = 0f;
             if (to.Length() > 0.8f) salvager.Position += to.Normalized() * 1.2f * Dt;
             salvager.Position = new Vector3(salvager.Position.X, FloorAt(hold.Space, salvager.Position), salvager.Position.Z);
-            if (warnedAt >= 0f && warnDistance < 0f) warnDistance = (target.Position - salvager.Position).Length();
             sim.Step(Dt);
         }
-        Check(warnedAt >= 0f && f.Hits > 0 && f.WorstLead >= 1f,
-            $"its guards warn an intruder off (a hiss at {warnDistance:F1} m from the nest) and bite only after (tightest {f.WorstLead:F2} s after the first tell, {f.Hits} hits)");
+        Check(bugs.Count >= 2 && bugs.All(c => c.Species.Passive) && pop.Nests.Count == 0 && sim.Nests.Count == 0 && f.Hits == 0,
+            $"a wreck's insects ({(bugs.Count > 0 ? bugs[0].Species.CommonName : "none")}, {bugs.Count}) keep to themselves in its holds: no nest built, {f.Hits} bites on a salvager walking among them");
     }
 
     // ---- Mutagenic worlds -------------------------------------------------------------------
@@ -1413,12 +1422,14 @@ public partial class CreaturesTest : Node
         // A wild hunter in their midst (it got in; the guards haven't come yet): they scatter inside the pen.
         Species hunter = _gen.Generate(4242, 0.4f, false).Species.Find(s => s.IsHunter && !s.Flies);
         Creature wolf = sim.Spawn(hunter, pen + new Vector3(0f, 0f, 1f));
-        int fled = 0;
+        // Any that ran at some point in those four seconds: one look at a single instant misses those already over it or not yet started.
+        var ran = new HashSet<Creature>();
         for (int i = 0; i < 60 * 4; i++)
         {
             sim.Step(Dt);
-            if (i == 60 * 2) fled = animals.Count(c => c.State == CState.Flee);
+            foreach (Creature c in animals) if (c.State == CState.Flee) ran.Add(c);
         }
+        int fled = ran.Count;
         foreach (Creature c in animals) worstOut = MathF.Max(worstOut, WildSim.Flat(c.Position - pen).Length() - 5f);
         Check(worstOut < 1f && pupFar < 9f && fled >= 3 && domesticAttacks == 0,
             $"they keep to their pens and stations over 2 minutes (at most {MathF.Max(0f, worstOut):F1} m over), a pet keeps up with its owner (never more than {pupFar:F1} m behind), and a wild hunter among the stock scatters them inside the pen ({fled} of 4 running), none fighting back");
@@ -1453,6 +1464,92 @@ public partial class CreaturesTest : Node
     }
 
     /// <summary>Line of sight, the cone, memory, hearing apart from sight, the meter; and nothing alerted by what it can't sense.</summary>
+    /// <summary>
+    /// Walkers take a flight of stairs as people do: a place's stair cells are ramps to them, solid
+    /// only under the 45-degree slope, and their paths go up and down a flight. Fresh each run: a
+    /// flight of three to six stairs in a corridor, rising whichever way, and the place's prowlers
+    /// (small and long-legged, every walker the world rolls, never a climber or a flier) chasing
+    /// someone standing at its head: every one reaches the top.
+    /// </summary>
+    void StairsAreClimbed()
+    {
+        var rng = new Random((int)(System.Environment.TickCount64 & 0x7fffffff));
+        int n = rng.Next(3, 7), turn = rng.Next(4);
+        const int Len = 22, Wide = 4;
+        // The flight in its own frame: along +u from u = 6, the corridor across v = 1..3.
+        var solid = new HashSet<Vector3I>();
+        var slope = new Dictionary<Vector3I, int>();
+        Vector3I At(int u, int y, int v) => turn switch
+        {
+            0 => new Vector3I(u, y, v),
+            1 => new Vector3I(-u - 1, y, v),
+            2 => new Vector3I(v, y, u),
+            _ => new Vector3I(v, y, -u - 1),
+        };
+        int rise = turn switch { 0 => 0, 1 => 1, 2 => 2, _ => 3 };
+        for (int u = -1; u <= Len; u++)
+        for (int v = 0; v <= Wide; v++)
+        for (int y = -1; y <= n + 5; y++)
+        {
+            int stair = u - 6; // the stair at u = 6 + i stands in cell y = i
+            bool wall = v == 0 || v == Wide || u == -1 || u == Len || y == n + 5;
+            bool ground = u < 6 ? y < 0 : stair < n ? y < stair : y < n;
+            if (wall || ground) solid.Add(At(u, y, v));
+            else if (stair >= 0 && stair < n && y == stair)
+            {
+                solid.Add(At(u, y, v));
+                slope[At(u, y, v)] = rise;
+            }
+        }
+        Vector3I lo = new(int.MaxValue, int.MaxValue, int.MaxValue), hi = new(int.MinValue, int.MinValue, int.MinValue);
+        foreach (Vector3I c in solid) { lo = new Vector3I(Math.Min(lo.X, c.X), Math.Min(lo.Y, c.Y), Math.Min(lo.Z, c.Z)); hi = new Vector3I(Math.Max(hi.X, c.X), Math.Max(hi.Y, c.Y), Math.Max(hi.Z, c.Z)); }
+        var space = new BlockSpace((x, y, z) => solid.Contains(new Vector3I(x, y, z)), lo, hi + Vector3I.One)
+        {
+            Slope = (x, y, z) => slope.TryGetValue(new Vector3I(x, y, z), out int k) ? k : -1,
+        };
+        Vector3 Point(float u, float y, float v) => turn switch
+        {
+            0 => new Vector3(u, y, v),
+            1 => new Vector3(-u, y, v),
+            2 => new Vector3(v, y, u),
+            _ => new Vector3(v, y, -u),
+        };
+        var fauna = new DeepFauna(_data, (ulong)rng.Next(), 0.5f);
+        var walkers = new List<Species>();
+        foreach (PoiTheme theme in Enum.GetValues<PoiTheme>())
+            for (int depth = 0; depth < 4; depth++)
+                foreach (DeepRole role in new[] { DeepRole.Prowler, DeepRole.Lurker })
+                {
+                    Species sp = fauna.For(role, theme, depth);
+                    if (sp != null && !sp.Climbs && !sp.Flies && sp.BodyHeight < n + 4 && sp.BodyWidth < Wide - 1.2f && walkers.All(w => w.CommonName != sp.CommonName)) walkers.Add(sp);
+                }
+        int reached = 0, tried = 0;
+        var stuck = new List<string>();
+        foreach (Species sp in walkers.Take(8))
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => -50f, 80f), new NavGrid(80f, 3f));
+            Creature c = sim.SpawnIn(sp, space, Point(2.5f, 0f, Wide / 2f));
+            if (c == null) continue;
+            tried++;
+            var prey = new DummyTarget { Name = "Up there", Health = new Health(1e7f), Position = Point(6 + n + 3.5f, n, Wide / 2f) };
+            float best = c.Position.Y;
+            // Driven as the brain drives a chase (its path through the place, then its legs), at a run.
+            for (float t = 0f; t < 40f && best < n - 0.05f; t += Dt)
+            {
+                sim.RefillPathBudget();
+                Brain.Go(sim, c, prey.Position + Vector3.Up * 0.5f, c.Stats.RunSpeed);
+                Locomotion.Move(sim, c, Dt);
+                sim.Time += Dt;
+                best = MathF.Max(best, c.Position.Y);
+            }
+            if (best >= n - 0.05f) reached++;
+            else stuck.Add($"{sp.CommonName} ({sp.BodyHeight:F1} m tall, {sp.BodyWidth:F1} m wide) got {best:F2} m up, at {c.Position}, {c.State}");
+        }
+        foreach (string w in stuck.Take(4)) GD.Print("  stuck: " + w);
+        Check(tried >= 3 && reached == tried,
+            $"walkers chasing someone up a flight of {n} stairs (rising {(turn switch { 0 => "+x", 1 => "-x", 2 => "+z", _ => "-z" })}) reach its head: {reached} of {tried} ({string.Join(", ", walkers.Take(8).Select(w => $"{w.CommonName} {w.BodyHeight:F1} m"))}){(stuck.Count > 0 ? "; " + stuck[0] : "")}");
+    }
+
     void SensesAreReal()
     {
         // Two rooms with a solid wall between them, a doorway at one end.
@@ -1658,7 +1755,7 @@ public partial class CreaturesTest : Node
             c.Yaw = 0f;
             sim.Attacked += e =>
             {
-                if (!e.Hit) return;
+                if (!e.Hit || e.First) return; // the telegraphed opener comes straight, to be dodged
                 hits++;
                 if (WildSim.Flat(c.Position - p.Position).Normalized().Dot(p.Forward) > -0.3f) front++;
             };
@@ -1669,14 +1766,15 @@ public partial class CreaturesTest : Node
                 for (int i = 0; i < c.Rig.HitCount; i++)
                 {
                     Vector4 h = c.Rig.Hits[i];
-                    if (h.Y - h.W > Attacks.BodyHeight) continue;
-                    float into = h.W + Attacks.BodyRadius - WildSim.Flat(new Vector3(h.X, 0f, h.Z) - p.Position).Length();
+                    // Into their body as it is, a capsule: a head coming down from above meets the top of it.
+                    var at = new Vector3(h.X, h.Y, h.Z);
+                    float into = -Strikes.Gap(at, at, h.W, p);
                     if (into > worst) { worst = into; who = $"{size:F1} m {s.CommonName}, part {i} of {c.Rig.HitCount}, state {c.State} phase {c.Phase}"; }
                 }
             }
         }
         Check(worst < 0.25f, $"heads and bodies stop at the player's body: at worst {worst:F2} m into it, over {sized} sizes of hunter ({who})");
-        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
+        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites after the opener), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
     }
 
     /// <summary>A hit shows: it flinches, the small ones more; blood is the species' own and stays so.</summary>

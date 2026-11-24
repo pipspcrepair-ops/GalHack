@@ -29,18 +29,37 @@ public sealed class FlavourRuin
     /// <summary>How hard a nearby blast flattened it (0 none), and from which way ground zero lies.</summary>
     public float Blast;
     public float BlastX, BlastZ;
+    /// <summary>The big blast that graded it by distance (stumps by the rim, shells further out), or null.</summary>
+    public Strike Flatten;
     /// <summary>The road it stands by (null for one out in the country).</summary>
     public InfraRoute Route;
     /// <summary>Its driveway, forecourt apron or farm track to that road (null where it has no road).</summary>
     public TerrainStamp Drive;
     /// <summary>A track of its own runs from its gate to the nearest road.</summary>
     public bool Tracked;
+    /// <summary>
+    /// Power (the interface with the roads side's lines, <see cref="PowerLines.Fixing"/>): where the house's service drop
+    /// is fixed to its wall. The houses side sets these from the house it builds: which face of its outer walls takes the
+    /// drop (null: the face toward the pole it comes from), and how high above that wall's foot, metres. The drop meets
+    /// the outer wall nearest that face's middle with nothing in front of it.
+    /// </summary>
+    public Dir? FixingSide;
+    public float FixingHeight = 3f;
     public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
 
     /// <summary>The ruin as built and decayed (a pure function of its layout and seed): call off the main thread.</summary>
     public PoiInstance Spawn(WorldProfile world, PlanetTerrainSource ground = null)
     {
         PoiInstance inst = PoiFactory.Spawn(Library, Layout, State, SpawnSeed, world);
+        if (Blast > 0.02f && Flatten is { } f)
+        {
+            double w = ground?.Width ?? double.MaxValue, h = ground?.Height ?? double.MaxValue;
+            StateTransforms.Flattened(inst, (x, z) =>
+            {
+                double dx = Mathx.WrapDelta(OriginX + x + 0.5 - f.X, w), dz = Mathx.WrapDelta(OriginZ + z + 0.5 - f.Z, h);
+                return f.Strength((float)Math.Sqrt(dx * dx + dz * dz));
+            });
+        }
         if (Blast > 0.02f) StateTransforms.Blast(inst, BlastX, BlastZ, Blast, new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(SpawnSeed, 0xB1A57UL)));
         if (ground != null)
             StateTransforms.Settle(inst, (x, z) => ground.SurfaceHeight(Mathx.WrapX(OriginX + x + 0.5, ground.Width), Mathx.Wrap(OriginZ + z + 0.5, ground.Height)) - OriginY, -1);
@@ -89,7 +108,7 @@ public sealed class FlavourRuin
 /// </summary>
 public static class FlavourRuins
 {
-    static readonly ConcurrentDictionary<(string, int, Dir, TechLevel?, int), Layout> Layouts = new();
+    static readonly ConcurrentDictionary<(string, int, Dir, TechLevel?, int, HomeHints), Layout> Layouts = new();
 
     /// <summary>
     /// How far a blast reaches into the land round its site, as a multiple of the site's own fade
@@ -100,14 +119,55 @@ public static class FlavourRuins
     /// <summary>Different drawings of each plan a world may use, so a street isn't one house over and over.</summary>
     public const int Salts = 3;
 
-    /// <summary>How hard a blast hits at a distance from ground zero, out in the land round its site.</summary>
-    public static float BlastAt(BlastZone zone, float d) =>
-        d <= zone.Crater ? 1f : d >= zone.Fade * WorldReach ? 0f : 1f - (d - zone.Crater) / (zone.Fade * WorldReach - zone.Crater);
+    /// <summary>How many different houses one culture's street may draw from: each house is put together afresh by the house rules.</summary>
+    public const int HouseSalts = 4096;
 
-    /// <summary>A family's layout, turned to face a road, in the world's tech level's materials.</summary>
-    public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0) =>
-        Layouts.GetOrAdd((f.Id, variant, front, tech, salt), _ =>
-            PoiFactory.BuildLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech)));
+    /// <summary>The climate a place was built against, from the world map's temperature and humidity there.</summary>
+    public static PoiGenerator.Gen.Climate ClimateAt(WorldMap map, double x, double z)
+    {
+        int cx = (int)Math.Floor(Mathx.WrapX(x, map.WidthMeters) / map.CellSize) % map.Width, cz = (int)Math.Floor(Mathx.Wrap(z, map.HeightMeters) / map.CellSize) % map.Height;
+        int k = Math.Clamp(cz, 0, map.Height - 1) * map.Width + Math.Clamp(cx, 0, map.Width - 1);
+        return HomeHints.ClimateOf(map.Temperature[k], map.Humidity[k]);
+    }
+
+    /// <summary>A house's culture where it stands, the region's (<see cref="CultureAt"/>); its purse is its own.</summary>
+    static HomeHints Home(PoiGenerator.Gen.Rng rng, WorldMap map, RegionPlan plan, double x, double z) =>
+        new(CultureAt(plan, map, x, z), ClimateAt(map, x, z), rng.Float());
+
+    /// <summary>How far a stretch of open country reaches that one people built in, metres.</summary>
+    public const double CountryPatch = 3200;
+
+    /// <summary>
+    /// The building culture where a house stands: one people to a town and everything it ran (its streets, its
+    /// farmland, its works: the plan's region and the town it served), and out in the open country one to each
+    /// stretch of land. A strange people's culture makes all its houses strange and a regular one none, so the two
+    /// never share a street, a town or a stretch of country (design doc, "Infrastructure").
+    /// </summary>
+    public static int CultureAt(RegionPlan plan, WorldMap map, double x, double z)
+    {
+        x = Mathx.WrapX(x, map.WidthMeters);
+        z = Mathx.Wrap(z, map.HeightMeters);
+        if (plan?.RegionAt(x, z) is { } region)
+            return (int)(PoiGenerator.Gen.Hash.Combine(map.Spec.Seed, 0xC0175UL, (ulong)(region.Town >= 0 ? region.Town : region.Index)) >> 33);
+        long px = (long)Math.Floor(x / CountryPatch), pz = (long)Math.Floor(z / CountryPatch);
+        return (int)(PoiGenerator.Gen.Hash.Combine(map.Spec.Seed, 0xC0A7UL, (ulong)(px * 73856093L ^ pz * 19349663L)) >> 33);
+    }
+
+    /// <summary>Forgets every layout drawn so far: a world's streets are no use to the next (a new game calls it between them).</summary>
+    public static void Forget() => Layouts.Clear();
+
+    /// <summary>A family's layout, turned to face a road, in the world's tech level's materials; null (with a warning) if none lays out, and the lot stays empty.</summary>
+    public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0, HomeHints home = null)
+    {
+        // Every street's houses are its own: the cache forgets old worlds' rather than growing without end.
+        if (home != null && Layouts.Count > 3000) Layouts.Clear();
+        return Layouts.GetOrAdd((f.Id, variant, front, tech, salt, home), _ =>
+        {
+            Layout l = PoiFactory.TryLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech, Home: home), out string why);
+            if (l == null) Godot.GD.PushWarning($"lot left empty: {why}");
+            return l;
+        });
+    }
 
     /// <summary>
     /// Which of a family's layouts a world of a tech level builds: its own, or any that fit all. A family's
@@ -134,14 +194,25 @@ public static class FlavourRuins
     {
         var ruins = already ?? new List<FlavourRuin>();
         if (profile == null || !profile.Inhabited || lib == null) return ruins;
-        var families = lib.Families.Where(f => f.Tags.Contains("flavour") && f.Id.StartsWith("flavour_") && (f.Techs.Count == 0 || f.Techs.Contains(WorldProfile.Tag(profile.Before)))).ToList();
+        var families = lib.Families.Where(f => f.Tags.Contains("flavour") && f.Id.StartsWith("flavour_") && (f.Techs.Count == 0 || f.Techs.Contains(WorldProfile.Tag(profile.Before))) && !f.Is.Any(profile.Barred.Contains)).ToList();
         if (families.Count == 0) return ruins;
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0xF1A7UL));
         FamilyDef Pick(string kind) => families.FirstOrDefault(f => f.Tags.Contains(kind));
         double w = map.WidthMeters, h = map.HeightMeters;
-        bool farmland = profile.Trade == Trade.Agricultural;
+        // On a planned world the small places stand where the plan's towns and farmland are, and the land between stays empty.
+        RegionPlan plan = net.RegionPlan;
+        bool farmland = plan != null ? plan.Regions.Any(r => r.Kind == RegionKind.Farmland) : profile.Trade == Trade.Agricultural;
+        bool Lived(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) != null;
+        // A street of houses runs a good way off its junction: its junction lies well inside the region.
+        bool Heart(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) is { } home && plan.Dist(home.X, home.Z, Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) < home.Radius * 0.7;
+        bool Farmed(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters))?.Kind == RegionKind.Farmland;
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
-        Layout Lot(FamilyDef f, Dir front) => LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
+        // A house off on its own, or a farm's, is of the people of the region it stands in, in the weather there.
+        Layout Lot(FamilyDef f, Dir front, double x = 0, double z = 0) => f.Tags.Contains("house")
+            ? LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, HouseSalts), Home(rng, map, plan, x, z))
+            : f.Tags.Contains("farmstead")
+                ? LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts), Home(rng, map, plan, x, z) with { Wealth = 0.5f })
+                : LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
 
         double roadKm = net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
         double trackKm = net.Routes.Where(r => r.Kind == RouteKind.Track).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
@@ -150,10 +221,10 @@ public static class FlavourRuins
         var hubs = new List<(InfraRoute R, int I, bool Junction)>();
         foreach (InfraRoute r in net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road && r.Count > 12))
         {
-            if (r.From == null) hubs.Add((r, 0, true));
-            if (r.To == null) hubs.Add((r, r.Count - 1, true));
+            if (r.From == null && Heart(r.X[0], r.Z[0])) hubs.Add((r, 0, true));
+            if (r.To == null && Heart(r.X[^1], r.Z[^1])) hubs.Add((r, r.Count - 1, true));
             foreach (var (place, end, step) in new[] { (r.From, 0, 1), (r.To, r.Count - 1, -1) })
-                if (place != null && place.Tier is PoiTier.Town or PoiTier.City)
+                if (place != null && (place.Tier is PoiTier.Town or PoiTier.City || place.Planned?.Role == "hub"))
                 {
                     int i = end + step * (int)((Math.Max(place.Stamp.ReachX, place.Stamp.ReachZ) * 0.5 + 90) / InfraNetwork.Spacing);
                     if (i > 1 && i + 2 < r.Count) hubs.Add((r, i, false));
@@ -162,16 +233,16 @@ public static class FlavourRuins
         rng.Shuffle(hubs);
 
         // Streets of houses off the hubs, a good way apart.
-        int streets = Math.Clamp((int)(roadKm / 6), 2, 7);
+        int streets = plan != null ? plan.Roll.Streets * Math.Max(1, plan.Regions.Count(r => r.Kind == RegionKind.Town)) : Math.Clamp((int)(roadKm / 6), 2, 7);
         var built = new List<(double X, double Z)>();
         foreach (var (r, i, junction) in hubs)
         {
             if (built.Count >= streets) break;
             double px = r.X[i], pz = r.Z[i];
-            if (built.Any(b => Dist(b.X, b.Z, px, pz) < 1100)) continue;
+            if (built.Any(b => Dist(b.X, b.Z, px, pz) < (plan != null ? 420 : 1100))) continue;
             if (r.Span[Math.Min(i, r.Span.Length - 1)] != RoadSpan.Ground) continue;
             int length = 3 + rng.Range(0, 4);
-            if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before)) built.Add((px, pz));
+            if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before, CultureAt(plan, map, px, pz))) built.Add((px, pz));
         }
 
         // The stop each age kept on its roads (an inn, a petrol station, a charging depot): crossroads first, then wherever a long highway has gone without one.
@@ -192,6 +263,7 @@ public static class FlavourRuins
                     double nx = Math.Abs(dx) > Math.Abs(dz) ? 0 : side, nz = Math.Abs(dx) > Math.Abs(dz) ? side : 0;
                     Dir front = Facing(-nx, -nz);
                     Layout layout = Lot(fuel, front);
+                    if (layout == null) continue;
                     double deep = LotSize(layout, front).Deep * 0.5, back = deep + r.HalfWidth + 6;
                     FlavourRuin ruin = Try(lib, fuel, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng, spacing: 12, maxCut: 5f, clearance: back - 3);
                     // The forecourt lies level with the road it opens on.
@@ -223,7 +295,7 @@ public static class FlavourRuins
         var feeders = net.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Track && r.Count > 20).ToList();
         if (farm != null && feeders.Count > 0)
         {
-            int want = farmland ? Math.Clamp((int)((roadKm + trackKm) / 4), 4, 12) : Math.Clamp((int)((roadKm + trackKm) / 16), 1, 3);
+            int want = plan != null ? plan.Regions.Count(r => r.Kind == RegionKind.Farmland) * 3 : farmland ? Math.Clamp((int)((roadKm + trackKm) / 4), 4, 12) : Math.Clamp((int)((roadKm + trackKm) / 16), 1, 3);
             for (int tries = 0, got = 0; tries < want * 40 && got < want; tries++)
             {
                 InfraRoute r = feeders[rng.Range(0, feeders.Count)];
@@ -233,8 +305,10 @@ public static class FlavourRuins
                 if (len < 1e-6) continue;
                 int side = rng.Chance(0.5f) ? 1 : -1;
                 double nx = -dz / len * side, nz = dx / len * side, off = 70 + 130 * rng.Float();
+                if (!Farmed(r.X[i] + nx * off, r.Z[i] + nz * off)) continue;
                 Dir front = Facing(-nx, -nz);
-                Layout layout = Lot(farm, front);
+                Layout layout = Lot(farm, front, r.X[i] + nx * off, r.Z[i] + nz * off);
+                if (layout == null) continue;
                 FlavourRuin ruin = Try(lib, farm, layout, r.X[i] + nx * off, r.Z[i] + nz * off, bare, net, pois, ruins, w, h, rng, spacing: 40);
                 if (ruin == null || !Connect(ruin, r, 2.2f, profile.Before == TechLevel.Low ? StampSurface.Dirt : StampSurface.Gravel, bare, w, h)) continue;
                 ruin.Route = r;
@@ -251,7 +325,7 @@ public static class FlavourRuins
             for (int i = 2; i + 2 < r.Count; i++)
             {
                 run += InfraNetwork.Spacing;
-                if (run < next || r.Span[i] != RoadSpan.Ground) continue;
+                if (run < next || r.Span[i] != RoadSpan.Ground || !Lived(r.X[i], r.Z[i])) continue;
                 next = run + every * (0.6 + 0.8 * rng.Float());
                 FamilyDef f = (rng.Chance(0.55f) ? shed : house) ?? house;
                 if (f == null) continue;
@@ -260,7 +334,8 @@ public static class FlavourRuins
                 int side = rng.Chance(0.5f) ? 1 : -1;
                 double nx = -dz / len * side, nz = dx / len * side;
                 Dir front = Facing(-nx, -nz);
-                Layout layout = Lot(f, front);
+                Layout layout = Lot(f, front, r.X[i], r.Z[i]);
+                if (layout == null) continue;
                 var size = layout.Occupied.Size;
                 double back = Math.Sqrt(size.X * size.X + size.Z * size.Z) * 0.5 + 12 + rng.Float() * 16;
                 FlavourRuin ruin = Try(lib, f, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng);
@@ -272,22 +347,25 @@ public static class FlavourRuins
 
         // Enough to make a world with few roads look lived in once: lone houses and farms off in the country.
         int attempts = 800;
-        for (int tries = 0; ruins.Count < 12 && tries < attempts; tries++)
+        for (int tries = 0; ruins.Count < 12 && tries < attempts && plan == null; tries++)
         {
             // Rough country takes a farmstead's yard badly: late on, a lone house on what ground there is.
             bool rough = tries > attempts / 2;
             FamilyDef f = Pick(!rough && (farmland || rng.Chance(0.5f)) ? "farmstead" : "house") ?? Pick("house");
             if (f == null) break;
-            Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)]);
-            FlavourRuin ruin = Try(lib, f, layout, rng.Float() * w, rng.Float() * h, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
+            double lx = rng.Float() * w, lz = rng.Float() * h;
+            Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)], lx, lz);
+            if (layout == null) continue;
+            FlavourRuin ruin = Try(lib, f, layout, lx, lz, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
             if (ruin != null) ruins.Add(ruin);
         }
         // A survivor town's landing clearing, at its edge, with a track in, where traders set down.
         if (lib.Families.FirstOrDefault(f => f.Id == "landing_clearing") is { } clearing)
-            foreach (PoiSite p in pois.Where(p => p.Family.Id == "survivor_town" && p.Instance.State == PoiState.Active))
+            foreach (PoiSite p in pois.Where(p => p.Family.Id == "survivor_town" && p.State == PoiState.Active))
             {
                 if (!rng.Chance(0.7f)) continue;
                 Layout layout = LayoutFor(lib, clearing, rng.Range(0, clearing.Variants.Count));
+                if (layout == null) continue;
                 // Clear of the town's square reach whichever way round it lands.
                 double start = rng.Float() * Math.PI * 2, reach = (Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 50) * 1.45;
                 for (int k = 0; k < 36; k++)
@@ -308,7 +386,7 @@ public static class FlavourRuins
         // Round a blast: the ruin ring, every ruin in it flattened outward from ground zero.
         foreach (PoiSite p in pois)
         {
-            if (p.GroundZero is not (double gx, double gz) || p.Instance.Layout.Extras.Blast is not BlastZone zone) continue;
+            if (p.GroundZero is not (double gx, double gz) || p.Layout.Extras.Blast is not BlastZone zone) continue;
             double inner = Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 24, outer = zone.Fade * (WorldReach - 1);
             if (outer <= inner) outer = inner + 120;
             for (int k = 0, placed = 0; k < 120 && placed < 12; k++)
@@ -316,19 +394,38 @@ public static class FlavourRuins
                 double a = rng.Float() * Math.PI * 2, d = inner + (outer - inner) * rng.Float();
                 FamilyDef f = Pick("house");
                 if (f == null) break;
-                Layout layout = LayoutFor(lib, f, VariantFor(f, profile.Before, rng), Dirs.Horizontal[rng.Range(0, 4)], profile.Before, rng.Range(0, Salts));
+                Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)], gx + Math.Cos(a) * d, gz + Math.Sin(a) * d);
+                if (layout == null) continue;
                 var ruin = Try(lib, f, layout, gx + Math.Cos(a) * d, gz + Math.Sin(a) * d, bare, net, pois, ruins, w, h, rng);
                 if (ruin == null) continue;
                 ruins.Add(ruin);
                 placed++;
             }
         }
-        foreach (FlavourRuin ruin in ruins) Blasted(ruin, pois, w, h);
-        // Nobody built out of reach of a road: whatever came down without one, and hasn't a neighbour that has, gets a track.
+        // Round a blast that left the ground hot: warning posts at the edge of it, facing whoever comes in.
+        if (Pick("warning") is { } warning)
+            foreach (Strike b in net.Blasts.Where(b => b.Rad > 0f && !b.Naval))
+            {
+                double start = rng.Float() * Math.PI * 2;
+                for (int k = 0, placed = 0; k < 16 && placed < 8; k++)
+                {
+                    double a = start + k * Math.PI / 8, d = b.Dead + 6;
+                    double px = b.X + Math.Cos(a) * d, pz = b.Z + Math.Sin(a) * d;
+                    Layout layout = LayoutFor(lib, warning, 0, Facing(Math.Cos(a), Math.Sin(a)));
+                    if (layout == null) break;
+                    var post = Try(lib, warning, layout, px, pz, bare, net, pois, ruins, w, h, rng, roadGap: 3, spacing: 4, maxCut: 3f, clearance: 4);
+                    if (post == null) continue;
+                    post.State = PoiState.Abandoned;
+                    ruins.Add(post);
+                    placed++;
+                }
+            }
+        foreach (FlavourRuin ruin in ruins) Blasted(ruin, net.Blasts, w, h);        // Nobody built out of reach of a road: whatever came down without one, and hasn't a neighbour that has, gets a track.
         foreach (FlavourRuin ruin in ruins) net.KeepOff(ruin.Stamp);
         foreach (FlavourRuin ruin in ruins)
         {
-            if (ruin.Route != null || ruin.Drive != null) continue;
+            // A warning post stands where people come, not where a track was made to it.
+            if (ruin.Route != null || ruin.Drive != null || ruin.Family.Tags.Contains("warning")) continue;
             var (rx, rz) = ruin.Center;
             if (ruins.Any(o => o != ruin && (o.Route != null || o.Drive != null) && Dist(o.Center.X, o.Center.Z, rx, rz) < 60)) continue;
             InfraRoute near = net.Nearest(rx, rz, 380, out _, out _);
@@ -348,10 +445,12 @@ public static class FlavourRuins
     /// only if the ground takes a fair few lots. False if it doesn't, in any of the ways it could run.
     /// </summary>
     static bool Street(double px, double pz, InfraRoute road, int pairs, InfraNetwork net, PoiLibrary lib, PlanetTerrainSource bare, IReadOnlyList<PoiSite> pois, List<FlavourRuin> ruins,
-        double w, double h, PoiGenerator.Gen.Rng rng, FamilyDef house, FamilyDef shed, FamilyDef shop, TechLevel tech)
+        double w, double h, PoiGenerator.Gen.Rng rng, FamilyDef house, FamilyDef shed, FamilyDef shop, TechLevel tech, int culture)
     {
         if (house == null) return false;
         const float StreetHalf = 4f;
+        // The street's people: one culture, in the weather here, as well off as the street was.
+        var home = new HomeHints(culture, ClimateAt(bare.Sampler.Map, px, pz), rng.Float());
         var ways = new List<(double X, double Z)> { (1, 0), (-1, 0), (0, 1), (0, -1) };
         rng.Shuffle(ways);
         foreach (var (ux, uz) in ways)
@@ -371,7 +470,10 @@ public static class FlavourRuins
                     bool shopFront = shop != null && k < Math.Max(1, pairs / 3);
                     FamilyDef f = shopFront ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
                     Dir front = Facing(-sx * side, -sz * side);
-                    Layout layout = LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, Salts));
+                    // Every house on a street of one culture, each put together afresh, so no two neighbours are one model.
+                    Layout layout = f == house ? LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, HouseSalts), home)
+                        : LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, Salts));
+                    if (layout == null) continue;
                     var (wide, deep) = LotSize(layout, front);
                     along += wide * 0.5;
                     double back = StreetHalf + deep * 0.5 + 6.5, cx = px + ux * along + sx * side * back, cz = pz + uz * along + sz * side * back;
@@ -453,19 +555,19 @@ public static class FlavourRuins
         return true;
     }
 
-    /// <summary>Takes a ruin's share of any blast round it: the nearer ground zero, the harder.</summary>
-    static void Blasted(FlavourRuin ruin, IReadOnlyList<PoiSite> pois, double w, double h)
+    /// <summary>Takes a ruin's share of any blast round it (a blast site's or a war's strike, one record each): the nearer ground zero, the harder.</summary>
+    static void Blasted(FlavourRuin ruin, IReadOnlyList<Strike> blasts, double w, double h)
     {
-        foreach (PoiSite p in pois)
+        foreach (Strike b in blasts)
         {
-            if (p.GroundZero is not (double gx, double gz) || p.Instance.Layout.Extras.Blast is not BlastZone zone) continue;
             var (cx, cz) = ruin.Center;
-            double dx = Mathx.WrapDelta(cx - gx, w), dz = Mathx.WrapDelta(cz - gz, h);
-            float d = (float)Math.Sqrt(dx * dx + dz * dz), s = BlastAt(zone, d);
-            if (s <= ruin.Blast || d < 1f) continue;
+            double dx = Mathx.WrapDelta(cx - b.X, w), dz = Mathx.WrapDelta(cz - b.Z, h);
+            float d = (float)Math.Sqrt(dx * dx + dz * dz), s = b.Strength(d);
+            if (s <= ruin.Blast) continue;
             ruin.Blast = s;
-            ruin.BlastX = (float)(-dx / d);
-            ruin.BlastZ = (float)(-dz / d);
+            ruin.Flatten = b.Flatten ? b : null;
+            ruin.BlastX = d < 1f ? 0f : (float)(-dx / d);
+            ruin.BlastZ = d < 1f ? 1f : (float)(-dz / d);
         }
     }
 
@@ -489,9 +591,17 @@ public static class FlavourRuins
         // Clear of every place's reach, every road's bed and banks, and other ruins.
         foreach (PoiSite p in pois)
         {
-            double dx = Math.Abs(Mathx.WrapDelta(p.Center.X - cx, w)), dz = Math.Abs(Mathx.WrapDelta(p.Center.Z - cz, h));
-            double reach = Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + Math.Max(halfX, halfZ) + 12;
+            // (A typed place's part by the whole place's grading.)
+            TerrainStamp ps = p.Whole?.Stamp ?? p.Stamp;
+            double dx = Math.Abs(Mathx.WrapDelta(ps.CenterX - cx, w)), dz = Math.Abs(Mathx.WrapDelta(ps.CenterZ - cz, h));
+            double reach = Math.Max(ps.ReachX, ps.ReachZ) + Math.Max(halfX, halfZ) + 12;
             if (dx < reach && dz < reach) return null;
+        }
+        // Nor in a crater: nothing stood where a strike punched one.
+        foreach (TerrainStamp c in net.Craters)
+        {
+            double reach = c.ReachX + Math.Max(halfX, halfZ) + 6;
+            if (Math.Abs(Mathx.WrapDelta(c.CenterX - cx, w)) < reach && Math.Abs(Mathx.WrapDelta(c.CenterZ - cz, h)) < reach) return null;
         }
         double corner = Math.Sqrt(halfX * halfX + halfZ * halfZ) + Apron;
         if (net.Nearest(cx, cz, corner + 30, out _, out double gap) != null && gap < (clearance ?? corner + roadGap)) return null;

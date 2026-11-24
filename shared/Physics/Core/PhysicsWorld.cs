@@ -35,6 +35,9 @@ public sealed class PhysicsWorld
     /// <summary>Where the water is (seas, rivers, lakes): a volume bodies go into. Null: a dry zone.</summary>
     public IWaterField Water { get; set; }
 
+    /// <summary>The planet's trees, which a structure breaks (<see cref="ResolveContacts"/>). Null: flora holds like the ground.</summary>
+    public IFloraField Flora { get; set; }
+
     public List<IForceProvider> ForceProviders { get; } = new();
     public List<IStuckField> StuckFields { get; } = new();
     public StuckGuard Stuck { get; }
@@ -96,7 +99,7 @@ public sealed class PhysicsWorld
             Label = spec.Label,
             Mass = spec.Mass,
             DragArea = spec.DragArea,
-            Class = spec.Class,
+            DragBox = spec.DragBox,
             CenterOfMass = spec.CenterOfMass,
             Position = spec.Position,
             Rotation = spec.Rotation,
@@ -233,7 +236,7 @@ public sealed class PhysicsWorld
         Vector3 p = b.CenterOfMassPosition;
         if (!Water.SurfaceAt(p, out float surface)) return WaterState.Dry;
         float feet = b.Position.Y - b.Shape.FeetBelowOrigin;
-        return new WaterState(surface, WaterForces.SubmergedFraction(feet, b.Shape.Height, surface));
+        return new WaterState(surface, WaterForces.SubmergedFraction(feet, b.WaterHeight ?? b.Shape.Height, surface));
     }
 
     /// <summary>
@@ -262,7 +265,7 @@ public sealed class PhysicsWorld
     /// goes through (<see cref="AddForce"/> drops weather pushes on a sheltered body, and providers
     /// may ask first to skip the work). Sheltered are:
     /// - a structure in base mode: nothing ever moves a base;
-    /// - a vessel parked on a base or a capital ship (landed on it, resting on it, docked to it): it
+    /// - a vessel parked on another structure (attached by its gear, resting on it, docked to it): it
     ///   rides its host and feels no wind of its own (the host's own push is the host's);
     /// - a rider inside a structure's interior.
     /// Everything else is pushed by its own mass and drag: players, creatures, crates, wrecks and
@@ -271,23 +274,36 @@ public sealed class PhysicsWorld
     public bool IsSheltered(Body body) =>
         body.Kind == BodyKind.Base || body.ParkedOn != null || body.Frame != null && !body.OnOuterHull;
 
-    /// <summary>A body other vessels park on and ride: a base, or a capital ship.</summary>
-    public static bool IsHost(Body body) =>
-        body != null && (body.Kind == BodyKind.Base || body.Kind == BodyKind.Vessel && body.Class == StructureClass.Capital);
+    /// <summary>
+    /// Whether <paramref name="body"/> may park on <paramref name="host"/>: any structure (a base or a
+    /// vessel, whatever its size or mode) hosts any craft, one way only. Two craft never park on each
+    /// other, and no chain loops back: A on B on C, C can't park on A.
+    /// </summary>
+    public static bool CanHost(Body host, Body body)
+    {
+        if (host == null || host.Kind is not (BodyKind.Base or BodyKind.Vessel)) return false;
+        for (Body h = host; h != null; h = h.ParkedOn)
+            if (h == body) return false;
+        return true;
+    }
 
     /// <summary>
-    /// Parks a vessel on a host (landed on it, resting on it, or docked): from now on no wind reaches
-    /// it, and while it is landed (not simulating) it moves with its host, exactly. Vessel controllers
-    /// park and unpark themselves as they land, rest and lift off; a game docks a vessel by calling this.
+    /// Parks a vessel on a host (attached to it by its gear, resting on it, or docked): from now on
+    /// no wind reaches it, and while it is landed (not simulating) it moves with its host, exactly,
+    /// and its mass is carried in its host's (<see cref="Body.Carried"/>). Vessel controllers park
+    /// and unpark themselves as they land, rest and lift off; a game docks a vessel by calling this.
+    /// False when it can't park there (see <see cref="CanHost"/>).
     /// </summary>
-    public void Park(Body body, Body host)
+    public bool Park(Body body, Body host)
     {
-        if (body.ParkedOn == host || !IsHost(host) || host == body) return;
+        if (body.ParkedOn == host && host != null) return true;
+        if (!CanHost(host, body)) return false;
         Unpark(body);
         body.ParkedOn = host;
         body.HostStartPosition = host.Position;
         body.HostStartRotation = host.Rotation;
         Parked?.Invoke(body, host);
+        return true;
     }
 
     /// <summary>The vessel leaves its host (it lifted off, or was knocked off it): the wind reaches it again.</summary>
@@ -302,26 +318,34 @@ public sealed class PhysicsWorld
     /// <summary>
     /// After every body has moved: each landed vessel parked on a host moves by exactly what its
     /// host did this tick, turning included, and takes on the host's velocity there, so it rides it
-    /// whatever order the two step in. A parked vessel that is simulating (resting on its gear,
+    /// whatever order the two step in. Chains carry down: a host parked on another is carried
+    /// first, so A on B on C all ride C. A parked vessel that is simulating (resting on its gear,
     /// about to land or lift off) moves itself.
     /// </summary>
     public void CarryParked()
     {
-        foreach (Body b in _bodies)
+        _carried.Clear();
+        foreach (Body b in _bodies) Carry(b);
+    }
+
+    readonly HashSet<Body> _carried = new();
+
+    void Carry(Body b)
+    {
+        Body host = b.ParkedOn;
+        if (host == null || !_carried.Add(b)) return;
+        Carry(host);
+        if (!b.Asleep) return;
+        if (host.Position != b.HostStartPosition || host.Rotation != b.HostStartRotation)
         {
-            Body host = b.ParkedOn;
-            if (host == null || !b.Asleep) continue;
-            if (host.Position != b.HostStartPosition || host.Rotation != b.HostStartRotation)
-            {
-                Quaternion turn = Quaternion.Normalize(host.Rotation * Quaternion.Conjugate(b.HostStartRotation));
-                b.Position = host.Position + MathX.Rotate(turn, b.Position - b.HostStartPosition);
-                b.Rotation = Quaternion.Normalize(turn * b.Rotation);
-            }
-            b.Velocity = host.PointVelocity(b.Position);
-            b.AngularVelocity = host.AngularVelocity;
-            b.HostStartPosition = host.Position;
-            b.HostStartRotation = host.Rotation;
+            Quaternion turn = Quaternion.Normalize(host.Rotation * Quaternion.Conjugate(b.HostStartRotation));
+            b.Position = host.Position + MathX.Rotate(turn, b.Position - b.HostStartPosition);
+            b.Rotation = Quaternion.Normalize(turn * b.Rotation);
         }
+        b.Velocity = host.PointVelocity(b.Position);
+        b.AngularVelocity = host.AngularVelocity;
+        b.HostStartPosition = host.Position;
+        b.HostStartRotation = host.Rotation;
     }
 
     // ---- Stepping ---------------------------------------------------------------------
@@ -331,11 +355,14 @@ public sealed class PhysicsWorld
         Tick++;
         _pairs.Clear();
         // Where each parked body's host starts this tick: carrying moves it by the host's whole motion.
+        // And what each host carries, chains included: its thrust has to move that too.
+        foreach (Body b in _bodies) b.Carried = 0f;
         foreach (Body b in _bodies)
         {
             if (b.ParkedOn == null) continue;
             b.HostStartPosition = b.ParkedOn.Position;
             b.HostStartRotation = b.ParkedOn.Rotation;
+            for (Body h = b.ParkedOn; h != null; h = h.ParkedOn) h.Carried += b.Mass;
         }
     }
 
@@ -414,15 +441,16 @@ public sealed class PhysicsWorld
     /// <summary>
     /// Terrain or a structure changed in this region, or a zone was loaded into it: wake
     /// everything nearby (a landed ship whose ground was dug out must fall, not hover), and
-    /// check it for being stuck now rather than next tick.
+    /// check it for being stuck now rather than next tick. <paramref name="footingGone"/>: something
+    /// a craft may have stood on is gone (a tree broken), and a craft that did comes down again.
     /// </summary>
-    public void NotifyChanged(Region region)
+    public void NotifyChanged(Region region, bool footingGone = false)
     {
         Region near = region.Grow(2f);
         foreach (Body b in _bodies)
         {
             if (b.Frame != null || !near.Contains(b.Position) && !near.Contains(b.CenterOfMassPosition)) continue;
-            if (b.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(b);
+            if (b.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(b, footingGone);
             else b.Asleep = false;
             Stuck.Check(b);
         }
@@ -453,6 +481,8 @@ public sealed class PhysicsWorld
         int hardest = -1;
         float most = 0f;
         body.Underfoot = null;
+        // Trees first: what gives way is gone before the rest is met; what holds is met like the ground.
+        Vector3 held = Trees(body, contacts, before, ref velocity);
         for (int i = 0; i < contacts.Count; i++)
         {
             Contact c = contacts[i];
@@ -462,6 +492,7 @@ public sealed class PhysicsWorld
                 velocity = Ram(body, c.Other, c, before, velocity);
                 continue;
             }
+            if (_gave.Contains(i)) continue;
             if (c.Normal.Y > 0.6f) body.OnFloor = true;
             float closing = -Vector3.Dot(before, c.Normal);
             if (closing > most)
@@ -470,9 +501,95 @@ public sealed class PhysicsWorld
                 hardest = i;
             }
         }
+        // Wedged in a tree's fork, no one limb is under it but together they hold it up: it rests there.
+        if (held.LengthSquared() > 1e-6f && Vector3.Normalize(held).Y > 0.6f) body.OnFloor = true;
         if (hardest >= 0) velocity = HitFixed(body, contacts[hardest], before, velocity);
         return velocity;
     }
+
+    readonly HashSet<int> _gave = new();
+    readonly List<(int Contact, long Tree)> _trees = new();
+
+    /// <summary>
+    /// A vessel's contacts with trees this move (<see cref="IFloraField"/>). A tree breaks, felled for good at once, when the
+    /// load on it is more than its trunk takes (<see cref="PhysicsRules.FloraData"/>): the weight resting on it (the craft
+    /// and all it carries, by the share of the contact under it) and the blow into it. And a craft is held up only where it
+    /// can land: trees bearing it up (together: it can be wedged in a fork) that none of its feet stands on give way too, as
+    /// its gear can't stand there, and so do any under a hover craft without gear (its plates see only the ground, and it
+    /// never sets down on its hull). One with neither rests on its hull, and lands there. Only vessels break trees;
+    /// creatures and sleepers are held by them, and rock never gives way. Returns the sum of the normals of the trees that hold it.
+    /// </summary>
+    Vector3 Trees(Body body, IReadOnlyList<Contact> contacts, Vector3 before, ref Vector3 velocity)
+    {
+        _gave.Clear();
+        _trees.Clear();
+        Vector3 held = Vector3.Zero;
+        if (Flora == null || body.Kind != BodyKind.Vessel) return held;
+        float weight = WeightOf(body), mass = body.Mass + body.Carried;
+        for (int i = 0; i < contacts.Count; i++)
+        {
+            Contact c = contacts[i];
+            if (c.Surface != Surface.Flora || !Flora.TreeAt(c.Part, out long tree, out float trunk)) continue;
+            float load = weight * MathF.Max(0f, c.Normal.Y) + mass * MathF.Max(0f, -Vector3.Dot(before, c.Normal)) / Rules.Flora.BlowTime;
+            if (trunk <= 0f || load > Rules.Flora.Takes(trunk)) Give(i, tree);
+            else
+            {
+                _trees.Add((i, tree));
+                held += c.Normal;
+            }
+        }
+        if (held.LengthSquared() > 1e-6f && Vector3.Normalize(held).Y > 0.3f && body.Controller is VesselController { Gear: var gear, Hover: var hover } && (gear != null || hover != null))
+        {
+            bool stands = false;
+            foreach (var (_, tree) in _trees) stands |= gear?.Stands(tree) == true;
+            if (!stands)
+            {
+                foreach (var (i, tree) in _trees) Give(i, tree);
+                held = Vector3.Zero;
+            }
+        }
+        // What gave way is as if never met: the sweep's slide along it is put back.
+        foreach (int i in _gave)
+        {
+            Vector3 n = contacts[i].Normal;
+            float into = Vector3.Dot(before, n), now = Vector3.Dot(velocity, n);
+            if (into < now) velocity += n * (into - now);
+        }
+        return held;
+
+        void Give(int i, long tree)
+        {
+            if (!_gave.Add(i)) return;
+            // It falls away from the craft's middle, the way the craft was going.
+            Flora.Fell(tree, contacts[i].Point, contacts[i].Point - body.CenterOfMassPosition + before);
+        }
+    }
+
+    /// <summary>
+    /// The first thing under a structure's foot it can stand on (<see cref="Layers.GearMask"/>): the ground, a deck, rock,
+    /// or a tree that takes its weight and the blow it is coming down with (<paramref name="tree"/>: which, or 0), the most
+    /// its hull could put on that tree (<see cref="Trees"/>). A tree that can't is looked through: coming down on it, the
+    /// hull breaks it, so the gear never stands on what won't hold the craft.
+    /// </summary>
+    public bool Footing(Body body, Vector3 from, Vector3 to, out RayHit hit, out long tree)
+    {
+        Vector3 along = Vector3.Normalize(to - from);
+        float load = WeightOf(body) + (body.Mass + body.Carried) * MathF.Max(0f, -body.Velocity.Y) / Rules.Flora.BlowTime;
+        tree = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            if (!Query.Ray(from, to, Layers.GearMask, body, out hit)) return false;
+            if (hit.Surface != Surface.Flora || Flora == null || !Flora.TreeAt(hit.Part, out tree, out float trunk)) return true;
+            if (load <= Rules.Flora.Takes(trunk)) return true;
+            tree = 0;
+            from = hit.Point + along * 0.05f; // (a ray from inside a crown passes out of it)
+        }
+        hit = default;
+        return false;
+    }
+
+    /// <summary>The weight a body puts on what holds it up, N: its own and everything parked on it.</summary>
+    public float WeightOf(Body body) => (body.Mass + body.Carried) * GravityAt(body).Length();
 
     /// <summary>Something fixed: bounce a little, scrape only if it was a real impact.</summary>
     Vector3 HitFixed(Body body, in Contact c, Vector3 before, Vector3 velocity)

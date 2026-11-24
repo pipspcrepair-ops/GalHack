@@ -55,6 +55,7 @@ public sealed class StatsSection : IMenuSection
             g.Text($"{value * 100f:F0}%", new Vector2(area.Position.X + 300, y + 2), C.Text, 19, UiTheme.Mono);
             if (g.Slider($"options:volume-{key}", new Rect2(area.Position.X + 420, y, 760, 32), ref value, C.Accent2)) _game.Audio.SetVolume(key, value);
         }
+        g.Text("GRAPHICS · KEYS · MOUSE   [ESC] OPTIONS", new Vector2(area.Position.X + 12, area.Position.Y + 20 + 4 * 64), C.Dim, 16);
     }
 
     /// <summary>Everyone whose work is in the game, generated music included. The wheel scrolls it.</summary>
@@ -80,11 +81,11 @@ public sealed class StatsSection : IMenuSection
         Progress p = _game.Progress;
         var rows = new (string, string)[]
         {
-            ("TIME SINCE THE CRASH", TimeSpan.FromSeconds(s.Seconds).ToString(@"h\:mm\:ss")),
-            ("LEVEL", $"{p.Level} ({p.Xp} XP, {p.State.PointsSpent} points spent, {p.Points} to spend)"),
+            ("TIME HERE", TimeSpan.FromSeconds(s.Seconds).ToString(@"h\:mm\:ss")),
+            ("LEVEL", $"{p.Level} · {p.Xp} XP · {p.State.PointsSpent} SPENT · {p.Points} FREE"),
             ("TECH UNLOCKED", $"{p.Nodes.Count(n => p.IsUnlocked(n.Id))} of {p.Nodes.Count}"),
             ("WALKED", $"{s.Walked / 1000f:F2} km"),
-            ("FLOWN", $"{s.Flown / 1000f:F2} km (top speed {s.TopSpeed:F0} m/s)"),
+            ("FLOWN", $"{s.Flown / 1000f:F2} km · TOP {s.TopSpeed:F0} m/s"),
             ("WORLD", $"{_game.World?.Name}   SEED {_game.World?.Seed}"),
             ("ORE CELLS DUG", $"{_game.Tool.OreCells}"),
             ("PLANTS CUT", $"{_game.Tool.PlantsCut}"),
@@ -101,20 +102,22 @@ public sealed class StatsSection : IMenuSection
         for (int i = 0; i < rows.Length; i++)
         {
             var (label, value) = rows[i];
-            float y = area.Position.Y + 44 + i * 42;
-            g.Fill(new Rect2(area.Position.X, y - 6, area.Size.X, 36), new Color(i % 2 == 0 ? C.Panel : C.Glass, 0.6f));
+            // 36 apart, so the last row ends above the alerts' row at the bottom left.
+            float y = area.Position.Y + 44 + i * 36;
+            g.Fill(new Rect2(area.Position.X, y - 6, area.Size.X, 32), new Color(i % 2 == 0 ? C.Panel : C.Glass, 0.6f));
             g.Text(label, new Vector2(area.Position.X + 12, y), C.Dim, 17);
             g.Text(value, new Vector2(area.Position.X + 420, y - 2), C.Text, 19, UiTheme.Mono);
         }
     }
 }
 
-/// <summary>MAP: what is around you, north up, 600 m each way: your structures, devices, the pod, your backpack, bodies and drops, the nearest deposits and the creatures near you.</summary>
+/// <summary>MAP: what is around you, north up, 600 m each way: your structures, devices, the pod, your bag, bodies and bags, the nearest deposits and the creatures near you.</summary>
 public sealed class MapSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
     public float Range = 600f;
+    public const float MinRange = 40f, MaxRange = 4000f;
     /// <summary>The world, system and star levels (and which is showing).</summary>
     public readonly MapLevels Levels;
     public MapSection(Game.Game game)
@@ -131,17 +134,31 @@ public sealed class MapSection : IMenuSection
         var map = new Rect2(area.Position, new Vector2(size, size));
         g.Fill(map, new Color(C.Panel, 0.8f));
         // The generator's terrain behind the dots, a little dimmed so they read over it.
-        if (Levels.Terrain(g, map, Range)) g.Fill(map, new Color(C.Glass, 0.35f));
+        if (Levels.Terrain(g, map, Range, Levels.LocalPan)) g.Fill(map, new Color(C.Glass, 0.35f));
         g.Outline(map, C.Rule, 2f);
-        Vector3 me = _game.Survivor.WorldFeet;
+        Vector3 you = _game.Survivor.WorldFeet;
+        Vector3 me = you + new Vector3(Levels.LocalPan.X, 0f, Levels.LocalPan.Y);
         Vector2 Proj(Vector3 p) => map.GetCenter() + new Vector2(p.X - me.X, p.Z - me.Z) / Range * (size / 2f);
         bool In(Vector2 q) => map.HasPoint(q);
-        if (!g.Drawing && g.Over(map) && _game.Controls.Wheel > 0) Levels.WheelPast(_game.Controls.Wheel); // the wheel out: the level above
+        if (!g.Drawing)
+        {
+            // Zoom with the wheel or + and -, pan with the middle button; past the widest, the wheel goes up a level.
+            int steps = Levels.ZoomSteps(g, map);
+            if (steps != 0)
+            {
+                if (steps > 0 && Range >= MaxRange * 0.999f) Levels.WheelPast(steps);
+                else Range = Math.Clamp(Range * MathF.Pow(1.25f, steps), MinRange, MaxRange);
+            }
+            Levels.LocalRange = Range;
+            Vector2 slide = Levels.SlideBy(g, map);
+            if (slide != Vector2.Zero) Levels.LocalPan -= slide * (Range / (size / 2f));
+            me = you + new Vector3(Levels.LocalPan.X, 0f, Levels.LocalPan.Y);
+        }
         if (g.RightClicked(map)) Levels.LocalRightClick(g.Mouse, Proj, q => me + new Vector3(q.X - map.GetCenter().X, 0, q.Y - map.GetCenter().Y) * (Range / (size / 2f)));
         var labels = new MapLabels();
         if (g.Drawing)
         {
-            for (int k = 1; k <= 3; k++) g.Canvas.DrawArc(map.GetCenter(), size / 2f * k / 3f, 0, Mathf.Tau, 48, new Color(C.Rule, 0.7f), 1f);
+            for (int k = 1; k <= 3; k++) MapLevels.ArcIn(g, map, Proj(you), size / 2f * k / 3f, new Color(C.Rule, 0.7f));
             g.TextIn("N", new Rect2(map.GetCenter() + new Vector2(-10, -size / 2 + 4), new Vector2(20, 20)), C.Text, 16, HorizontalAlignment.Center);
         }
         // Lower priority keeps its label's place when two would collide.
@@ -155,10 +172,13 @@ public sealed class MapSection : IMenuSection
         if (_game.Zone.Wildlife.Sim is { } sim)
             foreach (var c in sim.Creatures)
                 if (!c.Removed && !c.Dead) Mark(_game.Zone.Wildlife.FromPatch(c.Position), null, new Color(C.Warn, 0.7f), 3f);
-        foreach (var (kind, at) in _game.Visor.Deposits.Near(_game.Zone, me)) Mark(at, kind.ToUpperInvariant(), C.Holo, 6f, 6);
+        // Deposits you have been near, and the scanner's pings while they last.
+        if (!_game.InOrbit)
+            foreach (ChartMark m in _game.Spaceflight.Charts.OfKind("deposit")) Mark(Levels.NearYou(m.X, m.Z), m.Label.ToUpperInvariant(), C.Holo, 6f, 6);
+        foreach (Game.Game.Ping p in _game.Pings) Mark(p.At, p.Place != null ? "?" : p.Label.ToUpperInvariant(), new Color(p.Place != null ? C.Accent : C.Holo, _game.PingAlpha(p)), 5f, 7);
         foreach (Lootable l in _game.Zone.Loot.All)
             if (l.Kind != LootKind.Cache) // a place's caches are found by going in, not from the map
-                Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4, 2);
+                Mark(l.Position, l.Yours ? "YOUR BAG" : null, l.Yours ? C.Danger : C.Accent2, l.Yours ? 8 : 4, 2);
         foreach (Device d in _game.Zone.Devices) Mark(d.GlobalPosition, d.Label.ToUpperInvariant(), C.Accent2, 6f, 4);
         foreach (Vessel v in _game.Zone.Vessels)
             if (v.IsRuin) Mark(_game.Start, "BUNKER", C.Accent, 7, 1);
@@ -173,18 +193,26 @@ public sealed class MapSection : IMenuSection
         if (g.Drawing)
         {
             Vector3 look = _game.Survivor.WorldLook();
-            Vector2 c0 = map.GetCenter(), dir = new Vector2(look.X, look.Z).Normalized();
-            g.Canvas.DrawLine(c0, c0 + dir * 22f, C.Accent, 3f);
-            g.Canvas.DrawCircle(c0, 7f, C.Accent);
-            labels.Add(c0, 7f, null, C.Accent, 0);
+            Vector2 c0 = Proj(you), dir = new Vector2(look.X, look.Z).Normalized();
+            if (map.HasPoint(c0))
+            {
+                g.Canvas.DrawLine(c0, c0 + dir * 22f, C.Accent, 3f);
+                g.Canvas.DrawCircle(c0, 7f, C.Accent);
+                labels.Add(c0, 7f, null, C.Accent, 0);
+            }
             labels.Flush(g, map);
         }
         var legend = new Rect2(map.End.X + 30, area.Position.Y, 320, area.Size.Y);
-        g.Caption("MAP · 600 M", legend.Position, legend.Size.X);
-        string[] lines = { "orange: you, the bunker", "red: your marks (right click)", "green: bases", "cream: vessels", "amber: devices, places, drops", "teal: nearest deposits", "red: your backpack", "dots: creatures" };
-        for (int i = 0; i < lines.Length; i++) g.Text(lines[i], legend.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
-        if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 270), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) Range = 300f;
-        if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 270), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) Range = 600f;
+        g.Caption($"MAP · {Range:0} M", legend.Position, legend.Size.X);
+        var lines = new (string Label, Color Colour)[] { ("YOU · BUNKER", C.Accent), ("YOUR MARKS [RMB]", C.Danger), ("BASES", C.Good), ("VESSELS", C.Text), ("DEVICES · PLACES · BAGS", C.Accent2), ("DEPOSITS", C.Holo), ("YOUR BAG", C.Danger), ("CREATURES", C.Warn) };
+        for (int i = 0; i < lines.Length; i++)
+        {
+            Vector2 at = legend.Position + new Vector2(0, 40 + i * 26);
+            g.Fill(new Rect2(at + new Vector2(0, 4), new Vector2(12, 12)), lines[i].Colour);
+            g.Text(lines[i].Label, at + new Vector2(20, 0), C.Dim, 15);
+        }
+        if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 270), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) { Range = 300f; Levels.LocalPan = Vector2.Zero; }
+        if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 270), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) { Range = 600f; Levels.LocalPan = Vector2.Zero; }
         Levels.Tabs(g, legend.Position + new Vector2(0, 330));
     }
 }

@@ -30,12 +30,12 @@ namespace Slice.Vessels;
 /// </summary>
 public sealed class VesselDamage : ILocatedDamageSink
 {
-    /// <summary>How much lightning does to a large block, per point it does to a person. Grids scale it, as they scale hit points.</summary>
-    const float LightningToBlocks = 6f;
+    /// <summary>How much lightning does to a block, per point it does to a person (a plated iron cube has 158 hit points).</summary>
+    const float LightningToBlocks = 1.9f;
 
     readonly record struct Pending(float Raw, float Hp, N.Vector3 Point, N.Vector3 Into, Int3 Cell, DamageType Type, float Radius, HitKind Kind);
 
-    enum HitKind { Crash, Shot, Blast }
+    enum HitKind { Crash, Shot, Wear, Blast }
 
     readonly Vessel _v;
     readonly List<Pending> _queue = new();
@@ -46,6 +46,9 @@ public sealed class VesselDamage : ILocatedDamageSink
     public int Flushes { get; private set; }
     public int HitsTaken { get; private set; }
     public int BlocksLost { get; private set; }
+
+    /// <summary>Hits from shots and blasts (everything but crashes) since the start: what a vessel that runs from harm runs from.</summary>
+    public int ShotsTaken { get; private set; }
 
     /// <summary>The last flush's cost, ms, and how many chunks it left to redraw.</summary>
     public double LastFlushMs { get; private set; }
@@ -69,21 +72,36 @@ public sealed class VesselDamage : ILocatedDamageSink
         return raw;
     }
 
-    /// <summary>A bolt or a bite on one block: armour and resistance apply. World point, and the face's normal.</summary>
-    public void Shot(Int3 cell, N.Vector3 point, N.Vector3 normal, float amount, DamageType type) =>
-        _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, -MathX.Unrotate(_v.Body.Rotation, normal), cell, type, 0f, HitKind.Shot));
+    /// <summary>What of a hit at a world point its shield takes (rippling where it is struck); returns what is left for the hull.</summary>
+    float Shielded(N.Vector3 point, float amount)
+    {
+        float left = (float)_v.Power.Absorb(amount);
+        if (left < amount) ShieldShell.On(_v).Struck(_v, _v.Body.ToLocal(point));
+        return left;
+    }
 
-    /// <summary>An explosion at a world point, radius in metres: falls off with distance, as <see cref="Damage.Blast"/> does.</summary>
-    public void Blast(N.Vector3 point, float radius, float amount, DamageType type = DamageType.Explosive) =>
+    /// <summary>A bolt or a bite on one block: its shield takes it first, then armour and resistance apply (unless <paramref name="wear"/>: the points come off whole). World point, and the face's normal.</summary>
+    public void Shot(Int3 cell, N.Vector3 point, N.Vector3 normal, float amount, DamageType type, bool wear = false)
+    {
+        if ((amount = Shielded(point, amount)) <= 0f) return;
+        _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, -MathX.Unrotate(_v.Body.Rotation, normal), cell, type, 0f, wear ? HitKind.Wear : HitKind.Shot));
+    }
+
+    /// <summary>An explosion at a world point, radius in metres: its shield takes it first, then it falls off with distance, as <see cref="Damage.Blast"/> does.</summary>
+    public void Blast(N.Vector3 point, float radius, float amount, DamageType type = DamageType.Explosive)
+    {
+        if ((amount = Shielded(point, amount)) <= 0f) return;
         _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, default, default, type, radius / Cell, HitKind.Blast));
+    }
 
-    /// <summary>Lightning that strikes close enough to a structure hits its blocks as a small blast.</summary>
+    /// <summary>Lightning that strikes close enough to a structure hits its blocks, and its force fields, as a small blast.</summary>
     public void OnWeather(WeatherEvent e)
     {
         if (e.Kind != WeatherEventKind.LightningStrike || e.DamageRadius <= 0f || _v.Zone.VesselOf(_v.Body) != _v) return;
         N.Vector3 at = new(e.Position.X, e.Position.Y, e.Position.Z);
+        ForceFields.Blast(_v, at, e.DamageRadius, e.Damage * LightningToBlocks);
         if (_v.DistanceFromHull(_v.Body.ToLocal(at), e.DamageRadius) >= e.DamageRadius) return;
-        Blast(at, e.DamageRadius, e.Damage * LightningToBlocks * S.Grid.HpScale, DamageType.Energy);
+        Blast(at, e.DamageRadius, e.Damage * LightningToBlocks, DamageType.Energy);
     }
 
     /// <summary>
@@ -124,14 +142,15 @@ public sealed class VesselDamage : ILocatedDamageSink
         foreach (Pending p in _queue)
         {
             HitsTaken++;
+            if (p.Kind != HitKind.Crash) ShotsTaken++;
             float before = report.Dealt;
             switch (p.Kind)
             {
                 case HitKind.Crash:
                     Damage.Crash(S, p.Point, p.Into, p.Raw * perRaw, report);
                     break;
-                case HitKind.Shot:
-                    Damage.Hit(S, p.Cell, p.Type, p.Hp, report, p.Point, -p.Into);
+                case HitKind.Shot or HitKind.Wear:
+                    Damage.Hit(S, p.Cell, p.Type, p.Hp, report, p.Point, -p.Into, p.Kind == HitKind.Wear);
                     harm += report.Dealt - before;
                     break;
                 default:
@@ -160,6 +179,9 @@ public sealed class VesselDamage : ILocatedDamageSink
     void Lost(DamageReport report)
     {
         BlocksLost += report.Destroyed.Count;
+        // Remembered where they stood, for a repair to restore (a core comes back only by hand).
+        foreach (var (p, b) in report.Destroyed)
+            if (!S.TypeOf(b).IsCore) Fallen[p] = b;
         if (_v.IsBase)
             foreach (var (p, _) in report.Destroyed) _v.Zone.Edits?.ReleaseStructure(new TerrainDigging.Terrain.VolumeKey(_v.Body.Id, p.X, p.Y, p.Z));
 
@@ -173,17 +195,14 @@ public sealed class VesselDamage : ILocatedDamageSink
         if (!overflow.IsEmpty) _v.Zone.Loot.Spill(overflow, new Vector3(at.X, MathF.Max(at.Y - 0.2f, _v.Zone.GroundAt(at.X, at.Z).Y), at.Z));
 
         _v.ApplyEdits();
-        if (S.Count == 0)
-        {
-            _v.Zone.Physics.Unregister(_v.Body);
-            _v.Zone.Physics.StuckFields.Remove(_v.Field);
-            _v.Zone.Untrack(_v);
-            _v.Node.QueueFree();
-        }
+        if (S.Count == 0) _v.Zone.Remove(_v);
         else if (S.Core == null && _v.Body.Kind == BodyKind.Vessel) _v.Zone.Physics.MakeWreck(_v.Body); // no core, no power
     }
 
     // ---- Repair -------------------------------------------------------------------------------
+
+    /// <summary>Blocks destroyed by harm (not taken down), by the anchor cell they stood on: a repair can restore them.</summary>
+    public readonly Dictionary<Int3, Block> Fallen = new();
 
     /// <summary>
     /// Gives a damaged block back a share of its health, paid for from the structure's shared
@@ -202,6 +221,15 @@ public sealed class VesselDamage : ILocatedDamageSink
         _v.View.Queue(S.DirtyChunks);
         S.DirtyChunks.Clear();
         return RepairStatus.Repaired;
+    }
+
+    /// <summary>A block's hit points set (the Sleeper tool's repair, a little at a time, paid for as it goes): its look follows.</summary>
+    public void Heal(Int3 cell, float hp)
+    {
+        S.SetHp(cell, hp);
+        S.CargoSu = _v.Storage.UsedSu;
+        _v.View.Queue(S.DirtyChunks);
+        S.DirtyChunks.Clear();
     }
 
     /// <summary>What repairing this share of a block would cost.</summary>

@@ -89,7 +89,7 @@ public static partial class DecoModels
             {
                 float y = 0.04f + i * 0.38f;
                 b.Box(-0.45f, y, -0.2f, 0.45f, y + 0.03f, 0.2f, Wood).Loose();
-                if (i < 4) Books(b, -0.44f, 0.44f, y + 0.03f, -0.18f, 0.2f, 0.3f);
+                if (i < 4) Books(b, -0.45f, 0.45f, y + 0.03f, -0.18f, 0.2f, 0.3f);
             }
         };
 
@@ -110,7 +110,7 @@ public static partial class DecoModels
 
         r["potted-plant"] = b =>
         {
-            b.Cyl(0, 0, 0, 0.17f, 0.34f, Trim, 8, 1.2f);
+            b.Cyl(0, 0, 0, 0.17f, 0.34f, Trim, 8, 1.2f).As(DecoFinish.Ceramic);
             b.Cyl(0, 0.3f, 0, 0.19f, 0.03f, Soil, 8).Ghost();
             b.Tube(0, 0.3f, 0, 0.03f, 0.85f, 0.02f, 0.025f, Wood);
             Foliage(b, 0.02f, 1.05f, 0.01f, 0.2f, 5);

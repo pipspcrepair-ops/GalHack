@@ -149,6 +149,8 @@ public partial class SurfaceTest
             PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(seed, kind, 0), Main.Catalog);
             TerrainDigging.Terrain.ChunkStore store = w.Terrain.Store;
             List<PlanetSurface.Infra.FlavourRuin> ruins = w.Infra?.Ruins?.ToList() ?? new();
+            // Every lot's pad at its own level: the roadside ruins' and the places' (a city's lots are places).
+            var lots = ruins.Select(o => (Y: o.OriginY, o.Stamp)).Concat(w.Pois.Select(p => (Y: p.Origin.Y, p.Stamp))).ToList();
             float Top(float x, float z, float from)
             {
                 for (float y = from + 4f; y > from - 6f; y -= 0.1f)
@@ -183,11 +185,12 @@ public partial class SurfaceTest
                         // that is a slope, no slump. A next lot's blend reaches 24 m, so that excuses no wall outright: on a bank the last
                         // of the slope is held to the slope just before it, and ground that steepens into the wall's foot is a slump all the same.
                         double sx = fx + v.X * 1.5f, sz = fz + v.Z * 1.5f;
-                        if (ruins.Any(o => o.OriginY != oy && o.Stamp.Weight(sx, sz) > 0.05f))
+                        if (lots.Any(o => o.Y != oy && o.Stamp.Weight(sx, sz) > 0.05f))
                         {
                             float mid = Top(fx + v.X * 0.7f, fz + v.Z * 0.7f, oy), back = Top(fx + v.X * 1.1f, fz + v.Z * 1.1f, oy);
                             if (float.IsInfinity(mid) || float.IsInfinity(back)) continue;
-                            dip = mid + (mid - back) - near;
+                            // (Only ever an excuse: ground falling away from a wall down to a lower lot is no slump toward it.)
+                            dip = MathF.Min(dip, mid + (mid - back) - near);
                             banked++;
                         }
                         worst = MathF.Max(worst, dip);
@@ -335,13 +338,172 @@ public partial class SurfaceTest
     /// <summary>Pylons on fresh worlds: 30 to 50 m tall, striding on their own straight legs rather than along a road, and pylons and poles alike solid.</summary>
     async Task PylonChecks()
     {
-        int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0;
+        int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0, floating = 0, feetChecked = 0;
+        int standing = 0, onRoad = 0, paved = 0, tight = 0;
+        double pavedKm = 0, tightest = double.MaxValue;
+        string firstOnRoad = "", firstTight = ""; var tightHow = new Dictionary<string, int>();
+        int sharp = 0, sweepWorlds = 0, elbows = 0, elbowRoutes = 0, elbowsAtEnds = 0;
+        int tracks = 0, switchbacks = 0, flatBacks = 0, graded = 0;
+        double trackKm = 0;
+        string firstFlatBack = "";
+        var elbowNotes = new List<string>();
+        double worstElbow = 0;
+        string firstElbow = "";
+        double sharpest = 0;
+        string firstSharp = "";
+        float worst = 0;
+        int gridWorlds = 0, powered = 0, dropped = 0, unfed = 0, strungDrops = 0, downDrops = 0, wallsChecked = 0, offWall = 0, dropLow = 0, substations = 0, plantsSeen = 0;
+        string firstUnserved = "", firstUnfed = "", firstOffWall = "", firstLow = "";
+        var unservedWhy = new Dictionary<string, int>();
         var rand = new Random();
-        for (int k = 0; k < 6 && pylons < 60; k++)
+        // Power comes from a world's networks layer, and only some build pylons: fresh worlds until enough have stood (ten at least, for the roads).
+        for (int k = 0; k < 16 && (pylons < 60 || k < 10); k++)
         {
             PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Temperate, 0), Main.Catalog);
+            sweepWorlds++;
+            // Paved roads bend no tighter than their class allows (tracks may switch back); the first and last
+            // stretch, 60 m or the class's least radius, is the swing out of a gate or into a junction.
+            // No hard elbow anywhere, town streets and tracks included: over any 8 m a road turns no more than a
+            // town corner's curve does (a switchback's hairpin is still a curve of 9 m or more).
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind != RouteKind.Rail))
+            {
+                elbowRoutes++;
+                for (int i = 3; i + 4 < r.Count; i++)
+                {
+                    double a0 = Math.Atan2(r.Z[i] - r.Z[i - 2], r.X[i] - r.X[i - 2]), a1 = Math.Atan2(r.Z[i + 2] - r.Z[i], r.X[i + 2] - r.X[i]);
+                    double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
+                    worstElbow = Math.Max(worstElbow, turn);
+                    if (turn <= 60) continue;
+                    elbows++;
+                    if (i < 10 || i > r.Count - 11) elbowsAtEnds++;
+                    if (elbowNotes.Count < 6) elbowNotes.Add($"{r.Kind}{(r.Laid.Length == 0 ? " street" : "")} {i}/{r.Count} {turn:F0}");
+                    if (firstElbow.Length == 0) firstElbow = $" (first: a {r.Kind}{(r.Laid.Length == 0 ? " street" : "")}, point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {turn:F0} degrees)";
+                    i += 4;
+                }
+            }
+            // A track switches back only on steep ground: anywhere it turns about over 40 m, the land within 30 m climbs.
+            float Ground(double x, double z) => w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind == RouteKind.Track))
+            {
+                tracks++;
+                trackKm += r.Length / 1000;
+                // (Not in the first and last 48 m: the way out of a gate and into a junction keep their own line. The
+                // whole 40 m measured, i - 5 to i + 5, lies outside them: a junction's square swing reaches 42 m in.)
+                for (int i = 17; i + 17 < r.Count; i++)
+                {
+                    double a0 = Math.Atan2(r.Z[i - 3] - r.Z[i - 5], r.X[i - 3] - r.X[i - 5]), a1 = Math.Atan2(r.Z[i + 5] - r.Z[i + 3], r.X[i + 5] - r.X[i + 3]);
+                    double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
+                    if (turn <= 100) continue;
+                    switchbacks++;
+                    double steepest = 0;
+                    for (int dx = -30; dx <= 30; dx += 10)
+                    for (int dz = -30; dz <= 30; dz += 10)
+                    {
+                        double x = r.X[i] + dx, z = r.Z[i] + dz;
+                        float c = Ground(x, z);
+                        steepest = Math.Max(steepest, Math.Max(Math.Abs(Ground(x + 6, z) - c), Math.Abs(Ground(x, z + 6) - c)) / 6);
+                    }
+                    if (steepest < InfraNetwork.TrackHill)
+                    {
+                        flatBacks++;
+                        if (firstFlatBack.Length == 0) firstFlatBack = $" (first: point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {turn:F0} degrees over 40 m, steepest ground near {steepest:F3})";
+                    }
+                    i += 8;
+                }
+            }
+            graded += (w.Infra?.Routes ?? new List<InfraRoute>()).Count(r => r.Graded);
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind is RouteKind.Road or RouteKind.Highway))
+            {
+                paved++;
+                pavedKm += r.Length / 1000;
+                double least = r.Laid.Length == 0 ? InfraNetwork.TownRadius(r.Kind) : InfraNetwork.LeastRadius(r.Kind);
+                int ends = (int)(Math.Max(60, least) / InfraNetwork.Spacing);
+                // Outside a town's grid a paved road sweeps: no 50 m of it turns more than its class allows.
+                if (r.Laid.Length > 0)
+                    for (int i = ends; i + ends + 12 < r.Count; i++)
+                    {
+                        double a0 = Math.Atan2(r.Z[i + 1] - r.Z[i - 1], r.X[i + 1] - r.X[i - 1]), a1 = Math.Atan2(r.Z[i + 13] - r.Z[i + 11], r.X[i + 13] - r.X[i + 11]);
+                        double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
+                        sharpest = Math.Max(sharpest, turn);
+                        if (turn <= InfraNetwork.MostTurn50(r.Kind)) continue;
+                        sharp++;
+                        if (firstSharp.Length == 0) firstSharp = $" (first: a {r.Kind}, {r.Laid}, point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {turn:F0} degrees)";
+                        i += 12;
+                    }
+                for (int i = ends; i + ends < r.Count; i++)
+                {
+                    double radius = InfraNetwork.Radius((r.X[i - 5], r.Z[i - 5]), (r.X[i], r.Z[i]), (r.X[i + 5], r.Z[i + 5]));
+                    tightest = Math.Min(tightest, radius);
+                    if (radius < least * 0.8)
+                    {
+                        tight++;
+                        if (firstTight.Length == 0) firstTight = $" (first: a {r.Kind}, {r.Laid}, point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {radius:F0} m)";
+                        tightHow[r.Laid] = tightHow.GetValueOrDefault(r.Laid) + 1;
+                        i += 10;
+                    }
+                }
+            }
             PowerLines power = w.Infra?.Power;
             if (power == null) continue;
+            // The grid's hierarchy: every house that would have had power has its drop, from a pole fed through a
+            // substation from a plant; a strung drop meets a wall that stands, and every drop clears or lies on the ground.
+            if (power.Poles.Any(p => p.Role == PowerRole.Plant))
+            {
+                gridWorlds++;
+                plantsSeen += power.Poles.Count(p => p.Role == PowerRole.Plant);
+                substations += power.Poles.Count(p => p.Role == PowerRole.Substation);
+                bool[] fed = power.Fed();
+                foreach (var (why, n) in power.UnservedWhy) unservedWhy[why] = unservedWhy.GetValueOrDefault(why) + n;
+                var byHouse = power.Drops.ToDictionary(d => d.House);
+                foreach (FlavourRuin house in w.Infra.Ruins.Where(PowerLines.Powered))
+                {
+                    powered++;
+                    if (!byHouse.TryGetValue(house, out ServiceDrop d))
+                    {
+                        if (firstUnserved.Length == 0 && !power.NoWallLeft.Contains(house)) firstUnserved = $" (first: a {house.Family.Id} at {house.Center.X:F0},{house.Center.Z:F0})";
+                        continue;
+                    }
+                    dropped++;
+                    if (!fed[d.Pole]) { unfed++; if (firstUnfed.Length == 0) firstUnfed = $" (first: a {house.Family.Id} at {house.Center.X:F0},{house.Center.Z:F0}, pole {d.Pole})"; }
+                    if (d.State == DropState.Strung) strungDrops++; else downDrops++;
+                    List<System.Numerics.Vector3> path = power.DropPath(d, Ground);
+                    for (int i = 1; i + 1 < path.Count; i++)
+                    {
+                        float g = Ground(path[i].X, path[i].Z);
+                        if (d.State == DropState.Strung ? path[i].Y < g + 0.5f : path[i].Y < g - 0.05f)
+                        {
+                            dropLow++;
+                            if (firstLow.Length == 0) firstLow = $" (first: a {d.State} drop at {path[i].X:F0},{path[i].Z:F0}, {path[i].Y - g:F2} m off the ground)";
+                            break;
+                        }
+                    }
+                    // Where the drop holds at the house, the wall it is fixed to stands in the house as built and decayed.
+                    if (d.State is DropState.Strung or DropState.FromHouse && wallsChecked < gridWorlds * 10)
+                    {
+                        wallsChecked++;
+                        var inst = house.Spawn(w.Profile, w.Source);
+                        var cell = new PoiGenerator.Gen.Int3(d.Cell.X - house.OriginX, d.Cell.Y - house.OriginY, d.Cell.Z - house.OriginZ);
+                        if (inst.Blocks.Get(cell).IsAir)
+                        {
+                            offWall++;
+                            if (firstOffWall.Length == 0) firstOffWall = $" (first: a {house.Family.Id}, {house.State}, cell {cell.X},{cell.Y},{cell.Z})";
+                        }
+                    }
+                }
+            }
+            // Nothing that stands on the ground stands on a road bed: poles and every pylon foot (wires may cross over).
+            foreach (PowerPole p in power.Poles.Where(p => !p.Fallen && p.Role != PowerRole.Plant))
+            {
+                standing++;
+                var feet = p.Pylon ? p.FeetXZ() : new[] { (p.X, p.Z) };
+                foreach (var (fx, fz) in feet)
+                    if (w.Infra.Nearest(fx, fz, 40, out _, out double d) is { } road && d < road.HalfWidth + 0.5)
+                    {
+                        onRoad++;
+                        if (firstOnRoad.Length == 0) firstOnRoad = $" (first: a {(p.Pylon ? "pylon foot" : "pole")} {d:F1} m from a {road.Kind}'s line, {road.HalfWidth:F1} m half wide)";
+                        break;
+                    }
+            }
             foreach (PowerPole p in power.Poles)
             {
                 if (!p.Pylon)
@@ -352,6 +514,13 @@ public partial class SurfaceTest
                 pylons++;
                 if (p.Tall < 30f || p.Tall > 50f) wrongHeight++;
                 if (w.Infra.Nearest(p.X, p.Z, 40, out _, out _) != null) byRoad++;
+                // Every foot reaches the ground under it (its lower end a little below, never above or far under).
+                foreach (var f in PlanetSurface.Infra.InfraLayer.PylonFeet(p, (x, z) => w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height))))
+                {
+                    float g = w.Source.SurfaceHeight(Mathx.WrapX(f.X, w.Width), Mathx.Wrap(f.Z, w.Height));
+                    feetChecked++;
+                    if (f.Y > g + 0.1f || f.Y < g - 2f) { floating++; worst = Math.Max(worst, f.Y - g); }
+                }
             }
             foreach (var (first, last) in power.Legs)
             {
@@ -378,8 +547,20 @@ public partial class SurfaceTest
             }
             await Frames(1);
         }
+        Check(paved > 0 && tight == 0, $"paved roads sweep: {paved} roads and highways, {pavedKm:F1} km, none tighter than its class's least (road {InfraNetwork.LeastRadius(RouteKind.Road)} m, highway {InfraNetwork.LeastRadius(RouteKind.Highway)} m; tightest {Math.Min(tightest, 1e6):F0} m), {tight} too tight ({string.Join(", ", tightHow.Select(k => $"{k.Value} {(k.Key.Length > 0 ? k.Key : "unlaid")}"))}){firstTight}");
+        Check(elbows == 0, $"no road has a hard elbow: {elbowRoutes} roads, streets and tracks on {sweepWorlds} fresh worlds, none turning more than 60 degrees over 8 m (a town corner's curve); sharpest {worstElbow:F0}, {elbows} over ({elbowsAtEnds} within 40 m of an end: {string.Join("; ", elbowNotes)}){firstElbow}");
+        Check(tracks > 0 && flatBacks == 0, $"tracks follow the land, switching back only on steep ground: {tracks} tracks, {trackKm:F1} km on {sweepWorlds} fresh worlds, {switchbacks} switchbacks, {flatBacks} on flat ground{firstFlatBack}; {graded} graded dirt roads");
+        Check(sharp == 0, $"paved roads turn gently: on {sweepWorlds} fresh worlds no 50 m of road outside a town turns more than {InfraNetwork.MostTurn50(RouteKind.Road):F0} degrees (highway {InfraNetwork.MostTurn50(RouteKind.Highway):F0}); sharpest {sharpest:F0}, {sharp} over{firstSharp}");
+        Check(standing > 100 && onRoad == 0, $"poles and pylons stand off the roads: {standing} standing, {onRoad} on a road or railway bed{firstOnRoad}");
+        // (A house none of whose walls toward the line still stands a storey high has nothing to fix a drop to: it counts as unpowered.)
+        int noWall = unservedWhy.GetValueOrDefault(PowerLines.NoWall);
+        Check(gridWorlds > 0 && powered > 0 && dropped + noWall == powered && unfed == 0 && plantsSeen > 0 && substations >= gridWorlds,
+            $"every powered house has its drop back to a plant: {gridWorlds} worlds with a grid, {plantsSeen} plants, {substations} substations; {powered} houses that would have had power, {dropped} with a drop ({strungDrops} strung, {downDrops} down), {noWall} with no wall left standing to fix one to{firstUnserved} [{string.Join(", ", unservedWhy.Where(k => k.Key != PowerLines.NoWall).Select(k => $"{k.Value} {k.Key}"))}], {unfed} on a pole not fed through a substation from a plant{firstUnfed}");
+        Check(wallsChecked > 0 && offWall == 0 && dropLow == 0,
+            $"service drops are anchored: {wallsChecked} fixings checked against the house as spawned, {offWall} not on a standing wall{firstOffWall}; {dropLow} drops through or under the ground{firstLow}");
+        Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");
         Check(pylons >= 30 && wrongHeight == 0 && byRoad < pylons * 0.4 && spanned > 30 && hollow == 0 && turns <= legs + stretches * 0.12,
-            $"pylons stride on their own: {pylons} on {legs} lines, {wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
+            $"pylons stride on their own: {pylons} on {legs} lines,{wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
     }
 
     /// <summary>Every place people built and every ruin or cluster of them is on a road, on fresh worlds, and the network has its highways and bridges.</summary>
@@ -496,7 +677,7 @@ public partial class SurfaceTest
         var stopKinds = new Dictionary<string, int>();
         double ruinRoadKm = 0;
         int ruinsUnjoined = 0, fuelOnLow = 0, houses = 0, housesInStreets = 0;
-        int ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
+        int airless = 0, openWorlds = 0, ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
         var ruinKinds = new Dictionary<string, int>();
         int tells = 0, glowingTells = 0, tellsChecked = 0, planted = 0, strangers = 0, unrooted = 0, clipped = 0, unplaced = 0;
         int poles = 0, fallen = 0, spans = 0, hanging = 0, unanchored = 0, throughGround = 0, offRoute = 0, onBed = 0, lowWorldLines = 0;
@@ -685,7 +866,9 @@ public partial class SurfaceTest
             // and yields salvage.
             ruinWorlds++;
             ruinRoadKm += net.Routes.Where(r => r.Kind != RouteKind.Rail).Sum(r => r.Count * InfraNetwork.Spacing) / 1000.0;
-            if (net.Ruins.Count < 10) { fewRuins++; notes.Add($"{net.Ruins.Count} ruins on {spec.Archetype} {spec.Seed}"); }
+            // Where the air was never fit to build under, nothing open stands (the layers' air rule); elsewhere, plenty.
+            if (net.Profile.Barred.Contains("open")) airless += net.Ruins.Count(r => r.Family.Is.Contains("open"));
+            else if (++openWorlds > 0 && net.Ruins.Count < 10) { fewRuins++; notes.Add($"{net.Ruins.Count} ruins on {spec.Archetype} {spec.Seed}"); }
             foreach (FlavourRuin ruin in net.Ruins)
             {
                 ruins++;
@@ -727,16 +910,17 @@ public partial class SurfaceTest
                 var y = FlavourRuin.Yields(inst);
                 if (y.GetValueOrDefault("rubble") > 0 && y.Values.Sum() > 5) ruinsYielding++;
             }
-            // The trees through its ruins: each the biome's own kind, standing on what's under it, clear of
-            // every wall, and a real scatter instance with its collider; none on ground that grows no trees.
-            foreach (var (id, p) in w.Palette.Planted ?? new Dictionary<long, PlantedFlora>())
+            // The trees through its ruins (planted as each place is built): each the biome's own kind, standing on what's
+            // under it, clear of every wall, and a real scatter instance with its collider; none on ground that grows no trees.
+            System.Threading.Tasks.Parallel.ForEach(w.Pois, p => p.Build());
+            foreach (var (id, p) in w.Palette.Planted ?? new System.Collections.Concurrent.ConcurrentDictionary<long, PlantedFlora>())
             {
                 planted++;
-                if (!Planets.Look.BiomeLook.FloraOf(w.Palette.BiomeAt(p.X, p.Z)).Any(r => r.Kind == p.Kind)) { strangers++; notes.Add($"a {p.Kind} in {w.Palette.BiomeAt(p.X, p.Z)}"); }
+                if (!w.Flora.RulesOf(w.Palette.BiomeAt(p.X, p.Z)).Any(r => r.Kind == p.Kind)) { strangers++; notes.Add($"a {p.Kind} in {w.Palette.BiomeAt(p.X, p.Z)}"); }
                 
                 if (p.Foot < w.Source.SurfaceHeight(p.X, p.Z) - 1.1f) { unrooted++; notes.Add($"a tree under the land at {p.X:F0}, {p.Z:F0}"); }
                 PoiSite site = w.Pois.FirstOrDefault(s => s.Footprint.Contains(new TerrainDigging.Terrain.Int3((int)p.X, (int)p.Foot + 1, (int)p.Z)));
-                if (site != null && !RuinGrowth.Fits(site.Instance.Blocks, new PoiGenerator.Gen.Int3((int)p.X - site.Origin.X, (int)Math.Ceiling(p.Foot) - site.Origin.Y, (int)p.Z - site.Origin.Z), p.Kind, p.Scale)) clipped++;
+                if (site != null && !RuinGrowth.Fits(site.Instance.Blocks, new PoiGenerator.Gen.Int3((int)p.X - site.Origin.X, (int)Math.Ceiling(p.Foot) - site.Origin.Y, (int)p.Z - site.Origin.Z), p.Species, p.Scale)) clipped++;
             }
             if ((w.Palette.Planted?.Count ?? 0) > 0)
             {
@@ -780,7 +964,8 @@ public partial class SurfaceTest
         Check(same, "the same planet plans the same network, point for point");
         Check(wreckSites > 10 && wreckPieces > 100 && blockedLanes == 0 && wreckOnPad == 0,
             $"abandoned vehicles keep the way open: {wreckSites} sites ({string.Join(", ", wreckKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}), {wreckPieces} pieces in the forty dressed; {blockedLanes} with the lane blocked, {wreckOnPad} on a place's pad{firstBlocked}");
-        Check(ruins > 100 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
+        Check(airless == 0, $"no open houses or farms stand on a world whose air was never fit to build under ({airless} did)");
+        Check(ruins >= openWorlds * 10 && openWorlds > 0 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
             $"flavour ruins: {ruins} on {ruinWorlds} inhabited worlds ({string.Join(", ", ruinKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}; {blastedRuins} flattened by a blast), every world with ten or more ({fewRuins} with fewer); {ruinOnRoad} on a road bed, {ruinOnPad} on a place's pad, {ruinsTouching} on another ruin; {ruinsYielding} of {ruinsSpawned} spawned yield salvage");
         Check(ruins <= ruinWorlds * 50 && ruinsUnjoined == 0 && fuelOnLow == 0 && housesInStreets * 2 >= houses,
             $"flavour ruins have reasons: {ruins / (float)ruinWorlds:F0} a world (once 150), {ruinRoadKm / Math.Max(1, ruins):F1} km of road each; {ruinsUnjoined} not joined to their road, {housesInStreets} of {houses} houses in a street, {fuelOnLow} stops of the wrong age ({string.Join(", ", stopKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))})");
@@ -893,6 +1078,65 @@ public partial class SurfaceTest
         return false;
     }
 
+    // ---- roads as the ground draws them ---------------------------------------------------------
+
+    /// <summary>
+    /// The terrain shader paints roads from their own lines (RoadField), not the mesh's vertices: on fresh
+    /// worlds, every ground stretch of every road is found from the cell it lies in, its middle within a few
+    /// centimetres of the line and its whole width on the deck, at any angle; bridges and tunnels are not
+    /// painted on the ground.
+    /// </summary>
+    async Task RoadLineChecks()
+    {
+        var rand = new Random();
+        int worlds = 0, samples = 0, offLine = 0, narrow = 0, missing = 0, segments = 0, points = 0, spans = 0, spanPainted = 0;
+        var notes = new List<string>();
+        foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid })
+        {
+            var spec = PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0);
+            PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
+            if (!w.Profile.Inhabited) continue;
+            worlds++;
+            RoadField field = RoadField.Build(w.Source, w.Width, w.Height);
+            segments += field.SegmentCount;
+            foreach (TerrainStamp t in w.Source.Stamps)
+            {
+                if (t.Shape != StampShape.Road) continue;
+                for (int i = 0; i + 1 < t.PathCount; i++)
+                {
+                    points++;
+                    var (ax, az, ay) = t.PathPoint(i);
+                    var (bx, bz, by) = t.PathPoint(i + 1);
+                    float f = (float)rand.NextDouble(), ex = bx - ax, ez = bz - az, len = MathF.Max(1e-4f, MathF.Sqrt(ex * ex + ez * ez));
+                    double x = t.CenterX + ax + ex * f, z = t.CenterZ + az + ez * f;
+                    float y = ay + (by - ay) * f;
+                    if (t.PathSpan(i) != RoadSpan.Ground)
+                    {
+                        // Only a long way over the ground: a bridge's deck over a gorge, a tunnel deep in a hill.
+                        float ground = w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+                        if (Math.Abs(ground - y) < 8f) continue;
+                        spans++;
+                        if (field.EdgeAt(x, z, ground, 1.2f, out _) < -0.5f) spanPainted++;
+                        continue;
+                    }
+                    samples++;
+                    float edge = field.EdgeAt(x, z, y, 1.2f, out float across);
+                    if (float.IsInfinity(edge)) { missing++; if (notes.Count < 3) notes.Add($"no road found on {t.Name} at {x:F0}, {z:F0}"); continue; }
+                    // Its middle is as deep in a deck as its own line puts it (a wider road it joins may claim it).
+                    if (edge > 0.06f - t.HalfWidth) { offLine++; if (notes.Count < 3) notes.Add($"{t.Name} at {x:F0}, {z:F0} is {edge + t.HalfWidth:F2} m off its line ({across:F2} m from the nearest)"); }
+                    // Just inside each edge, square to the line: still on a deck.
+                    float nx = -ez / len, nz = ex / len, side = t.HalfWidth - 0.25f;
+                    if (field.EdgeAt(x + nx * side, z + nz * side, y, 1.2f, out _) >= 0f || field.EdgeAt(x - nx * side, z - nz * side, y, 1.2f, out _) >= 0f) narrow++;
+                }
+            }
+            await Frames(1);
+        }
+        Check(worlds > 0 && samples > 1000 && missing == 0 && offLine <= samples / 2000 && narrow <= samples / 200,
+            $"roads are drawn from their lines: {segments} segments for {points} road points on {worlds} fresh worlds; of {samples} points on the ground {missing} not found, {offLine} off the line by over 6 cm, {narrow} narrower than the deck{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
+        Check(spanPainted <= spans / 50,
+            $"no road painted on the ground far under a bridge or over a tunnel: {spanPainted} of {spans} points");
+    }
+
     // ---- the start: the edge of a ruined town -----------------------------------------------------
 
     async Task StartTownChecks()
@@ -911,8 +1155,7 @@ public partial class SurfaceTest
                 StartTown town = w.StartTown;
                 if (town == null) { notes.Add($"no town on {spec.Archetype} {seed}"); continue; }
                 towns++;
-                houses += town.Houses.Count;
-                streets += town.Streets.Count;
+                houses += town.Houses.Count;                streets += town.Streets.Count;
                 if (w.Infra.Wrecks.Any(k => town.Streets.Contains(k.Route))) jams++;
                 // No living settlement within 1.5 km of the town's edge (where the bunker goes).
                 foreach (PoiSite p in w.Pois)
@@ -1001,7 +1244,7 @@ public partial class SurfaceTest
             {
                 exodus++;
                 var ports = w.Pois.Where(Wrecks.IsPort).ToList();
-                scrappy += ports.Count(p => p.Family.Tags.Contains("scrappy"));
+                scrappy += ports.Count(p => p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus"));
                 // Jams per kilometre of road, near a port and further out.
                 foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail))
                     for (int i = 0; i < r.Count; i += 5)
@@ -1222,6 +1465,8 @@ public partial class SurfaceTest
                         // Six triangle corners round a full interior vertex; the rim of the chunk carries on next door.
                         if (uses.GetValueOrDefault(v) >= 6 || p.X <= 0 || p.Z <= 0 || p.X >= job.SpanX || p.Z >= job.SpanZ) continue;
                         double px = Mathx.WrapX(cx * (double)FarBuilder.Size + p.X, w.Width), pz = Mathx.Wrap(cz * (double)FarBuilder.Size + p.Z, w.Height);
+                        // A river come down to the sea, where the sea is drawn: the shader leaves it to the sea, at the same level.
+                        if (p.Y <= source.WaterLevel && w.Map.IsSea(px, pz)) continue;
                         sheetEdges++;
                         float over = p.Y - source.Ground(px, pz, FarBuilder.Step(lod)).Height;
                         if (over <= Margin) continue;

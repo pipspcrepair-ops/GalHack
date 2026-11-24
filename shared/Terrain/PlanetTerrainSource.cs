@@ -53,6 +53,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     public float WaterLevel => 0f;
     public IReadOnlyList<PoiSite> PointsOfInterest { get; }
 
+    /// <summary>The made ground the terrain shader paints round the places (yards, aprons, car parks, paths), planned with the world; empty without it.</summary>
+    public IReadOnlyList<GroundPatch> Grounds { get; set; } = Array.Empty<GroundPatch>();
+
     readonly PeriodicNoise _caveA, _caveB, _caveRegion, _soil, _ore;
     readonly float _soilBase;
     readonly ConcurrentDictionary<long, Lazy<Column>> _columns = new();
@@ -73,9 +76,96 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         public float Floor00, Floor10, Floor01, Floor11;
         /// <summary>Squared slope over 8 m on a 4 m lattice (5 x 5 points, edges shared with the neighbours): for colours.</summary>
         public readonly float[] BroadSlope2 = new float[Lattice * Lattice];
+
+        /// <summary>
+        /// The highest and lowest ground within 16 m each way of each point of an 8 m lattice (3 x 3, edges
+        /// shared with the neighbours): how far a cliff rises over a point and falls below it, for its rock.
+        /// </summary>
+        public readonly float[] ReliefMax = new float[ReliefPoints * ReliefPoints], ReliefMin = new float[ReliefPoints * ReliefPoints];
+
+        /// <summary>
+        /// Cliffs between neighbouring cells: where along the step from a cell centre to the next one in +x
+        /// (CrossX) or +z (CrossZ) the ground passes halfway down, 0 to 1; NaN where the step isn't a cliff.
+        /// </summary>
+        public readonly float[] CrossX = new float[P * P], CrossZ = new float[P * P];
     }
 
     const int Lattice = S / 4 + 1;
+
+    // ---- Cliffs -----------------------------------------------------------------------------
+    //
+    // A cliff stands wherever the generator puts it, but the ground's density is set per 1 m cell from its
+    // column's height, so a wall could only fall between a high column and a low one: in plan it ran as
+    // a staircase of metre steps, its normals turning from one column to the next into upright stripes
+    // and its rim a row of teeth. So where neighbouring columns differ by more than WallFrom, the place
+    // the ground passes halfway down between their centres is found, and the cells beside it take their
+    // distance to that wall as their density: the surface between them then stands on the cliff's own
+    // line, to a few centimetres. The distance to a column's own top keeps the scale of its own ground
+    // there (the gentler side of it), so a cliff's rim and foot lie where the ground is.
+
+    /// <summary>The fall between neighbouring 1 m columns from which it is a cliff, m.</summary>
+    const float WallFrom = 2f;
+
+    /// <summary>Where along a straight line from a (0) to b (1) the ground passes halfway between their heights.</summary>
+    float WallCrossing(double ax, double az, double bx, double bz, float ha, float hb)
+    {
+        float target = (ha + hb) * 0.5f;
+        float lo = 0f, hi = 1f, flo = ha - target, fhi = hb - target;
+        for (int n = 0; n < 4; n++)
+        {
+            float mid = (lo + hi) * 0.5f;
+            float f = SurfaceHeight(ax + (bx - ax) * mid, az + (bz - az) * mid) - target;
+            if (f > 0f == flo > 0f) { lo = mid; flo = f; }
+            else { hi = mid; fhi = f; }
+        }
+        float t = flo == fhi ? 0.5f : flo / (flo - fhi);
+        return lo + (hi - lo) * Math.Clamp(t, 0f, 1f);
+    }
+
+    static float MinMod(float a, float b) => a * b <= 0f ? 0f : MathF.Abs(a) < MathF.Abs(b) ? a : b;
+
+    /// <summary>
+    /// The ground's density at a cell centre (height yc) of a column whose surface is h, beside a cliff:
+    /// its neighbours' surfaces (-x, +x, -z, +z) and how far from this column's centre each one's wall
+    /// stands (NaN: no cliff that way). Positive in the ground. The distance to the nearest wall the
+    /// ground at this height ends at (inside) or starts at (outside), or to its own top, whichever is
+    /// nearer; that top measured at the gentler slope beside it.
+    /// </summary>
+    static float WallDensity(float h, float yc, float hmx, float hpx, float hmz, float hpz, float wmx, float wpx, float wmz, float wpz)
+    {
+        float sx = MinMod(h - hmx, hpx - h), sz = MinMod(h - hmz, hpz - h);
+        float depth = h - yc, d = depth / MathF.Sqrt(1f + sx * sx + sz * sz);
+        // The cells either side of the column's own top keep their distance to it, so its surface stands
+        // exactly at its height; the walls shape the cells beyond them.
+        if (MathF.Abs(depth) <= 1f) return d;
+        bool inside = depth > 0f;
+        float wx = float.PositiveInfinity, wz = float.PositiveInfinity;
+        if (!float.IsNaN(wmx) && (inside ? hmx < yc : hmx > yc)) wx = wmx;
+        if (!float.IsNaN(wpx) && (inside ? hpx < yc : hpx > yc)) wx = MathF.Min(wx, wpx);
+        if (!float.IsNaN(wmz) && (inside ? hmz < yc : hmz > yc)) wz = wmz;
+        if (!float.IsNaN(wpz) && (inside ? hpz < yc : hpz > yc)) wz = MathF.Min(wz, wpz);
+        if (float.IsPositiveInfinity(wx) && float.IsPositiveInfinity(wz)) return d;
+        float wall = float.IsPositiveInfinity(wx) ? wz : float.IsPositiveInfinity(wz) ? wx : wx * wz / MathF.Sqrt(wx * wx + wz * wz + 1e-12f);
+        return inside ? MathF.Min(d, wall) : MathF.Max(d, -wall);
+    }
+
+    /// <summary>The relief lattice's spacing, m, and how many of its steps each way a point looks (16 m), as the far rings measure it.</summary>
+    public const int ReliefStep = 8, ReliefReach = 2;
+    const int ReliefPoints = S / ReliefStep + 1;
+
+    /// <summary>
+    /// How far the undug ground rises above a height and falls below it within reach of a point inside a
+    /// chunk column (metres from its corner): to a cliff's top and to its foot. Never below zero.
+    /// </summary>
+    public static (float rise, float fall) Relief(Column column, float fx, float fz, float y)
+    {
+        float gx = Math.Clamp(fx / ReliefStep, 0f, ReliefPoints - 1.001f), gz = Math.Clamp(fz / ReliefStep, 0f, ReliefPoints - 1.001f);
+        int i = (int)gx, j = (int)gz;
+        float tx = gx - i, tz = gz - j;
+        float At(float[] v) => (v[i + ReliefPoints * j] * (1 - tx) + v[i + 1 + ReliefPoints * j] * tx) * (1 - tz)
+                             + (v[i + ReliefPoints * (j + 1)] * (1 - tx) + v[i + 1 + ReliefPoints * (j + 1)] * tx) * tz;
+        return (MathF.Max(0f, At(column.ReliefMax) - y), MathF.Max(0f, y - At(column.ReliefMin)));
+    }
 
     public PlanetTerrainSource(WorldMap map, IReadOnlyList<TerrainStamp> stamps = null, IReadOnlyList<PoiSite> pois = null)
     {
@@ -209,17 +299,24 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     {
         float h = Stamped(s.Height, x, z);
         if (h < s.Bank && !TerrainStamp.OnPad(Stamps, StampsAt(x, z), x, z)) h = s.Bank;
-        // Land under sea level that the sea doesn't cover would leave the sea's edge hanging over it:
-        // past the sea's own shore the land stands clear of the water.
-        if (h < WaterLevel + ShoreRise && !s.InRiver && Map.Sample(Map.Elevation, Mathx.WrapX(x, Width), Mathx.Wrap(z, Height)) >= -SeaMaskDepth) h = WaterLevel + ShoreRise;
+        // Land under sea level that the sea doesn't cover would leave the sea's edge hanging over it: past where
+        // the sea is drawn the land stands clear of the water. Inside, it eases back to its own height by the
+        // map's own coast, so where the land dips at the sea's drawn edge it makes the shore by its own shape
+        // (lifted most where the edge is), not along the mask's.
+        if (h < WaterLevel + ShoreRise && !s.InRiver)
+        {
+            float clear = Math.Clamp(1f - (Map.Sample(Map.SeaDepth, x, z) - WorldMap.SeaFrom) / -WorldMap.SeaFrom, 0f, 1f);
+            h += (WaterLevel + ShoreRise - h) * clear;
+        }
         return h;
     }
 
     /// <summary>
     /// The made ground at a point: the surface of the pad or road that applies most here, how much
     /// of it shows (eased off well inside the blend, so a made apron never ends in a hard edge), and how worn it is.
+    /// Without <paramref name="roads"/>, only places' pads: a renderer that draws roads from their lines leaves them out.
     /// </summary>
-    public StampSurface MadeGround(double x, double z, out float weight, out float wear)
+    public StampSurface MadeGround(double x, double z, out float weight, out float wear, bool roads = true)
     {
         weight = 0f;
         wear = 0f;
@@ -227,7 +324,7 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         foreach (int i in StampsAt(x, z))
         {
             TerrainStamp t = Stamps[i];
-            if (t.Shape is not (StampShape.Pad or StampShape.Road)) continue;
+            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road || t.Painted) continue;
             float w = t.Weight(x, z);
             if (w <= weight) continue;
             weight = w;
@@ -235,6 +332,17 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             best = t.Surface;
         }
         return best;
+    }
+
+    /// <summary>
+    /// Whether a cell is dug out for something built in it: a place's rooms below its pad, a buried sewer or station
+    /// (a road's bore is open rock). Its walls and floors stand there as blocks, not in the voxels.
+    /// </summary>
+    public bool Dug(int x, int y, int z)
+    {
+        foreach (int i in StampsAt(x + 0.5, z + 0.5))
+            if (Stamps[i].Shape != StampShape.Road && Stamps[i].IsCarved(x, y, z)) return true;
+        return false;
     }
 
     /// <summary>
@@ -254,6 +362,72 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         return road;
     }
 
+    /// <summary>
+    /// Whether low cover (grass, tussocks, scrub) grows at a point on a road: anywhere on one nobody has kept up
+    /// for a century, and on a track the crown between its wheel ruts and its ragged edges, where nothing
+    /// drives. False off the roads and on any place's pad.
+    /// </summary>
+    public bool GrowsOnRoad(double x, double z)
+    {
+        bool road = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Pad && t.Weight(x, z) > 0f) return false;
+            if (t.Shape != StampShape.Road || t.Weight(x, z) <= 0f) continue;
+            road = true;
+            if (t.Wear > 0.6f) continue;
+            if (t.Name.StartsWith("Track") && t.NearestOnPath(x, z, out float d, out _, out _) && (d < TrackCrown || d > t.HalfWidth - 0.35f)) continue;
+            return false;
+        }
+        return road;
+    }
+
+    /// <summary>Half the crown a track keeps between its wheel ruts, m (the shader's ruts run either side of it).</summary>
+    public const float TrackCrown = 0.4f;
+    /// <summary>Whether a point is on open ground a stamp levelled but built nothing on (<see cref="TerrainStamp.Wild"/>, a park), off every road and other pad, and how worn it is.</summary>
+    public bool OnWild(double x, double z, out float wear)
+    {
+        wear = 0f;
+        bool wild = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Weight(x, z) <= 0f) continue;
+            if (!t.Wild) return false;
+            wild = true;
+            wear = Math.Max(wear, t.Wear);
+        }
+        return wild;
+    }
+
+    /// <summary>
+    /// How far into a place's ground a point lies, for what may grow there: 2 on a place's footprint (where it stands),
+    /// its pads' weight elsewhere (1 on the apron, easing to 0 across the blend, whose outer reaches are the land's
+    /// own, only cut and filled), 0 off every pad; and whether a road's deck or shoulder covers it. Parks (wild pads)
+    /// and buried works don't count: plants go on over them as they were.
+    /// </summary>
+    public float Built(double x, double z, out bool road)
+    {
+        road = false;
+        float pad = 0f;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Road)
+            {
+                if (!road && t.Weight(x, z) > 0f) road = true;
+                continue;
+            }
+            if (t.Wild || t.Shape == StampShape.Buried) continue;
+            float w = t.Weight(x, z);
+            if (w <= 0f) continue;
+            if (t.Shape == StampShape.Pad && t.OnFootprint(x - 0.5, z - 0.5)) return 2f;
+            pad = Math.Max(pad, w);
+        }
+        return pad;
+    }
+
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
     {
@@ -264,35 +438,25 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
 
     // ---- Water ------------------------------------------------------------------------------
 
-    /// <summary>
-    /// The sea shows where the world map lies more than this far below sea level: the water
-    /// shader discards its plane where the map's depth (elevation / -120 m) is under 0.004.
-    /// </summary>
-    public const float SeaMaskDepth = 0.48f;
-
-    /// <summary>How far dry land beside the sea stands over it, at the least.</summary>
+    /// <summary>How far dry land past where the sea is drawn stands over it, at the least.</summary>
     public const float ShoreRise = 0.1f;
-
-    /// <summary>River water is drawn this far below a river's level (FarBuilder's river sheets).</summary>
-    public const float RiverDrop = 0.15f;
 
     /// <summary>
     /// The water over a column, if it holds any: a river's surface in its channel, or the sea at
-    /// sea level where the world map lies below it, wherever the ground there is lower; exactly where
-    /// that water is drawn. Water is a volume: everything under the surface and over the ground.
-    /// Decided by the generator (and stamps) alone, never by digging, as terrain-digging's static
-    /// water is: a pit dug below sea level inland stays dry. x and z wrap.
+    /// sea level where the sea is drawn (<see cref="WorldMap.IsSea"/>), wherever the ground there is
+    /// lower; exactly where that water is drawn. Water is a volume: everything under the surface and
+    /// over the ground. Decided by the generator (and stamps) alone, never by digging, as
+    /// terrain-digging's static water is: a pit dug below sea level inland stays dry. x and z wrap.
     /// </summary>
-    public bool WaterSurfaceAt(double x, double z, out float surface)
+    public bool WaterSurfaceAt(double x, double z, out float surface) => WaterOver(Ground(x, z, 1), x, z, out surface);
+
+    /// <summary>The same water over a ground sample taken at any spacing (a coarser one is cheaper).</summary>
+    public bool WaterOver(GroundSample g, double x, double z, out float surface)
     {
-        GroundSample g = Ground(x, z, 1);
-        if (g.InRiver && g.RiverLevel - RiverDrop > g.Height)
-        {
-            surface = g.RiverLevel - RiverDrop;
-            return true;
-        }
+        surface = g.RiverLevel - SurfaceSampler.RiverDrop;
+        if (g.InRiver && surface > g.Height) return true;
         surface = WaterLevel;
-        return g.Height < WaterLevel && Map.Sample(Map.Elevation, Mathx.WrapX(x, Width), Mathx.Wrap(z, Height)) < -SeaMaskDepth;
+        return g.Height < WaterLevel && Map.IsSea(x, z);
     }
 
     /// <summary>The stamp whose footprint or apron covers a point, if any.</summary>
@@ -324,6 +488,20 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             column.Min = Math.Min(column.Min, h);
             column.Max = Math.Max(column.Max, h);
         }
+        // Cliffs between neighbouring cells, along x and z (the ring's edges too: the next column finds the same).
+        column.CrossX.AsSpan().Fill(float.NaN);
+        column.CrossZ.AsSpan().Fill(float.NaN);
+        for (int pz = 0; pz < P; pz++)
+        for (int px = 0; px < P; px++)
+        {
+            int k = px + P * pz;
+            float h = column.Heights[k];
+            double x = ox + px - 0.5, z = oz + pz - 0.5;
+            if (px + 1 < P && pz > 0 && pz < P - 1 && MathF.Abs(h - column.Heights[k + 1]) > WallFrom)
+                column.CrossX[k] = WallCrossing(x, z, x + 1, z, h, column.Heights[k + 1]);
+            if (pz + 1 < P && px > 0 && px < P - 1 && MathF.Abs(h - column.Heights[k + P]) > WallFrom)
+                column.CrossZ[k] = WallCrossing(x, z, x, z + 1, h, column.Heights[k + P]);
+        }
         // The slope that colours the ground, measured over 8 m: the 1 m slope that decides the cells'
         // materials wobbles with every bump, and soil and rock would mottle along the voxel grid.
         // The lattice's edge points are the same points the neighbouring column samples, so colours
@@ -339,6 +517,27 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             float gx = (coarse[i + 2 + C * (j + 1)] - coarse[i + C * (j + 1)]) / 8f;
             float gz = (coarse[i + 1 + C * (j + 2)] - coarse[i + 1 + C * j]) / 8f;
             column.BroadSlope2[i + Lattice * j] = gx * gx + gz * gz;
+        }
+        // The relief lattice: its points are every 8 m on the planet, the same points the far rings
+        // measure, so the rock a cliff shows goes on across chunks and levels of detail.
+        const int R = ReliefPoints + 2 * ReliefReach;
+        Span<float> wide = stackalloc float[R * R];
+        for (int j = 0; j < R; j++)
+        for (int i = 0; i < R; i++)
+            wide[i + R * j] = SurfaceHeight(ox + (i - ReliefReach) * (double)ReliefStep, oz + (j - ReliefReach) * (double)ReliefStep, ReliefStep);
+        for (int j = 0; j < ReliefPoints; j++)
+        for (int i = 0; i < ReliefPoints; i++)
+        {
+            float hi = float.MinValue, lo = float.MaxValue;
+            for (int dj = 0; dj <= 2 * ReliefReach; dj++)
+            for (int di = 0; di <= 2 * ReliefReach; di++)
+            {
+                float h = wide[i + di + R * (j + dj)];
+                hi = MathF.Max(hi, h);
+                lo = MathF.Min(lo, h);
+            }
+            column.ReliefMax[i + ReliefPoints * j] = hi;
+            column.ReliefMin[i + ReliefPoints * j] = lo;
         }
         column.Floor00 = FloorAt(cx, cz);
         column.Floor10 = FloorAt(cx + 1, cz);
@@ -488,6 +687,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             float sx = (column.Heights[hi + 1] - column.Heights[hi - 1]) * 0.5f, sz = (column.Heights[hi + P] - column.Heights[hi - P]) * 0.5f;
             float slope2 = sx * sx + sz * sz;
             float slopeScale = 1f / MathF.Sqrt(1f + slope2);
+            // Beside a cliff, the distance to its wall (see WallDensity).
+            float wmx = 1f - column.CrossX[hi - 1], wpx = column.CrossX[hi], wmz = 1f - column.CrossZ[hi - P], wpz = column.CrossZ[hi];
+            bool walled = !float.IsNaN(wmx) || !float.IsNaN(wpx) || !float.IsNaN(wmz) || !float.IsNaN(wpz);
 
             // Soil slides off steep ground, so slopes and cliffs show bare rock.
             float soilDepth = SoilDepth(x, z, slope2);
@@ -534,7 +736,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
                     continue;
                 }
 
-                float d = dist;
+                float d = walled
+                    ? WallDensity(h, y + 0.5f, column.Heights[hi - 1], column.Heights[hi + 1], column.Heights[hi - P], column.Heights[hi + P], wmx, wpx, wmz, wpz)
+                    : dist;
                 if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, dist, caves));
                 if (mouths != null && depth > -4f && !padded) d = MathF.Min(d, MouthsAt(mouths, x + 0.5, y + 0.5, z + 0.5));
                 d = Math.Clamp(d, -Limit, Limit);
@@ -594,10 +798,11 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     List<OreBody> OreBodiesNear(int ox, int oz)
     {
         List<OreBody> list = null;
-        foreach (Deposit d in Map.Deposits.InRect(ox - 6, oz - 6, ox + S + 6, oz + S + 6))
+        float reach = DepositField.MaxBodyRadius + 1.5f;
+        foreach (Deposit d in Map.Deposits.InRect(ox - reach, oz - reach, ox + S + reach, oz + S + reach))
         {
             double dx = Wrap(d.X - (ox + S * 0.5), Width), dz = Wrap(d.Y - (oz + S * 0.5), Height);
-            if (Math.Abs(dx) > S * 0.5 + 6 || Math.Abs(dz) > S * 0.5 + 6) continue;
+            if (Math.Abs(dx) > S * 0.5 + OreRadius(d) + 1.5 || Math.Abs(dz) > S * 0.5 + OreRadius(d) + 1.5) continue;
             OreCentre(d, out _, out double y, out _);
             (list ??= new List<OreBody>()).Add(new OreBody(d, y, OreRadius(d)));
         }
@@ -612,6 +817,24 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         var list = new List<TerrainStamp>(near.Length);
         foreach (int i in near) list.Add(Stamps[i]);
         return list;
+    }
+
+    /// <summary>
+    /// Circles of ground nothing stands on or over (x, z, radius): the start bunker's footprint, its way out and the sky over
+    /// them. Whatever is set down as the ground streams in (trees, rocks, the world's dressing) asks <see cref="Reserved"/>
+    /// with its own reach, so a far chunk rebuilt later keeps clear as the first build did. Set before any ground streams in.
+    /// </summary>
+    public volatile (double X, double Z, float R)[] Reserves = Array.Empty<(double, double, float)>();
+
+    /// <summary>Whether something this far across (a crown, a boulder, a stall) at a point reaches into a reserved circle.</summary>
+    public bool Reserved(double x, double z, float reach)
+    {
+        foreach (var (rx, rz, r) in Reserves)
+        {
+            double dx = Wrap(x - rx, Width), dz = Wrap(z - rz, Height);
+            if (dx * dx + dz * dz < (double)(r + reach) * (r + reach)) return true;
+        }
+        return false;
     }
 
     /// <summary>Radius in metres of a deposit's ore body.</summary>
@@ -673,10 +896,19 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     public float CellDensity(int x, int y, int z)
     {
         float h = SurfaceHeight(x + 0.5, z + 0.5);
-        float hx = SurfaceHeight(x + 1.5, z + 0.5) - SurfaceHeight(x - 0.5, z + 0.5);
-        float hz = SurfaceHeight(x + 0.5, z + 1.5) - SurfaceHeight(x + 0.5, z - 0.5);
+        float hpx = SurfaceHeight(x + 1.5, z + 0.5), hmx = SurfaceHeight(x - 0.5, z + 0.5);
+        float hpz = SurfaceHeight(x + 0.5, z + 1.5), hmz = SurfaceHeight(x + 0.5, z - 0.5);
+        float hx = hpx - hmx, hz = hpz - hmz;
         float slopeScale = 1f / MathF.Sqrt(1f + (hx * hx + hz * hz) * 0.25f);
         float depth = h - (y + 0.5f), d = depth * slopeScale;
+        // Beside a cliff, as the chunks have it (WallDensity).
+        float Wall(float hn, double nx, double nz, bool from) =>
+            MathF.Abs(h - hn) <= WallFrom ? float.NaN
+            : from ? WallCrossing(x + 0.5, z + 0.5, nx, nz, h, hn) : 1f - WallCrossing(nx, nz, x + 0.5, z + 0.5, hn, h);
+        float wmx = Wall(hmx, x - 0.5, z + 0.5, false), wpx = Wall(hpx, x + 1.5, z + 0.5, true);
+        float wmz = Wall(hmz, x + 0.5, z - 0.5, false), wpz = Wall(hpz, x + 0.5, z + 1.5, true);
+        if (!float.IsNaN(wmx) || !float.IsNaN(wpx) || !float.IsNaN(wmz) || !float.IsNaN(wpz))
+            d = WallDensity(h, y + 0.5f, hmx, hpx, hmz, hpz, wmx, wpx, wmz, wpz);
         foreach (int i in StampsAt(x + 0.5, z + 0.5))
             if (Stamps[i].IsCarved(x, y, z) && (Stamps[i].Shape != StampShape.Road || depth > TunnelRoof)) return -Limit;
         if (depth > BedrockDepth)

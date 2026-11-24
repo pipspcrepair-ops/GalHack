@@ -113,8 +113,8 @@ public partial class SandboxWorld : Node3D
     /// </summary>
     void SpawnScenario()
     {
-        Corsair = SpawnLanded("corsair.gbp", new N.Vector2(0f, 0f), 0f);
-        Rover = SpawnVessel("sandflea.gbp", Ground(-38f, SandboxTerrain.LaneZ) + N.Vector3.UnitY * 2.4f, -MathF.PI / 2f, landed: false);
+        Corsair = SpawnLanded(Shuttle, new N.Vector2(0f, 0f), 0f);
+        Rover = SpawnVessel(HoverRover, Ground(-38f, SandboxTerrain.LaneZ) + N.Vector3.UnitY * 2.4f, -MathF.PI / 2f, landed: false);
         DigTrench(0, SandboxTerrain.LaneZ, halfLength: 7, width: 2, depth: 2);
         for (int i = 0; i < 6; i++)
             Crate.Spawn(this, Ground(13f + (i % 3) * 1.2f, 7f + (i / 3) * 1.3f) + N.Vector3.UnitY * 0.45f, i);
@@ -131,10 +131,15 @@ public partial class SandboxWorld : Node3D
 
     // ---- Spawning and finding -----------------------------------------------------------------
 
-    public Structure LoadBlueprint(string file) =>
-        StructureBridge.LoadBlueprint(ProjectSettings.GlobalizePath($"res://data/blueprints/{file}"), Catalogue);
+    /// <summary>The slice's Shuttle and Hover Rover, read where they live: the sandbox's walk-in shuttle and hover rover.</summary>
+    public const string Shuttle = "../../../slice/data/blueprints/shuttle.gbp", HoverRover = "../../../slice/data/blueprints/rover.gbp";
 
-    public Ship SpawnVessel(string file, N.Vector3 at, float heading, bool landed) => Track(Ship.SpawnVessel(this, LoadBlueprint(file), at, heading, landed));
+    /// <summary>A blueprint in data/blueprints, or one of the slice's by a path from there (<see cref="Shuttle"/>).</summary>
+    public Structure LoadBlueprint(string file) =>
+        StructureBridge.LoadBlueprint(System.IO.Path.GetFullPath(ProjectSettings.GlobalizePath($"res://data/blueprints/{file}")), Catalogue);
+
+    public Ship SpawnVessel(string file, N.Vector3 at, float heading, bool landed) => SpawnVessel(LoadBlueprint(file), at, heading, landed);
+    public Ship SpawnVessel(Structure s, N.Vector3 at, float heading, bool landed) => Track(Ship.SpawnVessel(this, s, at, heading, landed));
 
     /// <summary>A vessel standing on its gear on the ground at a spot, settled and not simulating.</summary>
     public Ship SpawnLanded(string file, N.Vector2 spot, float heading) => SpawnLandedAt(file, Ground(spot.X, spot.Y), heading);

@@ -97,7 +97,6 @@ public partial class Main : Node3D
             case Key.Key3: p.PlaceOutside(World.Corsair.Body.ToParent(new N.Vector3(-1f, 2.9f, -1.5f))); break;
             case Key.Key4: Orbit(); break;
             case Key.Key5: Swim(); break;
-            case Key.G: flying?.Vessel?.ToggleGear(); break;
             case Key.C: flying?.Flight.ToggleCruise(); break;
             case Key.Y:
                 if ((flying ?? p.Aboard) is Ship s && s.Body.Core != null)
@@ -148,7 +147,7 @@ public partial class Main : Node3D
     {
         Ship ship = World.Corsair;
         if (ship == null || _podsShot >= 2) return;
-        var cells = Ship.PortPodMount.Select(c => _podsShot == 0 ? c : new GalHack.Structures.Int3(-c.X, c.Y, c.Z));
+        var cells = _podsShot == 0 ? Ship.PortPodMount : Ship.StarboardPodMount;
         ship.ShootThrough(cells, push: 5f);
         _podsShot++;
     }

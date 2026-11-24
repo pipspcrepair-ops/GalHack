@@ -16,8 +16,10 @@
   // What gathering gives, as shared/Items' raw items (an ore cell gives the ore its deposit kind
   // maps to in items.json).
   "materials": {
-    // Raw ore per 1 m cell of ore dug: shared/Items' pacing reference (machines.json).
-    "orePerCell": 12,
+    // Raw ore per 1 m cell of ore dug, whatever the tool (a better tool digs faster, never more a cell).
+    // Was 12 (36 kg a cell): a bag held tons in minutes. At 3, the first tools' and the hover bike's
+    // 30 iron ore is ten cells of a deposit, a minute or two from the start with the walk.
+    "orePerCell": 3,
     // Stone per cell of rock dug (soil gives nothing).
     "stonePerRockCell": 1,
     // Cutting a plant, at scale 1: biomass, and kg of organics for the replicator.
@@ -25,8 +27,8 @@
     "organicsPerPlant": 1.5,
     // The starting kit in the bunker's locker: a few days' food and air, not a ship.
     "startKit": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
-    // What the castaway has on the toolbar from the start, slot 1 first: nothing. They wake
-    // empty-handed and make the survival tool, free, in the suit fabricator.
+    // What the sleeper has on the toolbar from the start, slot 1 first: nothing. They wake
+    // empty-handed and make the Sleeper tool, free, in the suit fabricator.
     "toolbar": [ ]
   },
 
@@ -41,8 +43,30 @@
     "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
-    // A sealed room aboard a structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
-    "sealedRoomC": 20
+    // On a world a nuclear war blasted, a dust storm lifts the craters' fallout: deep inside one, this share of the strongest crater's reading.
+    "dustFallout": 0.25,
+    // A sealed room aboard a powered structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
+    "sealedRoomC": 20,
+    // A sealed room's air: with its structure powered it eases to sealedRoomC (the gap shrinks by e every roomEaseSeconds,
+    // comfortable within about a minute from -45 or 65 °C); power off, it holds roomHoldSeconds, then drifts to the
+    // outside's temperature and oxygen (the gap by e every roomDriftSeconds).
+    "roomEaseSeconds": 30,
+    "roomHoldSeconds": 120,
+    "roomDriftSeconds": 180,
+    // A shut room in a place takes placeShelter of the way from the outside's temperature to sealedRoomC (its air is the
+    // outside's), easing there by e every placeEaseSeconds. A climate node inside still holds its band.
+    "placeShelter": 0.5,
+    "placeEaseSeconds": 60,
+    // Out in the weather: from stormWarnFrom of its exposure (weather.json) the visor warns, from
+    // stormHarmFrom health drains at stormHealthPerSecond x exposure. Only a blizzard or a fire storm
+    // reaches that (about 5 health a second). Any shelter or cover stops it at once.
+    "stormWarnFrom": 0.5,
+    "stormHarmFrom": 1,
+    "stormHealthPerSecond": 3,
+    // In water at or below iceWaterC the visor warns at once and, iceWaterWarnSeconds later, health drains.
+    "iceWaterC": 2,
+    "iceWaterHealthPerSecond": 7,
+    "iceWaterWarnSeconds": 1.5
   },
 
   "tool": {
@@ -51,44 +75,162 @@
     "digInterval": 0.18,
     "cutReach": 4,
     "shotDamage": 18,
-    "shotInterval": 0.22,
-    "shotRange": 120,
-    // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
-    // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
-    // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
-    // store has no partial density), so it sinks in cell-sized stages, the beam's ball of cells
-    // wearing down from the centre out.
+    // Gather is a short blast of lightning (design: the Sleeper tool). Blasts at things that
+    // aren't being gathered come every shotInterval; gathering pulses keep digInterval.
+    "shotInterval": 0.3,
+    "lightning": {
+      // How far the blast reaches, m.
+      "range": 9,
+      // A person in front: a chip of damage, then held in their flinch for stunSeconds; not again
+      // until restunSeconds after it ends.
+      "personDamage": 4,
+      "stunSeconds": 1.1,
+      "restunSeconds": 1.5,
+      // A block on a core that isn't a sleeper's: hit points a second held on it (taken whole, armour or none; a blast is this times shotInterval and the tier's shot), and the share of its bill that
+      // comes away as its hit points do (a block blasted to nothing gives this share of its bill).
+      "blockPerSecond": 5,
+      "extractShare": 0.3,
+      // The tool shakes in the hand with each bolt (owner: a shake, not a kick; the view stays still):
+      // seconds, metres, Hz, and a gathering pulse's (every digInterval) as a share of a blast's.
+      "shakeSeconds": 0.12,
+      "shakeAmplitude": 0.004,
+      "shakeHz": 38,
+      "gatherShakeShare": 0.6,
+      // While fire is held the tool shakes steadily at this share of a blast's jolt, each bolt a sharper
+      // jolt on top; let go, it settles within settleSeconds (owner: shake as long as fire is held).
+      "heldShakeShare": 0.45,
+      "settleSeconds": 0.08,
+      // The flash that lights the surroundings (energy, range m).
+      "flashEnergy": 6,
+      "flashRange": 11,
+      // Seconds. A bolt comes up, holds and fades smoothly (owner: linger a little, easy on the eyes;
+      // it was 0.09 s on, then gone); its light comes up and fades longer, so held fire doesn't strobe.
+      "boltRise": 0.08,
+      "boltHold": 0.07,
+      "boltFade": 0.09,
+      "flashRise": 0.1,
+      "flashFade": 0.25,
+      // Thunder with every blast, no closer together than this, s.
+      "thunderGap": 0.28
+    },
+    // Repair is a green cone (owner: gradual, a lerping number; 1 hit point every 20 ms). The damaged block it's on fills at
+    // rate hit points a second, smoothly (a 158-point iron block from nothing in about 3.2 s, a 250-point core in
+    // 5), paid for as it fills, in proportion to its bill, from the bag, else the core's storage.
+    // A destroyed block in it comes back at restoreShare of its hit points and fills from there. Its
+    // sound pulses (and tries at restoring) every interval s.
+    "repair": { "range": 6, "angle": 14, "interval": 0.35, "rate": 50, "restoreShare": 0.1 },
+    // Gathering chips: each pulse of the beam does rate x interval damage to the cell under it (less
+    // to the cells around it), and resources trickle in as it goes. A cell is gone when its
+    // durability is worked through. Ground is held a cell at a time (the terrain store has no partial
+    // density), so it sinks in cell-sized stages, the beam's ball of cells wearing down from the
+    // centre out. (Plants have hit points: see "plants".)
     "gatherRate": 3,
-    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 3, "boulderStone": 6 },
-    // The hand tools: each a faster survival tool (the tech tree unlocks them by level).
+    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3 },
+    // The hand tools: each a faster Sleeper tool (the tech tree unlocks them by level).
     "tiers": {
-      "survival-tool": { "name": "Survival tool", "rate": 1, "radius": 1.42, "shot": 1 },
+      "sleeper-tool": { "name": "Sleeper tool", "rate": 1, "radius": 1.42, "shot": 1 },
       "mining-drill":  { "name": "Mining drill",  "rate": 2.5, "radius": 1.6, "shot": 1.4 },
       "plasma-drill":  { "name": "Plasma drill",  "rate": 5,   "radius": 1.9, "shot": 2 }
     }
   },
+
+  // Plants' hit points at scale 1 (they grow with the plant's size, a tree's by its species' trunk
+  // against trunk m of radius, half to twice): the Sleeper tool's blast wears them as it does a block
+  // (tool.lightning.blockPerSecond, 5 a second at the Sleeper tool's tier), and weapons wear the same.
+  // At that rate a tree of scale 1 falls in 3 s, a plant in 0.5 s, a boulder in 1.7 s, as when they
+  // had durabilities. What a plant gives comes by the share of its hit points taken: a plant's
+  // biomass and organics (a tree treeYield times them), a boulder's boulderStone stone.
+  "plants": { "plant": 2.5, "tree": 15, "boulder": 8.3, "trunk": 0.3, "treeYield": 1.5, "boulderStone": 3 },
 
   "build": {
     "reach": 9,
     // Holding the button on a blueprint places its blocks one at a time, in order, at this rate.
     "blueprintPlacesPerSecond": 8,
     "starterBlueprint": "starter.gbp",
-    // Small vessels turn no faster than this, °/s, however light they are (the handling model's
-    // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
-    "smallVesselMaxTurn": 110,
-    // A structure's area: its blocks' bounding box grown by a margin, per class, plus a share of
-    // its own size (so a big base reaches further). Inside it you are linked to its one shared
-    // storage (its toolbar, the CORE tab, its containers and constructors); outside, only your
-    // own bag counts. Empyrion links you while you stand on a structure, or within 100 m of a
-    // wireless block; GalHack's margin stands in for both.
-    "area": { "base": 30, "capital": 30, "small": 12, "hover": 12, "sizeShare": 0.5 }
+    // The BLUEPRINTS tab's starter set, in data/blueprints.
+    "library": ["starter.gbp", "rover.gbp", "dart.gbp", "shuttle.gbp", "outpost.gbp", "tank.gbp", "hauler.gbp", "frigate.gbp"],
+    // Blueprints the player saves, shown under Yours.
+    "saved": "user://blueprints",
+    // A structure's area: its blocks' bounding box grown by one margin plus a share of half its
+    // longest side (so a big base reaches further: 12 + 0.9 x 20 gives a 40 m base 30 m). Inside it you are
+    // linked to its one shared storage (its toolbar, the CORE tab, its containers and
+    // constructors); outside, only your own bag counts. Empyrion links you while you stand on a
+    // structure, or within 100 m of a wireless block; GalHack's margin stands in for both.
+    "area": { "margin": 12, "sizeShare": 0.9 }
   },
+
+  // The climate node: running, it holds the air within radius metres inside lowC to highC. Life
+  // support uses power only (owner, 15 Nov): it has no fuel of its own and draws power MW from the
+  // capacitors of the structure whose area it stands in (the nearest with power, if several).
+  "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "burnPerSecond": 0.02 },
 
   // The head torch (L): a cone from the helmet.
   "torch": { "range": 60, "angle": 32, "energy": 6.5, "attenuation": 0.85 },
 
-  // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8).
-  "containers": { "corpse": [4, 4], "backpack": [8, 8], "drop": [8, 8] },
+  // Force fields (design section 12). A field draws drawPerTile MW from the capacitors for each 1 m
+  // tile while it is up, so 4 tiles (2 x 2) cost 0.04 MW, under 2% of a Generator T1's 2.8; a 6 x 4
+  // scout opening 0.24; a 30 x 15 capital hangar mouth 4.5, more than that generator makes. Its
+  // regrowth costs that power too, and nothing else (no fuel). An open outer door's own field costs
+  // doorDraw. Each tier, by its component: strength is what it takes before it fizzles (and the cap
+  // it grows back to; an iron plated block has 158 hit points), regrowDelay the seconds it stays down
+  // first, regrowSeconds the time from nothing back to full. A field is drawn minSide to maxSide cells each way.
+  "forceFields": {
+    "drawPerTile": 0.01,
+    "doorDraw": 0.0005,
+    "minSide": 2,
+    "maxSide": 48,
+    "tiers": {
+      "force-field-t1": { "strength": 600, "regrowDelay": 30, "regrowSeconds": 20 },
+      "force-field-t2": { "strength": 1800, "regrowDelay": 20, "regrowSeconds": 15 },
+      "force-field-t3": { "strength": 5000, "regrowDelay": 12, "regrowSeconds": 10 }
+    }
+  },
+
+  // The structure's toolbar in a command chair (design: Visor HUD layout; Empyrion's seated toolbar):
+  // what the pilot toggles or triggers in flight, filled from the structure's blocks. A kind shows
+  // once the structure has a block of one of its functions ("core": every cored structure), as one
+  // slot, or with "perType" one slot for each block type (each kind of gun). "act": toggle (its
+  // number switches it), select (its number picks it; the trigger fires what is picked) or run (its
+  // number runs it once). "end": the end of the bar it fills from, in order towards that end (the
+  // last listed for the right end sits rightmost); the pilot can rearrange them on the Core tab.
+  // "label": its name on the slot (a slot per type takes its block's name). "icon": its picture, drawn by code.
+  "structureBar": {
+    "kinds": [
+      { "id": "spotlights", "label": "SPOT", "functions": ["spotlight"], "act": "toggle", "icon": "spotlight", "end": "left" },
+      { "id": "guns", "functions": ["weapon"], "act": "select", "icon": "gun", "end": "left", "perType": true },
+      { "id": "turrets", "label": "TURRET", "functions": ["turret"], "act": "toggle", "icon": "turret", "end": "left" },
+      { "id": "scanner", "label": "SCAN", "functions": ["scanner"], "act": "run", "icon": "scanner", "end": "left" },
+      { "id": "shields", "label": "SHIELD", "functions": ["shield"], "act": "toggle", "icon": "shield", "end": "right" },
+      { "id": "fabricators", "label": "FAB", "functions": ["constructor", "factory", "deconstructor"], "act": "toggle", "icon": "fabricator", "end": "right" },
+      { "id": "life-support", "label": "LIFE", "functions": ["life-support"], "act": "toggle", "icon": "atmosphere", "end": "right" },
+      { "id": "gravity", "label": "GRAV", "functions": ["core"], "act": "toggle", "icon": "gravity", "end": "right" }
+    ]
+  },
+
+  // Structure scanners: how far a scan from a structure marks places, m, by its scanner block (the
+  // best it carries). Design section 6: a vehicle detector reaches 2.5 to 10 km.
+  "scanners": { "scanner-t1": 2500, "scanner-t2": 5000, "scanner-t3": 10000 },
+
+  // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8). The bag is
+  // the one bag: the sleeper's on death or set down, a person's when they fall, a frightened one's offer.
+  "containers": { "corpse": [4, 4], "bag": [8, 8] },
+
+  // What a person of each trade has on them besides their weapon, each by chance, from one to "most":
+  // their bag when they fall, and what a frightened one gives up (a bundle by fear, never all of it).
+  "carried": {
+    "worker":    [ { "item": "iron-bar", "chance": 0.5, "most": 2 }, { "item": "copper-wire", "chance": 0.45, "most": 3 }, { "item": "trail-ration", "chance": 0.4 } ],
+    "mechanic":  [ { "item": "copper-wire", "chance": 0.6, "most": 3 }, { "item": "circuit-board", "chance": 0.4 }, { "item": "servo", "chance": 0.2 }, { "item": "iron-bar", "chance": 0.4, "most": 2 } ],
+    "farmer":    [ { "item": "biomass", "chance": 0.7, "most": 5 }, { "item": "trail-ration", "chance": 0.55, "most": 2 }, { "item": "biofuel", "chance": 0.2 } ],
+    "trader":    [ { "item": "polymer", "chance": 0.55, "most": 3 }, { "item": "copper-wire", "chance": 0.45, "most": 3 }, { "item": "circuit-board", "chance": 0.3 }, { "item": "glass", "chance": 0.3, "most": 2 }, { "item": "trail-ration", "chance": 0.4 } ],
+    "medic":     [ { "item": "patch-kit", "chance": 0.8, "most": 2 }, { "item": "medkit", "chance": 0.2 }, { "item": "trail-ration", "chance": 0.3 } ],
+    "scavenger": [ { "item": "iron-bar", "chance": 0.5, "most": 2 }, { "item": "copper-wire", "chance": 0.5, "most": 3 }, { "item": "polymer", "chance": 0.4, "most": 2 }, { "item": "circuit-board", "chance": 0.25 }, { "item": "energy-cell", "chance": 0.15 } ],
+    "guard":     [ { "item": "trail-ration", "chance": 0.4 }, { "item": "patch-kit", "chance": 0.3 } ],
+    "lawman":    [ { "item": "trail-ration", "chance": 0.4 }, { "item": "patch-kit", "chance": 0.35 } ],
+    "raider":    [ { "item": "trail-ration", "chance": 0.35 }, { "item": "copper-wire", "chance": 0.3, "most": 2 }, { "item": "patch-kit", "chance": 0.2 } ],
+    "elder":     [ { "item": "trail-ration", "chance": 0.5 }, { "item": "biofuel", "chance": 0.2 } ],
+    "drunk":     [ { "item": "biofuel", "chance": 0.4 }, { "item": "trail-ration", "chance": 0.3 } ],
+    "child":     [ { "item": "trail-ration", "chance": 0.3 } ]
+  },
 
   "wildlife": {
     // Creatures live on a square of the planet around the landing site, this far each way, m.
@@ -96,10 +238,20 @@
     // Nothing spawns this close to the pod.
     "safeRadius": 60,
     "alienness": 0.25,
-    // The most wild creatures a patch holds on the most livable world.
-    "mostPerPatch": 40,
+    // Server setting: block-breaking creatures (rams, burrowers, corroders, siege beasts) may damage
+    // players' bases. false keeps bases whole; anything else still takes their blows.
+    "breakBases": true,
+    // The most wild creatures a patch holds on the most livable world (alive, not crowded).
+    "mostPerPatch": 70,
+    // Groups of each species a patch holds on the most livable world, against its natural number (giants 1, the rest 2).
+    "density": 1.0,
+    // How far the world's layers (dead, barren, rich) move its numbers, 0..1: most of the way, so a dead world is plainly quiet
+    // and a living one alive (what's left on a dead one is its own: scavengers, its fall's kinds, vermin).
+    "layerWeight": 0.8,
+    // Topping up as you go: once you have moved on, groups come back out of sight while fewer than this share of the patch's most live within 250 m of you.
+    "nearShare": 0.6,
     // How much life a world of each archetype carries: lush worlds busiest, lava all but dead.
     "livable": { "Temperate": 1.0, "Alien": 0.6, "Arid": 0.35, "Ice": 0.3, "Lava": 0.08 },
-    "cratered": 0.4
+    "cratered": 0.7
   }
 }

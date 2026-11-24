@@ -35,9 +35,12 @@ public enum WarningLevel { Advisory, Warning, Danger }
 
 /// <summary>
 /// A visor warning. <see cref="ArrivesAt"/> is when the danger lands; <see cref="Kind"/> is set for
-/// weather warnings. Lightning and debris hits are never warned.
+/// weather warnings. Lightning and debris hits are never warned. For a symbol-only
+/// visor: <see cref="Sign"/> names the hazard's sign, <see cref="Left"/> is how long it lasts once
+/// here (seconds; 0 when unknown) and <see cref="From"/> is where it is or comes from.
 /// </summary>
-public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0);
+public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0,
+    string Sign = null, double Left = 0, Vector3? From = null);
 
 /// <summary>Weather that lingers on the ground after it has passed.</summary>
 public struct GroundCover
@@ -54,6 +57,11 @@ public struct GroundCover
 /// weather to the next, stretched so no parameter changes faster than its data-defined max
 /// rate. Hazards (lightning, falling debris, tornadoes) draw from a second random stream, so
 /// where the player walks never changes what weather comes next.
+///
+/// The timeline is the world's air: what is coming, and when. What it does at a place is the
+/// region's (<see cref="LocalAt"/>): the front over it, and its land and climate, which decide what
+/// can form there (<see cref="Land"/>, <see cref="RegionRules"/>). Each world leans its type's weights
+/// by its own dials (<see cref="WorldWeather"/>).
 /// </summary>
 public sealed class WeatherSim
 {
@@ -73,25 +81,73 @@ public sealed class WeatherSim
     public IReadOnlyList<Segment> Timeline => _segments;
     public IReadOnlyList<Tornado> Tornadoes => _tornadoes;
 
+    /// <summary>The storms in the sky: where the rain, strikes and funnels come from.</summary>
+    public IReadOnlyList<StormCell> Cells => _cells;
+
+    /// <summary>The dust storms on the land: the only places a dust storm's weather holds.</summary>
+    public IReadOnlyList<DustStorm> DustStorms => _dust;
+
+    /// <summary>The front the weather is arriving on (or has arrived on), or null: a storm's line.</summary>
+    public Front Front => _front;
+
+    /// <summary>The stretch of the timeline the front carries (its weather behind the edge, the one before it ahead), or null.</summary>
+    public Segment FrontWeather => _frontSegment;
+
+    /// <summary>No fronts: storms come as loose cells (single-cell views, tests).</summary>
+    public bool FrontsOff { get; set; }
+
+    /// <summary>The world's size, metres, for what is measured across it (a front's line): zero for no wrap.</summary>
+    public Vector2 WorldSize { get; set; }
+
+    /// <summary>Open water at a point (a sea or a lake, not a stream): waterspouts form only over it. Null: none anywhere.</summary>
+    public Func<float, float, bool> OpenWater { get; set; }
+
+    /// <summary>
+    /// The land and climate at a point, from the world's map. Null: no map, the same open plain
+    /// everywhere, and nothing is held back by region (the weather prototype's own field).
+    /// </summary>
+    public Func<float, float, Ground> Land { get; set; }
+
+    /// <summary>The world's mean warmth on the same 0..1 scale as <see cref="Ground.Warmth"/>: its type's base temperature is the weather there.</summary>
+    public float MeanWarmth { get; set; } = 0.5f;
+
+    /// <summary>This world's own dials on its type's weights.</summary>
+    public WorldWeather World { get; }
+
+    /// <summary>The weather where the observer was at the last <see cref="Step"/>: their region's, under their part of the front.</summary>
+    public Conditions Here { get; private set; }
+
     /// <summary>What happened during the last <see cref="Step"/>.</summary>
     public IReadOnlyList<WeatherEvent> Events => _events;
 
     readonly List<Segment> _segments = new();
     readonly List<Tornado> _tornadoes = new();
+    readonly List<StormCell> _cells = new();
+    readonly List<DustStorm> _dust = new();
+    Segment _jumpedInto, _calmSegment;
+    Conditions _calm;
+    double _calmTime = -1;
+    float _cellTimer, _dustTimer;
+    Front _front;
     readonly List<WeatherEvent> _events = new();
     readonly List<(HazardKind kind, Vector3 center)> _queued = new();
-    readonly Rng _timelineRng, _hazardRng;
+    readonly Rng _timelineRng, _hazardRng, _dustRng;
     readonly uint _gustSeed;
-    float _lightningCharge, _lightningNext, _debrisCharge, _debrisNext, _tornadoCharge, _tornadoNext;
+    float _lightningCharge, _lightningNext, _debrisCharge, _debrisNext, _tornadoCharge, _tornadoNext, _spoutCharge, _spoutNext = 1f, _devilCharge, _devilNext = 1f;
+    float _groundCheck;
+    Vector3 _observer;
+    Segment _frontSegment;
     int _nextId = 1;
 
-    public WeatherSim(WeatherData data, string archetypeId, ulong seed, WeatherKind? start = null)
+    public WeatherSim(WeatherData data, string archetypeId, ulong seed, WeatherKind? start = null, WorldWeather world = null)
     {
         Data = data;
         Archetype = data.Archetype(archetypeId);
         Seed = seed;
+        World = world ?? WorldWeather.Neutral;
         _timelineRng = new Rng(seed);
         _hazardRng = new Rng(seed ^ 0xA5A5_5A5A_C3C3_3C3CUL);
+        _dustRng = new Rng(seed ^ 0x5D57_0D57_9E37_79B9UL); // dust storms draw on their own: one forming never changes the next strike or funnel
         _gustSeed = (uint)(seed * 2654435761UL);
         _lightningNext = _hazardRng.Exponential();
         _debrisNext = _hazardRng.Exponential();
@@ -107,6 +163,7 @@ public sealed class WeatherSim
         });
         EnsureTimeline(Horizon);
         Current = ConditionsAt(0);
+        Here = Current;
     }
 
     /// <summary>The timeline is always known this far ahead, so every forecast can go up on time.</summary>
@@ -119,11 +176,16 @@ public sealed class WeatherSim
     {
         _events.Clear();
         Time += dt;
+        _observer = observer;
         EnsureTimeline(Time + Horizon);
         Current = ConditionsAt(Time);
         UpdateGround(dt);
+        StepFront(dt, observer);
+        StepDust(dt, observer);
+        StepCells(dt, observer);
         StepStrikes(dt, observer);
         StepTornadoes(dt, observer);
+        Here = LocalAt(observer);
     }
 
     void UpdateGround(float dt)
@@ -134,7 +196,9 @@ public sealed class WeatherSim
         float drying = (1f - MathF.Min(1f, c.Rain * 2f)) * (0.4f + c.Solar);
         g.Wetness = Math.Clamp(g.Wetness + (c.Rain * r.WetRate - drying * r.DryRate) * dt, 0f, 1f);
         g.Snow = Math.Clamp(g.Snow + (c.Snow * r.SnowRate - MathF.Max(0f, c.Temperature) * r.MeltRate * (1f - c.Snow)) * dt, 0f, 1f);
-        g.Dust = Math.Clamp(g.Dust + (c.Dust * r.DustRate - (1f - c.Dust) * (r.DustClearRate + c.Rain * r.DustClearRate * 10f)) * dt, 0f, 1f);
+        // Dust settles where a storm has been over the observer, not wherever the world's weather is a dust storm.
+        float dust = Here.Dust;
+        g.Dust = Math.Clamp(g.Dust + (dust * r.DustRate - (1f - dust) * (r.DustClearRate + c.Rain * r.DustClearRate * 10f)) * dt, 0f, 1f);
         Ground = g;
     }
 
@@ -211,17 +275,33 @@ public sealed class WeatherSim
     {
         float total = 0f;
         foreach (var (kind, weight) in Archetype.Weights)
-            if (kind != previous) total += weight;
+            if (kind != previous) total += Weight(kind, weight);
         float pick = _timelineRng.NextFloat() * total;
         WeatherKind chosen = previous ?? WeatherKind.Clear;
         foreach (var (kind, weight) in Archetype.Weights)
         {
             if (kind == previous) continue;
             chosen = kind;
-            pick -= weight;
+            pick -= Weight(kind, weight);
             if (pick < 0f) break;
         }
         return chosen;
+    }
+
+    /// <summary>How often a weather visits this world: its type's weight, leaned by the world's own dials.</summary>
+    public float Weight(WeatherKind kind, float weight) => World.Weigh(Data.Worlds, kind, weight);
+
+    /// <summary>A weather's share of this world's timeline, 0..1, by weight (tests, surveys).</summary>
+    public float Share(WeatherKind kind)
+    {
+        float total = 0f, mine = 0f;
+        foreach (var (k, w) in Archetype.Weights)
+        {
+            float x = Weight(k, w);
+            total += x;
+            if (k == kind) mine = x;
+        }
+        return total > 0f ? mine / total : 0f;
     }
 
     /// <summary>Every weather holds for a while after it has fully arrived.</summary>
@@ -239,6 +319,9 @@ public sealed class WeatherSim
     {
         Replace(kind, snap: true);
         Current = ConditionsAt(Time);
+        // A jump into a dust storm stands its storm over the observer at once; a jump into anything else leaves none.
+        if (kind != WeatherKind.DustStorm) _dust.Clear();
+        StepDust(0f, _observer);
     }
 
     /// <summary>Moves to another kind of planet. The weather turns toward that planet's typical skies.</summary>
@@ -270,20 +353,186 @@ public sealed class WeatherSim
         };
         if (_segments.Count == 1 && _segments[0].Duration <= 0) _segments[0] = segment;
         else _segments.Add(segment);
+        if (_frontSegment != null && !_segments.Contains(_frontSegment)) _frontSegment = null; // its weather is gone from the timeline
         EnsureTimeline(Time + Horizon);
+    }
+
+    // ---- Regions ----------------------------------------------------------------------
+
+    /// <summary>The land at a point (an open plain if the world has no map).</summary>
+    public Ground GroundAt(Vector3 p) => Land?.Invoke(p.X, p.Z) ?? Model.Ground.Plain;
+
+    /// <summary>The mean height of the land round a point, for what pools in low ground.</summary>
+    float AroundHeight(Vector3 p)
+    {
+        float sum = 0f;
+        for (int k = 0; k < 4; k++)
+        {
+            float a = k * MathF.Tau / 4f + 0.4f;
+            sum += Land(p.X + MathF.Cos(a) * 400f, p.Z + MathF.Sin(a) * 400f).Height;
+        }
+        return sum / 4f;
+    }
+
+    /// <summary>What a weather is in a region: itself where its land allows it, else what it falls back to there.</summary>
+    public WeatherKind LocalKind(WeatherKind kind, Vector3 p)
+    {
+        if (Land == null || !Data.Regions.Fallback.TryGetValue(kind, out WeatherKind fallback)) return kind;
+        Ground g = GroundAt(p);
+        if (Regions.Suits(Data.Regions, kind, g, kind == WeatherKind.Fog ? AroundHeight(p) : g.Height) >= 0.5f) return kind;
+        // A tornado storm is the area's danger, not one spot's: funnels that form on open land in reach
+        // wander, so it is a tornado storm wherever such land lies within a few kilometres.
+        if (kind == WeatherKind.Tornado)
+            for (int ring = 1; ring <= 2; ring++)
+                for (int k = 0; k < 8; k++)
+                {
+                    float a = k * MathF.Tau / 8f + ring * 0.4f;
+                    Vector3 q = p + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * (1500f * ring);
+                    if (Regions.TornadoGround(Data.Regions, Land, q) > 0.25f) return kind;
+                }
+        return fallback;
+    }
+
+    /// <summary>
+    /// The world's air over a point. The timeline's weather, except that a dust storm's holds only
+    /// inside its storms (<see cref="InStorm"/>): everywhere else it is its fallback, wind and all.
+    /// Under a front's storm it is the storm's, ahead of its edge and past its deck still the weather
+    /// before it.
+    /// </summary>
+    Conditions AirOver(Vector3 p, out WeatherKind from, out WeatherKind to, out float blend)
+    {
+        Segment s = SegmentAt(Time);
+        (from, to, blend) = (s.FromKind, s.Kind, Blend(s, Time));
+        Conditions c = Calmed(s);
+        if (FrontOver(s))
+        {
+            // The front's own weather behind its edge, the one before it everywhere else.
+            float under = _front.Strength * _front.Under(p);
+            Conditions before = _frontSegment.Start > Time ? c : Calm(_frontSegment.From, _frontSegment.FromKind);
+            c = Conditions.Lerp(before, Calm(_frontSegment.To, _frontSegment.Kind), under);
+            (from, to, blend) = (_frontSegment.FromKind, _frontSegment.Kind, under);
+        }
+        return c;
+    }
+
+    /// <summary>The timeline's air with a dust storm's taken for its fallback: the same everywhere at one moment, so worked out once a tick (every body's wind reads it every tick).</summary>
+    ref readonly Conditions Calmed(Segment s)
+    {
+        if (s != _calmSegment || Time != _calmTime)
+            (_calm, _calmSegment, _calmTime) = (Conditions.Lerp(Calm(s.From, s.FromKind), Calm(s.To, s.Kind), Blend(s, Time)), s, Time);
+        return ref _calm;
+    }
+
+    /// <summary>A front's weather is over its part of the map: its own behind its edge, the one before it ahead.</summary>
+    bool FrontOver(Segment now) => _front != null && _frontSegment != null && (_frontSegment == now || _frontSegment.Start > Time);
+
+    /// <summary>Inside a dust storm, its weather over the world's, as deep as the point is in it (returned, 0 to 1): whatever the world's weather is doing there, the storm's own is the storm's.</summary>
+    float InStorm(ref Conditions c, Vector3 p)
+    {
+        DustStorm deepest = Deepest(p, out float depth);
+        if (deepest != null) c = Conditions.Lerp(c, deepest.Air, depth);
+        return depth;
+    }
+
+    /// <summary>The dust storm a point is deepest in, and how deep (0 to 1); null outside every one.</summary>
+    DustStorm Deepest(Vector3 p, out float depth)
+    {
+        depth = 0f;
+        DustStorm deepest = null;
+        foreach (DustStorm d in _dust)
+        {
+            if (d.Inside(p, WorldSize) <= 0f) continue;
+            float k = d.Depth(p, WorldSize, p.Y - GroundHeight(p.X, p.Z));
+            if (k > depth) (depth, deepest) = (k, d);
+        }
+        return deepest;
+    }
+
+    /// <summary>A dust storm's settled weather as it is outside its storms: its fallback's (clear skies), on its heading.</summary>
+    Conditions Calm(in Conditions c, WeatherKind kind)
+    {
+        if (kind != WeatherKind.DustStorm || !Data.Regions.Fallback.TryGetValue(kind, out WeatherKind fallback)) return c;
+        return Conditions.FromState(Data.State(fallback), Archetype.BaseTemperature, MathF.Atan2(c[Param.WindZ], c[Param.WindX]));
+    }
+
+    /// <summary>How deep in a dust storm a point is, 0 to 1 (0 outside every one).</summary>
+    public float DustDepth(Vector3 p)
+    {
+        Deepest(p, out float depth);
+        return depth;
+    }
+
+    /// <summary>
+    /// The weather at a point: the world's air (<see cref="AirOver"/>), where its land allows it (a
+    /// blizzard on warm low ground is rain), then a dust storm's inside one (<see cref="InStorm"/>).
+    /// Then the region has the rest of its say: the air is colder up high, rain falls as snow where it
+    /// is cold enough and snow as rain where it isn't, dust lifts only off dry loose ground (or in a
+    /// storm that carries it), fog pools in damp low ground, and the wind blows harder on the heights
+    /// and softer in the woods.
+    /// </summary>
+    public Conditions LocalAt(Vector3 p)
+    {
+        Conditions c = AirOver(p, out WeatherKind from, out WeatherKind to, out float blend);
+        if (Land == null)
+        {
+            InStorm(ref c, p);
+            return c;
+        }
+
+        RegionRules r = Data.Regions;
+        Ground g = Land(p.X, p.Z);
+        float around = AroundHeight(p);
+        if (from != to) c = Conditions.Lerp(Localize(c, from, g, around), Localize(c, to, g, around), blend);
+        else c = Localize(c, to, g, around);
+        float storm = InStorm(ref c, p);
+
+        // Warmer and colder ground than the world's middle, and the cold of height.
+        float temperature = c.Temperature + r.WarmthDegrees * (g.Warmth - MeanWarmth) * 2f - r.LapseRate * MathF.Max(0f, g.Height) / 1000f;
+        c[Param.Temperature] = temperature;
+        float snowy = 1f - Front.Smooth(r.Blizzard.SnowBelow, r.Blizzard.SnowBelow + 2f, temperature);
+        float fall = c.Rain + c.Snow;
+        c[Param.Snow] = fall * snowy;
+        c[Param.Rain] = fall * (1f - snowy);
+        c[Param.Dust] *= MathF.Max(Regions.DustGround(r, g), storm); // a storm carries its dust over firm ground too
+        c[Param.GroundFog] *= 0.25f + 0.75f * Regions.FogGround(r, g, around);
+        c[Param.Tornadoes] *= Regions.TornadoPoint(r, g);
+        float wind = (1f + r.Wind.HighBoost * Regions.High(r, g)) * (1f - r.Wind.ForestCut * g.Forest);
+        c[Param.WindX] *= wind;
+        c[Param.WindZ] *= wind;
+        return c;
+    }
+
+    /// <summary>A weather's conditions where its land allows it only so far: the rest is its fallback's, the wind kept.</summary>
+    Conditions Localize(in Conditions c, WeatherKind kind, in Ground g, float around)
+    {
+        RegionRules r = Data.Regions;
+        // A dust storm's land is its storms' own: they form and are fed only over dry loose ground (StepDust).
+        if (kind == WeatherKind.DustStorm || !r.Fallback.TryGetValue(kind, out WeatherKind fallback)) return c;
+        float suits = Regions.Suits(r, kind, g, around);
+        if (suits >= 1f) return c;
+        float heading = MathF.Atan2(c[Param.WindZ], c[Param.WindX]);
+        Conditions instead = Conditions.FromState(Data.State(fallback), Archetype.BaseTemperature, heading);
+        instead[Param.WindX] = c[Param.WindX];
+        instead[Param.WindZ] = c[Param.WindZ];
+        instead[Param.Gustiness] = c[Param.Gustiness];
+        return Conditions.Lerp(instead, c, suits);
     }
 
     // ---- Forecast and warnings --------------------------------------------------------
 
     /// <summary>Upcoming weather whose forecast has gone up, soonest first.</summary>
-    public void GetForecast(List<ForecastEntry> into)
+    public void GetForecast(List<ForecastEntry> into) => GetForecast(into, _observer);
+
+    /// <summary>Upcoming weather whose forecast has gone up, soonest first, as it will be in the observer's region.</summary>
+    public void GetForecast(List<ForecastEntry> into, Vector3 observer)
     {
         into.Clear();
         foreach (Segment s in _segments)
         {
             if (s.Start <= Time || Time < s.ForecastAt) continue;
-            WeatherState state = Data.State(s.Kind);
-            into.Add(new ForecastEntry(s.Kind, state.Name, s.Start - Time, state.Severe));
+            WeatherKind kind = LocalKind(s.Kind, observer);
+            WeatherState state = Data.State(kind);
+            into.Add(new ForecastEntry(kind, state.Name, s.Start - Time, state.Severe));
         }
     }
 
@@ -294,23 +543,425 @@ public sealed class WeatherSim
         foreach (Tornado t in _tornadoes)
         {
             float distance = Flat(t.Position - observer).Length();
+            if (t.Kind != TornadoKind.Tornado)
+            {
+                // A waterspout coming in is worth a word; a dust devil is not.
+                if (t.Kind == TornadoKind.Waterspout && t.Touchdown && distance < 400f)
+                    into.Add(new WarningEntry(WarningLevel.Advisory, $"Waterspout {distance:F0} m {Bearing(observer, t.Position)}", 0));
+                continue;
+            }
             if (!t.Touchdown)
                 into.Add(new WarningEntry(WarningLevel.Danger,
                     $"Funnel forming {distance:F0} m {Bearing(observer, t.Position)}, touchdown in {t.Rules.FormSeconds - t.Age:F0} s",
-                    t.Rules.FormSeconds - t.Age));
+                    t.Rules.FormSeconds - t.Age, Sign: "tornado", From: t.Position));
             else if (!t.Dissipating || distance < 200f)
                 into.Add(new WarningEntry(WarningLevel.Danger,
-                    $"Tornado {distance:F0} m {Bearing(observer, t.Position)}{(t.Homing ? ", heading your way" : "")}", 0));
+                    $"Tornado {distance:F0} m {Bearing(observer, t.Position)}{(t.Homing ? ", heading your way" : "")}", 0,
+                    Sign: "tornado", Left: Math.Max(0, t.Rules.Lifetime - t.Age), From: t.Position));
+        }
+
+        // A dust storm in whose path the observer stands: from when it is a warning's lead away until its back has passed.
+        WeatherState dust = Data.State(WeatherKind.DustStorm);
+        foreach (DustStorm d in _dust)
+        {
+            Vector2 l = d.Local(observer, WorldSize);
+            if (d.Strength < 0.2f || MathF.Abs(l.Y) >= d.HalfWidth) continue;
+            float edge = d.EdgeAlong(l.Y); // its outline, ahead of and behind its middle, on the observer's line
+            float eta = MathF.Max(0f, (l.X - edge) / d.Speed);
+            if (l.X < -edge || eta > dust.WarningLead) continue;
+            into.Add(new WarningEntry(WarningLevel.Warning, dust.Warning, eta, WeatherKind.DustStorm, Time + eta,
+                Sign: SignOf(WeatherKind.DustStorm), Left: (MathF.Min(l.X, edge) + edge) / d.Speed, From: d.Position));
         }
 
         foreach (Segment s in _segments)
         {
-            if (Time < s.WarningAt || Time >= s.End) continue;
-            WeatherState state = Data.State(s.Kind);
+            // A dust storm weather is warned while it is coming; once it is in, its storms warn for themselves, where they are.
+            if (Time < s.WarningAt || Time >= s.End || (s.Kind == WeatherKind.DustStorm && Time >= s.Start)) continue;
+            // As it will be here: a tornado storm over the mountains is a lightning storm, a blizzard on warm low ground no blizzard.
+            WeatherKind kind = LocalKind(s.Kind, observer);
+            // Only a real hazard warns, and by its own sign: clear skies, clouds and fog never do.
+            if (SignOf(kind) == null) continue;
+            WeatherState state = Data.State(kind);
             double eta = s.Start - Time;
             string text = eta > 0 ? $"{state.Name} in {Clock(eta)}. {state.Warning}" : state.Warning;
-            into.Add(new WarningEntry(WarningLevel.Warning, text, Math.Max(0, eta), s.Kind, s.Start));
+            // Weather comes in on the wind: from upwind of the observer.
+            var upwind = new Vector3(-MathF.Cos(s.WindHeading), 0f, -MathF.Sin(s.WindHeading));
+            into.Add(new WarningEntry(WarningLevel.Warning, text, Math.Max(0, eta), kind, s.Start,
+                Sign: SignOf(kind), Left: Math.Max(0, s.End - Math.Max(Time, s.Start)), From: observer + upwind * 2000f));
         }
+    }
+
+    /// <summary>
+    /// The sign a weather is warned with (the names of the game's sign set), or null for weather that is
+    /// no danger on foot and so never warns: clear skies, clouds and fog. There is no generic sign to fall
+    /// back on: a hazard without a sign of its own gets one drawn.
+    /// </summary>
+    public static string SignOf(WeatherKind kind) => kind switch
+    {
+        WeatherKind.Tornado => "tornado",
+        WeatherKind.Thunderstorm => "storm",
+        WeatherKind.Hurricane => "high_wind",
+        WeatherKind.DustStorm => "dust_storm",
+        WeatherKind.Blizzard or WeatherKind.Snow => "extreme_cold",
+        WeatherKind.FireStorm => "fire",
+        WeatherKind.Monsoon or WeatherKind.Rain => "flood",
+        _ => null, // Clear, Clouds, Fog
+    };
+
+    // ---- Storm cells ------------------------------------------------------------------
+
+    /// <summary>
+    /// Cells come and go with how stormy the weather is. They form upwind and drift over, unless the
+    /// storm is already full-grown with none in the sky (a jump in the weather): then the first
+    /// stands overhead.
+    /// </summary>
+    void StepCells(float dt, Vector3 observer)
+    {
+        if (_front is { Kind: FrontKind.Storm } f && f.Strength > 0.02f)
+        {
+            StepFrontCells(dt, observer, f);
+            return;
+        }
+        CellRules r = Data.Cells;
+        Conditions c = Current;
+        float storm = MathF.Max(c.Rain, MathF.Min(1f, c.LightningPerMinute / 4f));
+        if (c.TornadoesPerMinute > 0.05f) storm = 1f;
+        int want = storm < r.From ? 0 : 1 + (int)MathF.Round(storm * (r.MaxCells - 1));
+        Vector3 drift = new Vector3(c.Wind.X, 0f, c.Wind.Y) * r.DriftShare;
+        for (int i = _cells.Count - 1; i >= 0; i--)
+        {
+            StormCell cell = _cells[i];
+            if (cell.Funnel is { Done: true }) cell.Funnel = null;
+            if (cell.Funnel != null)
+            {
+                cell.Position = Flat(cell.Funnel.Position);
+                cell.Strength = MathF.Min(1f, cell.Strength + dt / r.GrowSeconds);
+                continue;
+            }
+            cell.Position += drift * dt;
+            float target = i < want ? 1f : 0f;
+            cell.Strength += Math.Clamp(target - cell.Strength, -dt / r.GrowSeconds, dt / r.GrowSeconds);
+            bool spent = target == 0f && cell.Strength <= 0f;
+            if (spent || Flat(cell.Position - observer).Length() > r.Range) _cells.RemoveAt(i);
+        }
+        _cellTimer -= dt;
+        if (_cells.Count >= want) return;
+        if (_cells.Count == 0 && storm >= 0.7f)
+        {
+            AddCell(observer + RandomOffset(r.RadiusMin * 0.3f), 1f);
+            return;
+        }
+        if (_cellTimer > 0f) return;
+        _cellTimer = r.SpawnEvery;
+        float speed = drift.Length();
+        Vector3 down = speed > 0.01f ? drift / speed : new Vector3(1f, 0f, 0f);
+        var across = new Vector3(-down.Z, 0f, down.X);
+        AddCell(observer - down * _hazardRng.Range(0.45f, 0.9f) * r.Range + across * _hazardRng.Range(-0.4f, 0.4f) * r.Range, 0f);
+    }
+
+    /// <summary>A storm cell at a place, this strong (a jump, tests, screenshots: the weather makes its own). <paramref name="first"/>: drawn before any other (a funnel's).</summary>
+    public StormCell AddCell(Vector3 at, float strength, bool first = false)
+    {
+        var cell = new StormCell { Id = _nextId++, Position = Flat(at), Strength = strength, Radius = _hazardRng.Range(Data.Cells.RadiusMin, Data.Cells.RadiusMax) };
+        if (first) _cells.Insert(0, cell);
+        else _cells.Add(cell);
+        return cell;
+    }
+
+    /// <summary>Empties the sky of cells at once (tests, screenshots).</summary>
+    public void ClearCells() => _cells.Clear();
+
+    /// <summary>How much storm hangs over a point, 0 to 1: its cells', and the deck trailing behind a front's edge.</summary>
+    public float CellCover(Vector3 p)
+    {
+        float cover = _front is { Kind: FrontKind.Storm } f ? f.Cover(p) : 0f;
+        foreach (StormCell c in _cells) cover = MathF.Max(cover, c.Cover(p));
+        return cover;
+    }
+
+    // ---- Fronts -----------------------------------------------------------------------
+
+    /// <summary>How long a front takes to grow as it comes into sight, and to fade once its weather has gone, seconds.</summary>
+    const float FrontGrowSeconds = 40f, FrontFadeSeconds = 90f;
+
+    /// <summary>
+    /// Storms arrive on a front. It forms once its weather is near enough to be in sight, upwind by
+    /// as far as it will travel before that weather is half in, so its shelf is seen for minutes
+    /// before it arrives; it advances on the storm's wind and fades once its weather has gone. A
+    /// jump straight into the weather puts the observer under it, its edge already past.
+    /// </summary>
+    void StepFront(float dt, Vector3 observer)
+    {
+        CellRules r = Data.Cells;
+        EnsureTimeline(Time + r.FrontSight / 7f);
+        Segment coming = Due(r.FrontSight / 7f, dust: false);
+        if (_front != null)
+        {
+            _front.Centre += _front.Velocity * dt;
+            if (coming != null && (_frontSegment == null || _frontSegment.End <= Time)) _frontSegment = coming;
+            float target = coming != null ? 1f : 0f;
+            _front.Strength += Math.Clamp(target - _front.Strength, -dt / FrontFadeSeconds, dt / FrontGrowSeconds);
+            if (coming == null && _front.Strength <= 0f) (_front, _frontSegment) = (null, null);
+            return;
+        }
+        if (coming == null || FrontsOff) return;
+        Conditions to = coming.To;
+        float speed = FrontSpeed(to.WindSpeed);
+        float distance = (float)(coming.Start + coming.Transition * 0.5 - Time) * speed;
+        bool jumped = coming.Forced && Blend(coming, Time) >= 0.5f;
+        if (jumped) distance = -1500f;
+        else if (distance > r.FrontSight) return; // not in sight yet
+        var line = Front.Lattice(to.Wind, WorldSize, MinFrontSpacing);
+        // On a small world it comes into sight no farther off than its copies allow.
+        if (!jumped && distance > line.spacing * 0.5f - 1500f) return;
+        _front = MakeFront(observer, distance, to.Wind, speed, jumped ? 1f : 0f);
+        _frontSegment = coming;
+    }
+
+    /// <summary>Copies of a front stand at least this far apart across the world, metres: room for its storm and the open air ahead of it.</summary>
+    const float MinFrontSpacing = 5500f;
+
+    /// <summary>A front advances a little slower than its storm's wind, m/s.</summary>
+    static float FrontSpeed(float wind) => MathF.Max(7f, wind * 0.9f);
+
+    /// <summary>Whether a weather comes on a front: thunderstorms and tornado storms on a storm's line.</summary>
+    static bool FrontOf(in Conditions to) => to.Cellular > 0.3f && (to.LightningPerMinute >= 1f || to.TornadoesPerMinute > 0.05f);
+
+    /// <summary>The weather now in, or the next one due within <paramref name="ahead"/> seconds, that comes on a front (or, <paramref name="dust"/>, that is a dust storm); null for none.</summary>
+    Segment Due(float ahead, bool dust)
+    {
+        int lo = 0, hi = _segments.Count - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            if (_segments[mid].Start <= Time) lo = mid;
+            else hi = mid - 1;
+        }
+        for (int i = lo; i < _segments.Count && _segments[i].Start <= Time + ahead; i++)
+            if (_segments[i].End > Time && (dust ? _segments[i].Kind == WeatherKind.DustStorm : FrontOf(_segments[i].To))) return _segments[i];
+        return null;
+    }
+
+    Front MakeFront(Vector3 observer, float distance, Vector2 wind, float speed, float strength, bool? roll = null)
+    {
+        var (heading, period, spacing, shear) = Front.Lattice(wind, WorldSize, MinFrontSpacing);
+        float bow = MathF.Min(_hazardRng.Range(500f, 1400f), spacing * 0.12f);
+        float reach = spacing * 0.5f - bow;
+        float seed = _hazardRng.NextFloat(), along = _hazardRng.Range(0f, period);
+        var f = new Front
+        {
+            Id = _nextId++, Kind = FrontKind.Storm, Heading = heading, Speed = speed, Period = period, Spacing = spacing, Shear = shear, Bow = bow,
+            Bows = Math.Max(1, (int)MathF.Round(period / 22000f)), Bays = Math.Max(2, (int)MathF.Round(period / 5000f)),
+            Depth = MathF.Min(_hazardRng.Range(7000f, 14000f), reach * 0.85f),
+            Severity = _hazardRng.Range(0.5f, 1f), Roll = roll ?? _hazardRng.NextFloat() < 0.3f,
+            Seed = seed, Strength = strength,
+        };
+        // Its edge passes the observer's stretch of it `distance` upwind of them.
+        distance = Math.Clamp(distance, -reach + 300f, reach - 300f);
+        var perp = new Vector2(-heading.Y, heading.X);
+        Vector2 c = new Vector2(observer.X, observer.Z) - heading * (distance - f.Lag(along)) - perp * along;
+        f.Centre = new Vector3(c.X, 0f, c.Y);
+        return f;
+    }
+
+    /// <summary>
+    /// A front this far upwind of a point, fully grown, its cells already standing (tests, screenshots).
+    /// <paramref name="wind"/> sets the way it advances (the weather's wind if not given); <paramref name="roll"/> gives it a roll cloud.
+    /// </summary>
+    public Front StartFront(FrontKind kind, Vector3 observer, float distance, Vector2? wind = null, bool? roll = null)
+    {
+        _front = MakeFront(observer, distance, wind ?? Current.Wind, FrontSpeed(Current.WindSpeed), 1f, roll);
+        // It carries the timeline's own front weather, if one is in or due: the weather before it ahead of its edge, its own behind.
+        _frontSegment = Due(Data.Cells.FrontSight / 7f, dust: false);
+        _cells.RemoveAll(c => c.Funnel == null);
+        StepFrontCells(0f, observer, _front);
+        return _front;
+    }
+
+    // ---- Dust storms ------------------------------------------------------------------
+
+    /// <summary>
+    /// Dust storms are places. While a dust storm is the weather, or is due before one formed upwind
+    /// now could reach the observer, storms form over dry loose ground upwind of them (not while the
+    /// ground is wet or snowed on), so their walls are watched coming. Each rolls on its own wind,
+    /// grows, is fed while its middle is over dry loose ground and dies away off it or when its life
+    /// is spent. A jump straight into the weather stands one over the observer, fully grown.
+    /// </summary>
+    void StepDust(float dt, Vector3 observer)
+    {
+        DustStormRules r = Data.DustStorms;
+        for (int i = _dust.Count - 1; i >= 0; i--)
+        {
+            DustStorm d = _dust[i];
+            d.Position += d.Velocity * dt;
+            d.Age += dt;
+            float target = d.Age < d.Life && DustGroundAt(d.Position) >= r.FedGround ? 1f : 0f;
+            d.Strength += Math.Clamp(target - d.Strength, -dt / r.FadeSeconds, dt / r.GrowSeconds);
+            if ((target == 0f && d.Strength <= 0f) || DustStorm.Apart(d.Position, observer, WorldSize).Length() > r.Range) _dust.RemoveAt(i);
+        }
+        _dustTimer -= dt;
+        WeatherState state = Data.State(WeatherKind.DustStorm);
+        Segment due = Due((r.FormFar + r.HalfWidthMax) / MathF.Max(1f, state.WindSpeed * r.DriftShare), dust: true);
+        if (due == null || Ground.Wetness >= 0.4f || Ground.Snow >= 0.3f) return;
+        Vector2 wind = due.To.Wind;
+        if (due.Forced && due != _jumpedInto && Blend(due, Time) >= 0.5f && DustGroundAt(observer) >= r.FormGround)
+        {
+            // Once for the jump: the storm it stands over the observer takes the place of the farthest if there are already as many as there may be.
+            _jumpedInto = due;
+            if (_dust.Count >= r.MaxStorms)
+            {
+                DustStorm far = _dust[0];
+                foreach (DustStorm d in _dust)
+                    if (DustStorm.Apart(d.Position, observer, WorldSize).Length() > DustStorm.Apart(far.Position, observer, WorldSize).Length()) far = d;
+                _dust.Remove(far);
+            }
+            AddDustStorm(observer, 1f, wind);
+            return;
+        }
+        if (_dust.Count >= r.MaxStorms || _dustTimer > 0f) return;
+        _dustTimer = r.SpawnEvery;
+        // Upwind, its leading edge a few kilometres off, on a line that may pass over the observer or beside them.
+        Vector2 down = wind.LengthSquared() > 1e-4f ? wind.Normalized() : new Vector2(1f, 0f);
+        var way = new Vector3(down.X, 0f, down.Y);
+        var across = new Vector3(-down.Y, 0f, down.X);
+        for (int k = 0; k < 6; k++)
+        {
+            Vector3 off = -way * (_dustRng.Range(r.FormNear, r.FormFar) + r.HalfWidthMax * 0.6f) + across * _dustRng.Range(-1f, 1f) * r.HalfWidthMax;
+            if (off.Length() > Room) off = off.Normalized() * Room; // on a small world, no farther off than its next copy round allows
+            Vector3 at = observer + off;
+            if (DustGroundAt(at) < r.FormGround) continue;
+            AddDustStorm(at, 0f, wind);
+            return;
+        }
+    }
+
+    /// <summary>How far a storm may reach from the observer on this world, metres: under half its short side, so no part of it comes round to the far side of them.</summary>
+    float Room => WorldSize.X > 0f && WorldSize.Y > 0f ? 0.5f * MathF.Min(WorldSize.X, WorldSize.Y) - 100f : float.MaxValue;
+
+    /// <summary>How liftable the ground at a point is, 0 to 1 (everywhere, with no map).</summary>
+    float DustGroundAt(Vector3 p) => Land == null ? 1f : Regions.DustGround(Data.Regions, GroundAt(p));
+
+    /// <summary>A dust storm centred at a place, this strong, on a wind (the dust storm's own, the way the weather blows, if not given): the weather makes its own; tests and screenshots place theirs.</summary>
+    public DustStorm AddDustStorm(Vector3 at, float strength, Vector2? wind = null)
+    {
+        DustStormRules r = Data.DustStorms;
+        WeatherState state = Data.State(WeatherKind.DustStorm);
+        Vector2 w = wind ?? (Current.WindSpeed > 0.01f ? Current.Wind.Normalized() : new Vector2(1f, 0f)) * state.WindSpeed;
+        Vector2 heading = w.LengthSquared() > 1e-4f ? w.Normalized() : new Vector2(1f, 0f);
+        float half = MathF.Min(_dustRng.Range(r.HalfWidthMin, r.HalfWidthMax), 0.6f * Room); // on a small world, a storm still leaves most of it clear
+        var d = new DustStorm
+        {
+            Id = _nextId++, Position = Flat(at), Heading = heading, Speed = MathF.Max(3f, w.Length() * r.DriftShare),
+            HalfWidth = half, HalfLength = half * _dustRng.Range(r.LengthMin, r.LengthMax), Height = _dustRng.Range(r.HeightMin, r.HeightMax),
+            Edge = r.Edge, Strength = strength, Life = _dustRng.Range(r.LifeMin, r.LifeMax), Seed = _dustRng.NextFloat(),
+            Air = Conditions.FromState(state, Archetype.BaseTemperature, MathF.Atan2(heading.Y, heading.X)),
+        };
+        _dust.Add(d);
+        return d;
+    }
+
+    /// <summary>Takes the front away at once, and its cells (tests, screenshots).</summary>
+    public void ClearFront()
+    {
+        _front = null;
+        _frontSegment = null;
+        _cells.RemoveAll(c => c.OnFront && c.Funnel == null);
+    }
+
+    /// <summary>
+    /// A front's cells: lined up along the edge nearest the observer just behind it, one to each
+    /// stretch of the line, riding the front as it advances. Loose cells, and a copy's cells once
+    /// the observer is nearer the next copy, die away.
+    /// </summary>
+    void StepFrontCells(float dt, Vector3 observer, Front f)
+    {
+        CellRules r = Data.Cells;
+        int slots = Math.Max(1, (int)MathF.Round(f.Period / r.FrontSpacing));
+        float spacing = f.Period / slots, here = f.Along(observer);
+        int copy = f.Copy(observer);
+        float Apart(float u) => MathF.Abs(u - here - f.Period * MathF.Round((u - here) / f.Period));
+        Vector3 rides = f.Velocity, drift = new Vector3(Current.Wind.X, 0f, Current.Wind.Y) * r.DriftShare;
+        int onFront = 0;
+        for (int i = _cells.Count - 1; i >= 0; i--)
+        {
+            StormCell cell = _cells[i];
+            if (cell.Funnel is { Done: true })
+            {
+                cell.Funnel = null;
+                cell.OnFront = false; // its funnel took it off the line: it dies away, and the line grows another
+            }
+            if (cell.Funnel != null)
+            {
+                cell.Position = Flat(cell.Funnel.Position);
+                cell.Strength = MathF.Min(1f, cell.Strength + dt / r.GrowSeconds);
+                continue;
+            }
+            cell.Position += (cell.OnFront ? rides : drift) * dt;
+            bool kept = cell.OnFront && f.Copy(cell.Position) == copy && Apart(f.Along(cell.Position)) <= spacing * 2.6f;
+            float target = kept ? f.Strength : 0f;
+            cell.Strength += Math.Clamp(target - cell.Strength, -dt / r.GrowSeconds, dt / r.GrowSeconds);
+            if (target == 0f && cell.Strength <= 0f) _cells.RemoveAt(i);
+            else if (kept) onFront++;
+        }
+        int want = (int)MathF.Round(f.Strength * r.MaxCells) - (_cells.Count - onFront);
+        bool grown = f.Strength >= 0.99f;
+        _cellTimer -= dt;
+        while (onFront < want && (grown || _cellTimer <= 0f))
+        {
+            _cellTimer = r.SpawnEvery * 0.5f;
+            // The free stretch of the line nearest the observer's.
+            float best = float.MaxValue, slot = 0f;
+            int n0 = (int)MathF.Floor(here / spacing);
+            for (int k = n0 - 2; k <= n0 + 2; k++)
+            {
+                int key = ((k % slots) + slots) % slots;
+                float u = (k + 0.5f) * spacing + (Fract(MathF.Sin(key * 12.9898f + f.Id * 78.233f) * 43758.547f) - 0.5f) * spacing * 0.35f;
+                float d = Apart(u);
+                if (d > spacing * 2.2f || d >= best) continue;
+                bool taken = false;
+                foreach (StormCell c in _cells)
+                {
+                    float gap = f.Along(c.Position) - u;
+                    if (c.OnFront && f.Copy(c.Position) == copy && MathF.Abs(gap - f.Period * MathF.Round(gap / f.Period)) < spacing * 0.5f) { taken = true; break; }
+                }
+                if (!taken) (best, slot) = (d, u);
+            }
+            if (best == float.MaxValue) break;
+            float radius = _hazardRng.Range(r.RadiusMin, r.RadiusMax);
+            Vector3 at = f.EdgeAt(slot, observer) - new Vector3(f.Heading.X, 0f, f.Heading.Y) * radius * _hazardRng.Range(0.55f, 0.85f);
+            _cells.Add(new StormCell { Id = _nextId++, Position = Flat(at), Strength = grown ? 1f : 0f, Radius = radius, OnFront = true });
+            onFront++;
+        }
+    }
+
+    static float Fract(float x) => x - MathF.Floor(x);
+
+    /// <summary>The rain falling at a point: its region's, as much of it as its cells' share lets through there.</summary>
+    public float RainAt(Vector3 p)
+    {
+        Conditions c = Land == null && _frontSegment == null ? Current : LocalAt(p);
+        return c.Rain * (1f - c.Cellular * (1f - CellCover(p)));
+    }
+
+    StormCell NearestCell(Vector3 p)
+    {
+        StormCell best = null;
+        float nearest = float.MaxValue;
+        foreach (StormCell c in _cells)
+        {
+            float d = Flat(c.Position - p).Length() - c.Radius;
+            if (d < nearest) { nearest = d; best = c; }
+        }
+        return best;
+    }
+
+    /// <summary>Where the next bolt aims: near the observer if a cell hangs over them, else out of the nearest cell.</summary>
+    Vector3 StrikeSpot(Vector3 observer)
+    {
+        StormCell cell = NearestCell(observer);
+        // Under a storm (a cell's tower or the deck behind a front's edge), strikes come down round you.
+        if (cell == null || CellCover(observer) > 0.2f) return observer + RandomOffset(Data.Lightning.StrikeOffset);
+        return cell.Position + RandomOffset(cell.Radius * 0.6f);
     }
 
     // ---- Hits: lightning and falling debris -------------------------------------------
@@ -320,10 +971,10 @@ public sealed class WeatherSim
     {
         Conditions c = Current;
         if (Accumulate(ref _lightningCharge, ref _lightningNext, c.LightningPerMinute, dt))
-            Land(HazardKind.Lightning, observer + RandomOffset(Data.Lightning.StrikeOffset));
+            Hit(HazardKind.Lightning, StrikeSpot(observer));
         if (Accumulate(ref _debrisCharge, ref _debrisNext, c.DebrisPerMinute, dt))
-            Land(HazardKind.Debris, observer + RandomOffset(Data.Debris.StrikeOffset));
-        foreach (var (kind, center) in _queued) Land(kind, center);
+            Hit(HazardKind.Debris, observer + RandomOffset(Data.Debris.StrikeOffset));
+        foreach (var (kind, center) in _queued) Hit(kind, center);
         _queued.Clear();
     }
 
@@ -349,7 +1000,7 @@ public sealed class WeatherSim
     public void Strike(HazardKind kind, Vector3 center) => _queued.Add((kind, center));
 
     /// <summary>Lands a hit: lightning goes to the highest point within its radius.</summary>
-    void Land(HazardKind kind, Vector3 center)
+    void Hit(HazardKind kind, Vector3 center)
     {
         StrikeRules rules = kind == HazardKind.Lightning ? Data.Lightning : Data.Debris;
         var (point, target) = HighestPoint(Flat(center), kind == HazardKind.Lightning ? rules.Radius : 0f);
@@ -378,25 +1029,28 @@ public sealed class WeatherSim
     {
         TornadoRules rules = Data.Tornado;
         int active = 0;
-        foreach (Tornado t in _tornadoes) if (!t.Dissipating) active++;
+        foreach (Tornado t in _tornadoes) if (!t.Dissipating && t.Kind == TornadoKind.Tornado) active++;
+        if (OpenWater != null) StepSpouts(dt, observer);
+        if (Land != null) StepDevils(dt, observer);
         if (Accumulate(ref _tornadoCharge, ref _tornadoNext, Current.TornadoesPerMinute, dt) && active < rules.MaxActive)
-        {
-            float angle = _hazardRng.Range(0f, MathF.Tau);
-            var at = observer + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * rules.SpawnDistance;
-            // Natural tornadoes do not chase the player: a random heading, no homing, a slow wander.
-            Tornado born = SpawnTornado(at, observer);
-            born.Homing = false;
-            born.SetHeading(_hazardRng.Range(0f, MathF.Tau));
-            born.WanderRate = 0.12f;
-        }
+            TryTornado(observer);
 
         bool stormGone = Current.TornadoesPerMinute < 0.05f;
+        _groundCheck -= dt;
+        bool look = _groundCheck <= 0f;
+        if (look) _groundCheck = 0.5f;
         for (int i = _tornadoes.Count - 1; i >= 0; i--)
         {
             Tornado t = _tornadoes[i];
             bool wasDown = t.Touchdown;
-            if (stormGone && !t.Homing) t.Dissipate();
+            if (stormGone && !t.Homing && !t.Kept && t.Kind == TornadoKind.Tornado) t.Dissipate();
+            if (t.Kind == TornadoKind.Waterspout)
+            {
+                SpoutFate(t);
+                if (t.Storm && Current.LightningPerMinute < 0.1f && Current.TornadoesPerMinute < 0.05f) t.Dissipate();
+            }
             t.Step(dt, observer, GroundHeight);
+            if (look) GroundFate(t, 0.5f);
             if (t.Touchdown && !wasDown)
                 _events.Add(new WeatherEvent(WeatherEventKind.TornadoTouchdown, t.Id, t.Position, null, 0f, 0f));
             if (!t.Done) continue;
@@ -405,14 +1059,294 @@ public sealed class WeatherSim
         }
     }
 
+    /// <summary>
+    /// A storm lets a funnel down: only from one of its strong cells, never within the rule's distance
+    /// of the player, and only where the region allows it (broad open flat or rolling land in warm
+    /// humid air; rarely over dense forest; never over high mountains). Over open water the same cell
+    /// lets down waterspouts instead. Where no cell has such ground under it, none forms.
+    /// </summary>
+    void TryTornado(Vector3 observer)
+    {
+        TornadoGround rules = Data.Regions.Tornado;
+        for (int attempt = 0; attempt < 6; attempt++)
+        {
+            StormCell cell = null;
+            int strong = 0;
+            foreach (StormCell c in _cells)
+                if (c.Strength >= rules.MinCell && c.Funnel == null && Flat(c.Position - observer).Length() < Data.Cells.Range * 0.8f && _hazardRng.NextFloat() * ++strong < 1f) cell = c;
+            if (cell == null) return;
+            Vector3 at = cell.Position + RandomOffset(cell.Radius * 0.55f);
+            if (Flat(at - observer).Length() < rules.MinDistance) continue;
+            if (OpenWater != null && OpenWater(at.X, at.Z))
+            {
+                if (SpoutGroups() < 2) SpawnSpouts(at, storm: true);
+                return;
+            }
+            if (_hazardRng.NextFloat() >= Regions.TornadoGround(Data.Regions, Land, at)) continue;
+            // Natural tornadoes do not chase the player: a random heading, no homing, a slow wander.
+            Tornado born = SpawnTornado(at, observer, Roll(Current.WindSpeed));
+            born.Homing = false;
+            born.SetHeading(_hazardRng.Range(0f, MathF.Tau));
+            born.WanderRate = 0.12f;
+            return;
+        }
+    }
+
+    /// <summary>
+    /// A tornado's own speed, life and shape, from its storm's wind: ground speed rolled up to the
+    /// 60 km/h cap; its life falls as its speed rises (a fast one brief, a slow meandering one lingering
+    /// longest); and its shape leans by its speed (fast ones ropes and cones, slow ones wide wedges).
+    /// </summary>
+    public (TornadoRules rules, TornadoShapeRules shape) Roll(float stormWind)
+    {
+        TornadoRules b = Data.Tornado;
+        float speed = Math.Clamp(MathF.Max(stormWind, 4f) * _hazardRng.Range(b.SteerMin, b.SteerMax), b.SpeedMin, b.SpeedMax);
+        float fast = (speed - b.SpeedMin) / (b.SpeedMax - b.SpeedMin);
+        float life = (b.LifeSlow + (b.LifeFast - b.LifeSlow) * fast) * (1f + _hazardRng.Range(-b.LifeJitter, b.LifeJitter));
+        float total = 0f;
+        foreach (TornadoShapeRules s in b.Shapes) total += ShapeOdds(s, fast);
+        float pick = _hazardRng.NextFloat() * total;
+        TornadoShapeRules shape = b.Shapes[^1];
+        foreach (TornadoShapeRules s in b.Shapes)
+        {
+            pick -= ShapeOdds(s, fast);
+            if (pick < 0f) { shape = s; break; }
+        }
+        return (b.Shaped(shape, speed, life), shape);
+    }
+
+    static float ShapeOdds(TornadoShapeRules s, float fast)
+    {
+        float d = (fast - s.Speed) / MathF.Max(s.Spread, 0.01f);
+        return s.Weight * MathF.Exp(-d * d);
+    }
+
+    /// <summary>Starts a tornado of a rolled shape and speed forming at <paramref name="at"/> (see <see cref="Roll"/>).</summary>
+    public Tornado SpawnTornado(Vector3 at, Vector3 homeOn, (TornadoRules rules, TornadoShapeRules shape) rolled)
+    {
+        Tornado t = SpawnTornado(at, homeOn, rolled.rules);
+        Shape(t, rolled.shape);
+        return t;
+    }
+
+    void Shape(Tornado t, TornadoShapeRules shape)
+    {
+        t.Shape = shape.Shape;
+        t.Look = _hazardRng.Range(shape.LookMin, shape.LookMax);
+        t.Smooth = _hazardRng.NextFloat() < shape.Smooth;
+    }
+
+    /// <summary>
+    /// What the ground does to a whirl as it wanders (every half second): a tornado that wanders onto
+    /// ground it can't stand on (high mountains, steep ground) ropes out; over dense forest it weakens
+    /// and soon ropes out too; onto open water a strong one goes on as a waterspout, a weak one falls
+    /// apart. A dust devil dies off dry loose ground or under cloud.
+    /// </summary>
+    void GroundFate(Tornado t, float dt)
+    {
+        if (!t.Touchdown || t.Dissipating || t.Homing || t.Kept) return;
+        if (t.Kind == TornadoKind.DustDevil)
+        {
+            if (Land == null) return;
+            Ground d = GroundAt(t.Position);
+            if (Regions.DustGround(Data.Regions, d) < 0.3f || CellCover(t.Position) > 0.05f || Current.CloudCover > Data.Regions.Dust.DevilCloud * 1.3f
+                || !Regions.Stands(Data.Regions, Land, t.Position)) t.Dissipate();
+            else Deflect(t);
+            return;
+        }
+        if (t.Kind != TornadoKind.Tornado) return;
+        if (OpenWater != null && OpenWater(t.Position.X, t.Position.Z))
+        {
+            if (t.Strength > 0.7f && _hazardRng.NextFloat() < 0.5f)
+            {
+                t.Kind = TornadoKind.Waterspout;
+                t.Ashore = false;
+            }
+            else t.Dissipate();
+            return;
+        }
+        if (Land == null) return;
+        RegionRules r = Data.Regions;
+        Ground g = GroundAt(t.Position);
+        if (Regions.Barred(r, g) || !Regions.Stands(r, Land, t.Position)) t.Dissipate();
+        else if (Deflect(t)) { }
+        else if (g.Forest >= r.Tornado.DenseForest && _hazardRng.NextFloat() < 0.25f * dt) t.Dissipate();
+    }
+
+    /// <summary>
+    /// Ground rising sharply ahead of a moving whirl (a mesa wall, a steep hill) turns it aside to the lower
+    /// way, or breaks it up if both are as steep. Returns whether it was turned or broken.
+    /// </summary>
+    bool Deflect(Tornado t)
+    {
+        if (Land == null) return false;
+        RegionRules r = Data.Regions;
+        if (Regions.RiseAhead(r, Land, t.Position, t.Heading) <= r.AheadRise) return false;
+        float left = Regions.RiseAhead(r, Land, t.Position, t.Heading - 0.9f), right = Regions.RiseAhead(r, Land, t.Position, t.Heading + 0.9f);
+        if (MathF.Min(left, right) > r.AheadRise * 0.6f || t.Homing) t.Dissipate();
+        else t.SetHeading(t.Heading + (left < right ? -0.9f : 0.9f));
+        return true;
+    }
+
+    // ---- Dust devils --------------------------------------------------------------------
+
+    /// <summary>
+    /// Dust devils: fair-weather whirls off hot dry loose ground on clear calm days, never under
+    /// cloud and never on top of the player. Short, small and mostly harmless.
+    /// </summary>
+    void StepDevils(float dt, Vector3 observer)
+    {
+        DustGround rules = Data.Regions.Dust;
+        Conditions c = Current;
+        float fair = c.Rain < 0.02f && c.Snow < 0.02f && c.CloudCover < rules.DevilCloud ? Front.Smooth(rules.DevilWind, rules.DevilWind * 0.4f, c.WindSpeed) : 0f;
+        if (!Accumulate(ref _devilCharge, ref _devilNext, fair * rules.DevilsPerMinute, dt)) return;
+        int devils = 0;
+        foreach (Tornado t in _tornadoes) if (t.Kind == TornadoKind.DustDevil) devils++;
+        if (devils >= 3) return;
+        for (int k = 0; k < 8; k++)
+        {
+            Vector3 p = observer + RandomOffset(900f);
+            if (Flat(p - observer).Length() < 120f || CellCover(p) > 0.02f || (OpenWater?.Invoke(p.X, p.Z) ?? false)) continue;
+            Ground g = GroundAt(p);
+            if (Regions.DustGround(Data.Regions, g) < 0.6f || g.Warmth < rules.DevilWarmth || !Regions.Stands(Data.Regions, Land, p)) continue;
+            SpawnDevil(p);
+            return;
+        }
+    }
+
+    /// <summary>A dust devil at a point (natural ones from <see cref="StepDevils"/>; tests and screenshots).</summary>
+    public Tornado SpawnDevil(Vector3 at)
+    {
+        TornadoRules rules = Data.Tornado.Scaled(0.3f, 0.12f, 0.35f, 3f, _hazardRng.Range(20f, 70f), 6f);
+        rules.Speed = _hazardRng.Range(1f, 4f);
+        var devil = new Tornado(_nextId++, rules, new Vector3(at.X, GroundHeight(at.X, at.Z), at.Z), _hazardRng.Range(0f, MathF.Tau), homing: false, _hazardRng.Range(0f, MathF.Tau))
+        {
+            Kind = TornadoKind.DustDevil, Storm = false, Height = _hazardRng.Range(15f, 120f), WanderRate = 0.3f,
+        };
+        _tornadoes.Add(devil);
+        _events.Add(new WeatherEvent(WeatherEventKind.TornadoForming, devil.Id, devil.Position, null, 0f, 0f));
+        return devil;
+    }
+
+    // ---- Waterspouts --------------------------------------------------------------------
+
+    /// <summary>
+    /// Waterspouts form only over open water: under growing cumulus on warm fair days with little wind
+    /// (short, mostly harmless), or out of a storm's cells. Two to four hang from one base at different
+    /// stages, some never reaching the water.
+    /// </summary>
+    void StepSpouts(float dt, Vector3 observer)
+    {
+        Conditions c = Current;
+        float fair = c.Rain < 0.05f && c.LightningPerMinute < 0.1f && c.CloudCover > 0.25f && c.CloudCover < 0.85f
+            ? Front.Smooth(12f, 26f, c.Temperature) * Front.Smooth(11f, 4f, c.WindSpeed) : 0f;
+        float stormy = MathF.Min(1f, c.LightningPerMinute / 4f) * c.Cellular;
+        if (!Accumulate(ref _spoutCharge, ref _spoutNext, fair * 0.3f + stormy * 0.35f, dt)) return;
+        if (SpoutGroups() >= 2) return;
+        if (stormy > fair)
+            foreach (StormCell cell in _cells)
+            {
+                if (cell.Strength < 0.6f || cell.Funnel != null) continue;
+                Vector3 p = cell.Position + RandomOffset(cell.Radius * 0.5f);
+                if (OpenWater(p.X, p.Z)) { SpawnSpouts(p, storm: true); return; }
+            }
+        if (fair <= 0f) return;
+        for (int k = 0; k < 12; k++)
+        {
+            Vector3 p = observer + RandomOffset(1800f);
+            if (Flat(p - observer).Length() > 250f && OpenWater(p.X, p.Z)) { SpawnSpouts(p, storm: false); return; }
+        }
+    }
+
+    /// <summary>How many bases have spouts hanging from them now.</summary>
+    int SpoutGroups()
+    {
+        int n = 0;
+        for (int i = 0; i < _tornadoes.Count; i++)
+        {
+            Tornado t = _tornadoes[i];
+            if (t.Kind != TornadoKind.Waterspout) continue;
+            bool first = true;
+            for (int j = 0; j < i && first; j++) first = !(_tornadoes[j].Kind == TornadoKind.Waterspout && _tornadoes[j].Group == t.Group);
+            if (first) n++;
+        }
+        return n;
+    }
+
+    /// <summary>
+    /// Two to four spouts from one base, coming down at different times, a few stopping short of the
+    /// water. A storm's base is the cell over them; a fair day's is the cumulus they grow under.
+    /// </summary>
+    public IReadOnlyList<Tornado> SpawnSpouts(Vector3 at, bool storm)
+    {
+        var made = new List<Tornado>();
+        int n = 2 + Math.Min(2, (int)(_hazardRng.NextFloat() * 3f));
+        int group = _nextId++;
+        Vector2 wind = Current.Wind;
+        float heading = wind.LengthSquared() > 0.01f ? MathF.Atan2(wind.Y, wind.X) : _hazardRng.Range(0f, MathF.Tau);
+        for (int k = 0; k < n; k++)
+        {
+            Vector3 p = k == 0 ? at : at + RandomOffset(storm ? 260f : 170f);
+            if (OpenWater != null && !OpenWater(p.X, p.Z)) p = at;
+            float life = storm ? _hazardRng.Range(70f, 160f) : _hazardRng.Range(45f, 110f);
+            TornadoRules rules = storm ? Data.Tornado.Scaled(0.7f, 0.5f, 0.6f, 18f, life, 14f) : Data.Tornado.Scaled(0.35f, 0.15f, 0.45f, 22f, life, 16f);
+            rules.Speed = MathF.Max(1f, Current.WindSpeed * 0.25f);
+            var spout = new Tornado(_nextId++, rules, new Vector3(p.X, GroundHeight(p.X, p.Z), p.Z), heading, homing: false, _hazardRng.Range(0f, MathF.Tau))
+            {
+                Kind = TornadoKind.Waterspout, Group = group, Storm = storm,
+                Reach = k > 0 && _hazardRng.NextFloat() < 0.45f ? _hazardRng.Range(0.3f, 0.75f) : 1f,
+                WanderRate = 0.1f,
+            };
+            spout.Delay(k == 0 ? 0f : _hazardRng.Range(4f, 30f));
+            _tornadoes.Add(spout);
+            made.Add(spout);
+            _events.Add(new WeatherEvent(WeatherEventKind.TornadoForming, spout.Id, spout.Position, null, 0f, 0f));
+        }
+        if (storm)
+        {
+            StormCell parent = null;
+            foreach (StormCell c in _cells)
+                if (c.Funnel == null && Flat(c.Position - at).Length() < c.Radius * 1.2f && (parent == null || c.Strength > parent.Strength)) parent = c;
+            (parent ?? AddCell(at, 1f, first: true)).Funnel = made[0];
+        }
+        return made;
+    }
+
+    /// <summary>A spout that drifts ashore decays, unless a storm's strong one goes on over the land as a tornado.</summary>
+    void SpoutFate(Tornado t)
+    {
+        if (t.Ashore || !t.Touchdown || OpenWater == null || OpenWater(t.Position.X, t.Position.Z)) return;
+        t.Ashore = true;
+        // Only onto land a tornado could stand on.
+        bool land = Land == null || Regions.TornadoPoint(Data.Regions, GroundAt(t.Position)) > 0.2f;
+        if (land && t.Storm && t.Strength > 0.6f && t.Reach >= 1f && _hazardRng.NextFloat() < 0.35f)
+        {
+            t.Kind = TornadoKind.Tornado;
+            var (rules, shape) = Roll(Current.WindSpeed);
+            rules.Lifetime = MathF.Min(rules.Lifetime, t.Lifetime);
+            t.Rules = rules;
+            Shape(t, shape);
+        }
+        else t.Dissipate();
+    }
+
     /// <summary>Starts a tornado forming at <paramref name="at"/>, heading for <paramref name="homeOn"/>.</summary>
-    public Tornado SpawnTornado(Vector3 at, Vector3 homeOn)
+    public Tornado SpawnTornado(Vector3 at, Vector3 homeOn) => SpawnTornado(at, homeOn, Data.Tornado);
+
+    /// <summary>Starts a tornado with these rules forming at <paramref name="at"/>, heading for <paramref name="homeOn"/>.</summary>
+    public Tornado SpawnTornado(Vector3 at, Vector3 homeOn, TornadoRules rules)
     {
         float heading = MathF.Atan2(homeOn.Z - at.Z, homeOn.X - at.X);
         at = new Vector3(at.X, GroundHeight(at.X, at.Z), at.Z);
-        var tornado = new Tornado(_nextId++, Data.Tornado, at, heading, homing: true, _hazardRng.Range(0f, MathF.Tau));
+        var tornado = new Tornado(_nextId++, rules, at, heading, homing: true, _hazardRng.Range(0f, MathF.Tau));
         _tornadoes.Add(tornado);
         _events.Add(new WeatherEvent(WeatherEventKind.TornadoForming, tornado.Id, at, null, 0f, 0f));
+        // Every funnel hangs from a cell: the nearest that has none yet, or a new one over it.
+        StormCell parent = null;
+        foreach (StormCell c in _cells)
+            if (c.Funnel == null && Flat(c.Position - at).Length() < c.Radius && (parent == null || c.Strength > parent.Strength)) parent = c;
+        parent ??= AddCell(at, 1f, first: true); // drawn whatever else is in the sky
+        parent.Funnel = tornado;
         return tornado;
     }
 
@@ -422,6 +1356,9 @@ public sealed class WeatherSim
     /// <summary>Removes every tornado at once (tests, screenshots).</summary>
     public void ClearTornadoes() => _tornadoes.Clear();
 
+    /// <summary>Calls off every strike asked for and not yet landed (tests, screenshots).</summary>
+    public void ClearHazards() => _queued.Clear();
+
     // ---- Wind -------------------------------------------------------------------------
 
     /// <summary>
@@ -430,16 +1367,48 @@ public sealed class WeatherSim
     /// </summary>
     public Vector3 WindAt(Vector3 position)
     {
-        Vector2 mean = Current.Wind;
+        (Vector2 air, float gustiness) = WindAir(position);
+        Vector2 mean = RegionWind(air, position);
         float speed = mean.Length();
         if (speed < 0.01f) return Vector3.Zero;
         Vector2 dir = mean / speed;
         float along = position.X * dir.X + position.Z * dir.Y;
         float phase = ((float)Time * speed - along) / 80f;
-        float gust = Current.Gustiness * (0.55f * Noise.Value1D(phase, _gustSeed) + 0.25f * Noise.Value1D(phase * 2.7f + 31f, _gustSeed));
-        float veer = Current.Gustiness * 0.2f * Noise.Value1D(phase * 0.5f + 77f, _gustSeed);
+        float gust = gustiness * (0.55f * Noise.Value1D(phase, _gustSeed) + 0.25f * Noise.Value1D(phase * 2.7f + 31f, _gustSeed));
+        float veer = gustiness * 0.2f * Noise.Value1D(phase * 0.5f + 77f, _gustSeed);
         Vector2 wind = dir.Rotated(veer) * speed * MathF.Max(0.1f, 1f + gust);
         return new Vector3(wind.X, 0f, wind.Y);
+    }
+
+    /// <summary>The mean wind at a place, m/s: its part of the front's (the storm's behind the edge), a dust storm's inside it, harder on the heights, softer in the woods.</summary>
+    public Vector2 MeanWindAt(Vector3 p) => RegionWind(WindAir(p).wind, p);
+
+    /// <summary>The wind and its gustiness at a point: the world's, and a dust storm's inside one. With no front over the map it is the air worked out once a tick, and a look for storms.</summary>
+    (Vector2 wind, float gust) WindAir(Vector3 p)
+    {
+        Segment s = SegmentAt(Time);
+        Vector2 wind;
+        float gust;
+        if (FrontOver(s))
+        {
+            Conditions air = AirOver(p, out _, out _, out _);
+            (wind, gust) = (air.Wind, air.Gustiness);
+        }
+        else
+        {
+            ref readonly Conditions calm = ref Calmed(s);
+            (wind, gust) = (calm.Wind, calm.Gustiness);
+        }
+        if (_dust.Count == 0 || Deepest(p, out float depth) is not { } d) return (wind, gust);
+        return (wind.Lerp(d.Air.Wind, depth), gust + (d.Air.Gustiness - gust) * depth);
+    }
+
+    Vector2 RegionWind(Vector2 mean, Vector3 p)
+    {
+        if (Land == null) return mean;
+        RegionRules r = Data.Regions;
+        Ground g = Land(p.X, p.Z);
+        return mean * (1f + r.Wind.HighBoost * Regions.High(r, g)) * (1f - r.Wind.ForestCut * g.Forest);
     }
 
     // ---- Helpers ----------------------------------------------------------------------

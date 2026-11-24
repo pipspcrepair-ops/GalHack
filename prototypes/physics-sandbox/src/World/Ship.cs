@@ -73,7 +73,6 @@ public sealed class Ship
             Mass = mass.Mass,
             CenterOfMass = mass.CenterOfMass,
             DragArea = StructureBridge.DragArea(s),
-            Class = StructureBridge.ClassOf(new StructureVessel(s, world.Handling)),
             Shape = StructureBridge.ShapeOf(s),
             Position = at,
             Rotation = MathX.Yaw(heading),
@@ -307,11 +306,9 @@ public sealed class Ship
         return (report.Destroyed, wrecks);
     }
 
-    /// <summary>The cells that mount the port engine pod to the hull: shoot these and the pod comes off.</summary>
-    public static readonly Int3[] PortPodMount =
-    {
-        new(-4, 1, 6), new(-4, 2, 6), new(-4, 3, 6), new(-3, 1, 6), new(-3, 2, 6), new(-3, 3, 6),
-    };
+    /// <summary>The Shuttle's pylons that mount its engine pods to the hull: shoot one and its pod comes off.</summary>
+    public static readonly Int3[] PortPodMount = { new(-4, 0, 2), new(-4, 1, 2), new(-4, 0, 3), new(-4, 1, 3) },
+        StarboardPodMount = { new(3, 0, 2), new(3, 1, 2), new(3, 0, 3), new(3, 1, 3) };
 
     /// <summary>
     /// Makes a body for a section that has just been split off this structure (it has the same
@@ -397,7 +394,7 @@ public sealed class Ship
         {
             float bm = Units.Kilograms(s.StatsOf(b).Mass);
             m += bm;
-            p += bm * body.PointVelocity(body.ToParent(StructureBridge.CellCenter(s, cell)));
+            p += bm * body.PointVelocity(body.ToParent(StructureBridge.BlockCenter(s, cell, b)));
         }
         mass = (float)m;
         return p;

@@ -1,4 +1,5 @@
 using System;
+using PL = Planets.Look;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -15,7 +16,9 @@ namespace PlanetSurface;
 ///   godot --path prototypes/planet-surface res://tests/Screenshot.tscn -- --view=NAME --out=FILE.png
 /// Named views are in <see cref="Views"/>; "look" takes everything from arguments:
 ///   --archetype=0-4 --variant=0|1 --seed=N --x= --z= (metres) --up= (above ground) --heading= --pitch= (degrees)
-///   --time=0..1 --weather=Kind [--hud=1]
+///   --time=0..1 --weather=Kind [--hud=1] [--star=RedDwarf|Orange|Yellow|White|BlueWhite] [--coast=1] [--airless=1] [--tonemap=Agx] [--body=1]
+///   [--ore=Copper: up close to the nearest deposit of that ore breaking the surface]
+///   --batch=FILE: many "look" shots in one run, a line of these arguments for each
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -32,42 +35,633 @@ public partial class Screenshot : Node
     /// <summary>One named view: the planet, where to stand, when, and in what weather.</summary>
     public sealed record ViewSpec(PlanetSpec Planet, Func<Main, (Vector3 pos, float heading, float pitch)> Place, double Time,
         WeatherKind? Weather = null, GroundCover? Ground = null, Action<Main> Prepare = null, Action<Main> BeforeCapture = null,
-        Func<Main, double> TimeFor = null, string Force = null);
+        Func<Main, double> TimeFor = null, string Force = null, Func<Main, List<Shot>> Series = null, Func<PlanetSurface.World.PlanetWorld> World = null);
 
-    public override void _Ready()
+    /// <summary>One frame of a series: a name for its file (FILE-name.png) and where the camera stands.</summary>
+    public sealed record Shot(string Name, Vector3 Pos, float Heading, float Pitch);
+
+    List<Shot> _series;
+    int _shot, _gpuFrames, _moved;
+    double _gpuSum, _gpuWorst;
+
+    /// <summary>--batch=FILE: one "look" shot a line, each line its own arguments (--archetype=... --out=...), all in one run, the world changed between them.</summary>
+    readonly Queue<string> _batch = new();
+
+    void Read(IEnumerable<string> args)
     {
-        foreach (string arg in OS.GetCmdlineUserArgs())
+        foreach (string arg in args)
         {
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
+    }
+
+    /// <summary>The batch's next line in place of the last: its own arguments only, nothing forced carried over.</summary>
+    void NextInBatch()
+    {
+        foreach (string key in new[] { "star", "tonemap", "airless", "body", "out", "pitch", "inland", "ore" }) _args.Remove(key);
+        PlanetSurface.Skies.SkySystem.ForceStar = null;
+        Grade.Force = null;
+        Read(_batch.Dequeue().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        _out = _args.GetValueOrDefault("out", _out);
+        _spec = Look();
+    }
+
+    public override void _Ready()
+    {
+        Read(OS.GetCmdlineUserArgs());
+        if (_args.TryGetValue("batch", out string batch))
+            foreach (string line in System.IO.File.ReadAllLines(batch)) if (line.Trim().Length > 0) _batch.Enqueue(line.Trim());
+        // A hung run quits on its own (--limit=SECONDS, 15 minutes by default), even if the main thread never returns.
+        double limit = Num("limit", 900);
+        _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(limit)).ContinueWith(_ =>
+        {
+            GD.PrintErr($"TIMED OUT after {limit:F0} s: the run quits itself");
+            System.Environment.Exit(2);
+        });
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
-        _spec = _view == "look" ? Look() : Views.Get(_view);
+        if (_batch.Count > 0) NextInBatch();
+        else _spec = _view == "look" ? Look() : Views.Get(_view);
         if (_spec == null)
         {
             GD.PrintErr($"no view '{_view}'");
-            GetTree().Quit(1);
+            GalHack.Testing.Backstop.Quit(this, 1);
             return;
         }
         PlanetSurface.Poi.PoiSiting.ForceFamily = _spec.Force;
         _main = new Main { Interactive = false };
         AddChild(_main);
-        _main.Arrive(_spec.Planet);
+        _main.Arrive(_spec.Planet, _spec.World);
     }
 
     ViewSpec Look()
     {
         int a = Int("archetype", 0), variant = Int("variant", 0);
+        if (_args.TryGetValue("star", out string star)) PlanetSurface.Skies.SkySystem.ForceStar = Enum.Parse<StarClass>(star); // --star=RedDwarf..BlueWhite: the same world under another star
         ulong seed = (ulong)Int("seed", 1);
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
+        if (_args.TryGetValue("tonemap", out string tone)) Grade.Force = Enum.Parse<Grade.Curve>(tone); // --tonemap=Filmic|Agx|Aces|Linear: to compare them
+        if (_args.ContainsKey("airless")) planet = planet with { Modifiers = planet.Modifiers | Modifier.Cratered }; // the same world as a barren body (arid, ice or lava)
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
+        _args.TryGetValue("force", out string force);
+        if (_args.TryGetValue("type", out string type)) (PlanetSurface.Poi.PoiSiting.ForceType, force) = (type, Main.Catalog.Library.Families.First(f => f.Types.Contains(type)).Id);
+        if (_args.ContainsKey("airfield")) force ??= "airfield";
+        if (_args.ContainsKey("tee")) PoiGenerator.Gen.PlaceTypes.Always.Add("crosswind");
+        if (_args.TryGetValue("state", out string state)) PlanetSurface.Poi.PoiSiting.ForceState = Enum.Parse<PoiGenerator.Gen.PoiState>(state, true);
+        if (_args.ContainsKey("forcevariant")) PlanetSurface.Poi.PoiSiting.ForceVariant = Int("forcevariant", 0);
+        if (_args.ContainsKey("tiered")) PlanetSurface.Poi.PoiLayer.Tiered = true;
+        _args.TryGetValue("city", out string cityView);
+        if (cityView != null) PlanetSurface.Infra.CityPlan.Force = true;
+        if (_args.ContainsKey("cityfall")) PlanetSurface.Infra.CityPlan.ForceFall = (float)Num("cityfall", 0.5);
+        PlanetSurface.Infra.MadeGrounds.Off = _args.GetValueOrDefault("made") == "0";
+        if (_args.TryGetValue("citytech", out string ct)) PlanetSurface.Infra.CityPlan.ForceTech = Enum.Parse<PoiGenerator.Gen.TechLevel>(ct, true);
+        PlanetSurface.Infra.InfraNetwork.NoLanes = _args.GetValueOrDefault("lanes") == "0";
         return new ViewSpec(planet, m =>
         {
+            // A place's own frame: the camera and what it looks at, in the place's cells.
+            if (force != null && _args.TryGetValue("cam", out string cam))
+            {
+                var site = m.World.Pois.First(p => p.Family.Id == force);
+                GD.Print($"forced {site.Name} at {site.Origin.X},{site.Origin.Y},{site.Origin.Z}, stamp {site.Stamp.MinX}..{site.Stamp.MaxX} x {site.Stamp.MinZ}..{site.Stamp.MaxZ}, entrance {site.Entrance.X},{site.Entrance.Y},{site.Entrance.Z}");
+                Vector3 Local(string text)
+                {
+                    var n = text.Split(',').Select(t => float.Parse(t, CultureInfo.InvariantCulture)).ToArray();
+                    return new Vector3(site.Origin.X + n[0], site.Origin.Y + n[1], site.Origin.Z + n[2]);
+                }
+                Vector3 from = Local(cam), at = Local(_args["at"]), d = at - from;
+                if (_args.TryGetValue("figure", out string figure)) _figure = Local(figure);
+                return (from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+            }
+            // A region from the air: what its plan set down, listed, with the camera over its first town.
+            if (_args.ContainsKey("region") && m.World.Infra.RegionPlan is { } plan)
+            {
+                GD.Print($"{plan.Roll}: {plan.Regions.Count} regions");
+                foreach (var pp in plan.Places) GD.Print($"  {pp.Role} {pp.Family} at {pp.X:F0},{pp.Z:F0}: {pp.Why}");
+                foreach (var l in plan.Links) GD.Print($"  {l.Kind}: {plan.Places[l.A].Family} to {plan.Places[l.B].Family}: {l.Why}");
+                var hub = plan.Places.First(p => p.Role == "hub" && p.Seated != null);
+                float cx = (float)hub.X, cz = (float)hub.Z, g0 = m.World.GroundHeight(hub.X, hub.Z);
+                float back = (float)Num("back", 1400), up = (float)Num("up", 900), turn = (float)Num("heading", 0);
+                var from = new Vector3(cx - Mathf.Sin(Mathf.DegToRad(turn)) * back, g0 + up, cz + Mathf.Cos(Mathf.DegToRad(turn)) * back);
+                return (from, turn, -Mathf.RadToDeg(Mathf.Atan2(up, back)));
+            }
+            if (_args.TryGetValue("ore", out string ore) && OreView(m.World, Enum.Parse<DepositKind>(ore)) is { } o) return o;
+            if (_args.ContainsKey("coast")) { var c = CoastView(m.World, Num("inland", 150)); return (c.pos, c.heading, (float)Num("pitch", c.pitch)); } // --pitch= to look down at the water or up at the sky
             double x = Num("x", m.World.Landing.X), z = Num("z", m.World.Landing.Y);
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));
-        }, Num("time", 0.42), weather);
+        }, Num("time", 0.42), weather, Force: force, BeforeCapture: AddFigure,
+            Prepare: _args.ContainsKey("airfield") ? m => { foreach (var p in m.World.Pois.Where(p => p.Whole != null)) p.Build(); } : null,
+            Series: _args.TryGetValue("airfield", out string airfieldView) ? m => AirfieldShots(m, airfieldView)
+                : _args.TryGetValue("ground", out string groundView) ? m => GroundShots(m, groundView)
+                : _args.TryGetValue("shores", out string shoreView) ? m => ShoreShots(m, shoreView)
+                : cityView == null ? null : m => m.World.Infra.City is { Sites.Count: > 0 } city ? CityShots(m, city, cityView) : null);
+    }
+
+    /// <summary>--ore=KIND: 14 m from the deposit of that ore breaking the surface nearest the landing, 5 m up, looking down at it.</summary>
+    static (Vector3 pos, float heading, float pitch)? OreView(PlanetSurface.World.PlanetWorld w, DepositKind kind)
+    {
+        Planets.Gen.Deposit? near = null;
+        double best = double.MaxValue;
+        foreach (Planets.Gen.Deposit dep in w.Map.Deposits.All())
+        {
+            if (dep.Kind != kind || dep.Depth > 0.01f || w.Source.WaterSurfaceAt(Mathx.WrapX(dep.X, w.Width), Mathx.Wrap(dep.Y, w.Height), out _)) continue;
+            double dx = Mathx.WrapDelta(dep.X - w.Landing.X, w.Width), dz = Mathx.WrapDelta(dep.Y - w.Landing.Y, w.Height), dd = dx * dx + dz * dz;
+            if (dd < best) (best, near) = (dd, dep);
+        }
+        if (near is not Planets.Gen.Deposit found) { GD.PrintErr($"no {kind} deposit breaks the surface"); return null; }
+        float ground = w.GroundHeight(found.X, found.Y);
+        var at = new Vector3((float)found.X, ground, (float)found.Y);
+        Vector3 from = at + new Vector3(0f, 5f, 14f);
+        from.Y = Mathf.Max(from.Y, w.GroundHeight(from.X, from.Z) + 3f);
+        Vector3 d = at - from;
+        GD.Print($"{kind} deposit at {found.X:F0},{found.Y:F0}");
+        return (from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+    }
+
+    /// <summary>
+    /// The world's natural colours as the game holds them, part by part, to set one build beside another: its sky (zenith, horizon,
+    /// haze, sunset, the starlight), its ground (the soil over its land, its rock), its plants (their leaf) and its water.
+    /// </summary>
+    static string PartColours(PlanetSurface.World.PlanetWorld w)
+    {
+        static string C(PL.Rgb c) => $"{c.R:F3},{c.G:F3},{c.B:F3}";
+        WorldMap map = w.Map;
+        PL.Rgb soil = default;
+        int n = 0;
+        for (int k = 0; k < map.Count; k += 97)
+            if (map.Elevation[k] > 0f) { soil += w.Palette.SoilAt(map.CellX(k % map.Width), map.CellY(k / map.Width), out _); n++; }
+        soil *= 1f / Math.Max(n, 1);
+        PL.Rgb leaf = w.Flora.Book.Verdure is GalHack.Plants.Tone v ? new PL.Rgb(v.R, v.G, v.B) : default;
+        SkySystem s = w.Sky;
+        return $"sky {C(s.Zenith)} {C(s.Horizon)} {C(s.Haze)} {C(s.Sunset)} {C(s.StarColor)};ground {C(soil)} {C(w.Palette.Rock)};plants {C(leaf)};water {C(new PL.Rgb(w.Look.Shallow.R, w.Look.Shallow.G, w.Look.Shallow.B))} {C(new PL.Rgb(w.Look.Deep.R, w.Look.Deep.G, w.Look.Deep.B))}";
+    }
+
+    /// <summary>
+    /// A shot's label: how its world reads (earthy, today, vivid, candy, mixed) and what drove each part, earthy, vivid or deep.
+    /// </summary>
+    static string Label(PlanetSurface.World.PlanetWorld w)
+    {
+        PL.WorldPalette p = w.Sky.Palette;
+        if (p.Today) return "today";
+        string How(PL.Parts part) => p.VividParts.HasFlag(part) ? "vivid" : p.DeepParts.HasFlag(part) ? "deep" : "earthy";
+        var parts = new List<string>();
+        if (p.Has.HasFlag(PL.Parts.Sky)) parts.Add($"sky {(p.Gas != PL.Trace.None ? p.Gas.ToString() : p.Air.Particles == PL.Particles.Clean ? "clear" : p.Air.Particles.ToString())} {How(PL.Parts.Sky)}");
+        parts.Add($"ground {(p.Ore != PL.Stain.None ? p.Ore.ToString() : p.Iron > 0.5f ? "iron" : p.Rock.ToString())} {How(PL.Parts.Ground)}");
+        if (p.Has.HasFlag(PL.Parts.Plants)) parts.Add($"plants {(p.Silver ? "silver" : p.Kit.ToString())} {How(PL.Parts.Plants)}");
+        if (p.Has.HasFlag(PL.Parts.Water)) parts.Add($"water {p.Water} {How(PL.Parts.Water)}");
+        return $"{p.Kind.ToString().ToLowerInvariant()}: {string.Join(", ", parts).ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// How near the view runs into something solid (a trunk, a wall, a hill) across its frame, m; inside something, 0.
+    /// </summary>
+    static float Open(Main m)
+    {
+        PhysicsDirectSpaceState3D space = m.Camera.GetWorld3D().DirectSpaceState;
+        Vector3 eye = m.Camera.GlobalPosition;
+        var inside = new PhysicsShapeQueryParameters3D { Shape = new SphereShape3D { Radius = 2.5f }, Transform = new Transform3D(Basis.Identity, eye) };
+        if (space.IntersectShape(inside, 1).Count > 0) return 0f;
+        float nearest = float.MaxValue;
+        // Canopies have no colliders: the plants' own solids, canopy hulls too, inside or in front of the eye.
+        Vector3 fwd = -m.Camera.GlobalBasis.Z;
+        foreach (var (s, offset) in m.Streamer.SolidsNear(eye, 40f, canopies: true))
+        {
+            Vector3 to = s.Center + offset - eye;
+            float reach = Mathf.Max(s.Extents.X, Mathf.Max(s.Extents.Y, s.Extents.Z)) * Mathf.Max(1f, s.Scale), d = to.Length();
+            if (d < reach + 2f) return 0f;
+            if (to.Dot(fwd) > d * 0.8f) nearest = Mathf.Min(nearest, d - reach);
+        }
+        foreach (float yaw in new[] { -25f, -12f, 0f, 12f, 25f })
+            foreach (float pitch in new[] { -8f, 0f, 8f })
+            {
+                Vector3 dir = m.Camera.GlobalBasis * (new Basis(Vector3.Up, Mathf.DegToRad(yaw)) * new Basis(Vector3.Right, Mathf.DegToRad(pitch)) * Vector3.Forward);
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, eye + dir.Normalized() * 60f));
+                if (hit.Count > 0) nearest = Mathf.Min(nearest, eye.DistanceTo((Vector3)hit["position"]));
+            }
+        return nearest;
+    }
+
+    /// <summary>
+    /// One framing for every world (--coast=1): from the land 150 m back from the sea nearest the landing
+    /// (--inland=M; below 0 out over the water), 18 m up, looking out across the shore, so sky, water, ground
+    /// and plants share the frame alike.
+    /// </summary>
+    static (Vector3 pos, float heading, float pitch) CoastView(PlanetSurface.World.PlanetWorld w, double inland)
+    {
+        WorldMap map = w.Map;
+        double lx = w.Landing.X, lz = w.Landing.Y, best = double.MaxValue, sx = lx, sz = lz;
+        for (int k = 0; k < map.Count; k++)
+        {
+            if (map.SeaDepth[k] < 6f) continue;
+            double dx = Mathx.WrapDelta(map.CellX(k % map.Width) - lx, w.Width), dz = Mathx.WrapDelta(map.CellY(k / map.Width) - lz, w.Height);
+            double d = dx * dx + dz * dz;
+            if (d < best) (best, sx, sz) = (d, lx + dx, lz + dz);
+        }
+        // Back from the water along the line to the landing, to the first dry ground 150 m inland.
+        double ux = lx - sx, uz = lz - sz, len = Math.Max(1e-3, Math.Sqrt(ux * ux + uz * uz));
+        (ux, uz) = (ux / len, uz / len);
+        double t = 0;
+        while (t < len && w.Source.WaterSurfaceAt(Mathx.WrapX(sx + ux * t, w.Width), Mathx.Wrap(sz + uz * t, w.Height), out _)) t += 8;
+        double px = sx + ux * (t + inland), pz = sz + uz * (t + inland);
+        // High enough to see over everything between the eye and the water, 18 m over the ground at the least.
+        float eye = Mathf.Max(w.GroundHeight(Mathx.WrapX(px, w.Width), Mathx.Wrap(pz, w.Height)), 0f) + 18f;
+        for (double d = 0; d <= t + inland; d += 10)
+            eye = Mathf.Max(eye, w.GroundHeight(Mathx.WrapX(sx + ux * d, w.Width), Mathx.Wrap(sz + uz * d, w.Height)) + 14f);
+        GD.Print($"coast view from {px:F0},{pz:F0} toward the sea at {sx:F0},{sz:F0}");
+        return (new Vector3((float)px, eye, (float)pz), Mathf.RadToDeg(Mathf.Atan2((float)-ux, (float)uz)), -6f);
+    }
+
+    /// <summary>
+    /// Where a river meets the sea (--shores=all, or mouth, reach or bank): the first river of the world's own order
+    /// with a mouth, at the mouth, where it widens 120 m upstream and at a bank 400 m up, each from the bank at a
+    /// person's height looking downstream and from 40 m up.
+    /// </summary>
+    List<Shot> ShoreShots(Main m, string which)
+    {
+        var w = m.World;
+        float Ground(Vector3 p) => w.GroundHeight(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height));
+        Shot Toward(string name, Vector3 from, Vector3 to)
+        {
+            Vector3 d = to - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        var shots = new List<Shot>();
+        foreach (SurfaceTest.ShoreSite s in SurfaceTest.ShoreSites(w, new Random(0), 1).Where(s => s.Kind != "coast" && (which == "all" || which == s.Kind)))
+        {
+            var at = new Vector3((float)s.X, 0f, (float)s.Z);
+            var flow = new Vector3(s.DirX, 0f, s.DirZ);
+            var side = new Vector3(-flow.Z, 0f, flow.X);
+            at.Y = Mathf.Max(Ground(at), 0f);
+            Vector3 stand = at - flow * 25f + side * (s.Width * 0.5f + 5f);
+            stand.Y = Mathf.Max(Ground(stand), 0f) + 1.7f;
+            Vector3 air = at - flow * 45f + side * 25f;
+            air.Y = at.Y + 40f;
+            GD.Print($"shore {s.Kind} at {s.X:F0},{s.Z:F0}: river {s.Width:F0} m wide running {s.DirX:F2},{s.DirZ:F2}, its level there {s.Along:F2} m");
+            shots.Add(Toward($"{s.Kind}-ground", stand, at + flow * 15f));
+            shots.Add(Toward($"{s.Kind}-air", air, at + flow * 10f));
+        }
+        return shots;
+    }
+
+    /// <summary>
+    /// A city's frames (--city=all, or one of them by name): its skyline from 2 km and from 500 m across the water,
+    /// from the air over the land toward the water, down a downtown avenue, at a house's frontage, inside a tower's lobby.
+    /// </summary>
+    List<Shot> CityShots(Main m, PlanetSurface.Infra.CityPlan city, string which)
+    {
+        float cxf = (float)city.CenterX, czf = (float)city.CenterZ, g0 = m.World.GroundHeight(city.CenterX, city.CenterZ);
+        var lots = city.Lots.Where(l => l.Site != null).ToList();
+        var tall = lots.Where(l => l.Kind == "tower").OrderByDescending(l => l.Lot.Storeys).FirstOrDefault() ?? lots.OrderByDescending(l => l.Lot.Storeys).First();
+        GD.Print($"city at {city.CenterX:F0},{city.CenterZ:F0} radius {city.Radius:F0}, {lots.Count} buildings; tallest {tall.Lot.Storeys} storeys at {tall.Crossover.X:F0},{tall.Crossover.Z:F0}; " +
+                 $"districts {string.Join(", ", city.Districts.Select(d => $"{d.Key} {d.Value}"))}; kinds {string.Join(", ", lots.GroupBy(l => l.Kind).Select(g => $"{g.Key} {g.Count()}"))}; " +
+                 $"{lots.Count(l => l.Lot.Lean)} leaning, {lots.Count(l => l.Lot.Toppled)} toppled, {lots.Count(l => l.Site.Instance.State == PoiGenerator.Gen.PoiState.Active)} lit; bank {(city.Bank != null ? "yes" : "no")}, {city.Bridges.Count} bridges, station {(city.Tracks != null ? "yes" : "no")}");
+        if (_args.ContainsKey("scan"))
+            foreach (var l in lots.Where(l => l.Lot.Storeys >= 10))
+            {
+                double mx = (l.X0 + l.X1) / 2 - 10698.4, mz = (l.Z0 + l.Z1) / 2 - 3072.4;
+                double ang = Math.Atan2(mx, -mz) * 180 / Math.PI;
+                if (Math.Sqrt(mx * mx + mz * mz) < 450) GD.Print($"near: {l.Kind} storeys {l.Lot.Storeys} lean {l.Lot.Lean} toppled {l.Lot.Toppled} style {l.Lot.Style % 4} size {l.Lot.W}x{l.Lot.D} front {l.Front} at {mx:F0},{mz:F0} heading {ang:F0} blocks {l.Site.Instance.Blocks.Size}");
+            }
+        if (_args.ContainsKey("scan"))
+            foreach (var l in lots)
+            {
+                // A thin column standing high over the rest of a building: the storeys where little stands.
+                var g = l.Site.Instance.Blocks;
+                var counts = new int[g.Size.Y];
+                foreach (var (cell, b) in g.Blocks()) if (PoiGenerator.Gen.BlockInfo.Collides(b.Type)) counts[cell.Y - g.Min.Y]++;
+                int top = counts.Length - 1;
+                while (top > 0 && counts[top] == 0) top--;
+                int body = counts.OrderByDescending(n => n).Skip(counts.Length / 4).FirstOrDefault();
+                int thin = 0;
+                for (int y = top; y > 0 && counts[y] < body * 0.3; y--) thin++;
+                if (thin >= 5) GD.Print($"scan: {l.Kind} style {l.Lot.Style % 4} storeys {l.Lot.Storeys} lean {l.Lot.Lean} toppled {l.Lot.Toppled} fall {l.Lot.Fall:F2}: {thin} thin layers on top ({counts[top]} blocks at the top, {body} in a floor) at {(l.X0 + l.X1) / 2:F0},{(l.Z0 + l.Z1) / 2:F0}");
+            }
+        // Toward the water from the middle, or the heading asked for.
+        Vector2 toWater = new((float)city.WaterX, (float)city.WaterZ);
+        if (_args.ContainsKey("heading")) toWater = new Vector2(Mathf.Sin(Mathf.DegToRad((float)Num("heading", 0))), -Mathf.Cos(Mathf.DegToRad((float)Num("heading", 0))));
+        if (toWater.LengthSquared() < 1e-4f) toWater = new Vector2(0, 1);
+        toWater = toWater.Normalized();
+        Shot Toward(string name, Vector3 from, Vector3 at)
+        {
+            // Never in the ground: a camera far out stands well over whatever is under it.
+            from.Y = Mathf.Max(from.Y, m.World.GroundHeight(from.X, from.Z) + 25f);
+            Vector3 d = at - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        Shot Level(string name, Vector3 from, Vector3 at)
+        {
+            Vector3 d = at - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        Vector3 Over(Vector2 dir, float dist, float up) => new(cxf + dir.X * dist, g0 + up, czf + dir.Y * dist);
+        var centre = new Vector3(cxf, g0 + (float)Num("look", 60), czf);
+        // From the water's side where the land leaves a clear line to the middle, else the nearest heading round from it that does.
+        Vector2 Clear(float dist, float up)
+        {
+            for (int k = 0; k < 24; k++)
+            {
+                float turn = Mathf.DegToRad(15f * ((k + 1) / 2) * (k % 2 == 0 ? 1 : -1));
+                Vector2 dir = toWater.Rotated(turn);
+                Vector3 from = Over(dir, dist, up);
+                from.Y = Mathf.Max(from.Y, m.World.GroundHeight(from.X, from.Z) + 25f);
+                bool clear = true;
+                for (float t = 0.05f; t < 0.85f && clear; t += 0.025f)
+                {
+                    Vector3 p = from.Lerp(centre, t);
+                    clear = m.World.GroundHeight(p.X, p.Z) < p.Y - 4f;
+                }
+                if (clear) return dir;
+            }
+            return toWater;
+        }
+        float farDist = (float)Num("dist", 2000), midDist = 500 + (float)city.Radius * 0.3f;
+        var shots = new List<Shot>
+        {
+            Toward("far", Over(Clear(farDist, 90), farDist, 90), centre),
+            Toward("mid", Over(Clear(midDist, 45), midDist, 45), centre),
+            Toward("aerial", Over(-toWater, 900, 650), new Vector3(cxf, g0, czf)),
+        };
+        // How it fell: a leaning or toppled tower from 140 m off, on the side its lean faces.
+        if (lots.Where(l => l.Lot.Lean || l.Lot.Toppled).OrderByDescending(l => l.Lot.Lean).ThenBy(l => Math.Abs((l.X0 + l.X1) / 2 - city.CenterX) + Math.Abs((l.Z0 + l.Z1) / 2 - city.CenterZ)).FirstOrDefault() is { } fallen)
+        {
+            var at = new Vector3((float)(fallen.X0 + fallen.X1) / 2, fallen.Pad + 3f * fallen.Lot.Storeys, (float)(fallen.Z0 + fallen.Z1) / 2);
+            Vector2 side = new Vector2(-toWater.Y, toWater.X);
+            shots.Add(Toward("fallen", new Vector3(at.X + side.X * 140, fallen.Pad + 40, at.Z + side.Y * 140), at));
+            GD.Print($"fallen: {fallen.Kind} storeys {fallen.Lot.Storeys} lean {fallen.Lot.Lean} at {at}, eye {new Vector3(at.X + side.X * 140, fallen.Pad + 40, at.Z + side.Y * 140)}");
+        }
+        // The waterfront from the water: its wall, the road on top, the city behind.
+        if (city.Waterfront.FirstOrDefault() is { } front && front.Road.Count > 8)
+        {
+            var r = front.Road;
+            int i = r.Count / 2;
+            double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            float ox = (float)(-dz / l * r.WallSide), oz = (float)(dx / l * r.WallSide), reach = r.HalfWidth + 1.5f;
+            var top = new Vector3((float)r.X[i] + ox * reach, r.Y[i], (float)r.Z[i] + oz * reach);
+            // Out over the water: past the wall to the water, then on to 40 m out or the middle of a narrow river.
+            float first = -1, last = -1, level = 0;
+            for (float t = 2; t <= 160; t += 2)
+            {
+                bool wet = m.World.Source.WaterSurfaceAt(Mathx.WrapX(top.X + ox * t, m.World.Width), Mathx.Wrap(top.Z + oz * t, m.World.Height), out float lv);
+                if (wet && first < 0) (first, level) = (t, lv);
+                if (wet) last = t;
+                else if (first >= 0) break;
+            }
+            float off = first < 0 ? 45f : Mathf.Min(first + 40f, (first + last) * 0.5f);
+            var eye = top + new Vector3(ox, 0, oz) * off + new Vector3((float)(dx / l), 0, (float)(dz / l)) * 20f;
+            eye.Y = Mathf.Max(first < 0 ? top.Y + 4f : level + 4f, m.World.GroundHeight(eye.X, eye.Z) + 3f);
+            GD.Print($"waterfront: {r.Count} points, wall top at {top.X:F0},{top.Y:F0},{top.Z:F0} ({Math.Sqrt(Math.Pow(top.X - city.CenterX, 2) + Math.Pow(top.Z - city.CenterZ, 2)):F0} m from the middle), water from {first:F0} to {last:F0} m out, eye {eye.X:F0},{eye.Y:F0},{eye.Z:F0}");
+            shots.Add(Level("waterfront", eye, top - new Vector3(0, 1.5f, 0)));
+        }
+        // Down an avenue toward the middle: from its point about 120 m out, 1.7 m over its deck.
+        var avenue = city.Streets.Where(s => s.HalfWidth >= PlanetSurface.Infra.CityPlan.Avenue).OrderBy(s => Enumerable.Range(0, s.Count).Min(i => Dist(s, i, city))).FirstOrDefault();
+        if (avenue != null)
+        {
+            int near = Enumerable.Range(0, avenue.Count).OrderBy(i => Dist(avenue, i, city)).First();
+            int from = near + 30 < avenue.Count ? near + 30 : Math.Max(0, near - 30);
+            var eye = new Vector3((float)avenue.X[from], avenue.Y[from] + 1.7f, (float)avenue.Z[from]);
+            if (_args.ContainsKey("probe"))
+            {
+                // What the made ground is beside the avenue, both sides, 20 m along from the eye.
+                foreach (int ahead in new[] { 2, 5, 9 })
+                foreach (double off in new[] { -7.5, -6.5, -5.5, 5.5, 6.5, 7.5 })
+                {
+                int at = from + (near > from ? ahead : -ahead);
+                double ax = avenue.X[at + 1] - avenue.X[at - 1], az = avenue.Z[at + 1] - avenue.Z[at - 1], al = Math.Sqrt(ax * ax + az * az);
+                    double px = avenue.X[at] - az / al * off, pz = avenue.Z[at] + ax / al * off;
+                    float gy = m.World.GroundHeight(Mathx.WrapX(px, m.World.Width), Mathx.Wrap(pz, m.World.Height));
+                    GD.Print($"at {px:F1},{pz:F1} heading {Mathf.RadToDeg(Mathf.Atan2((float)ax, -(float)az)):F0}: probe {Math.Sqrt(Math.Pow(avenue.X[at] - eye.X, 2) + Math.Pow(avenue.Z[at] - eye.Z, 2)):F0} m ahead, {off:F1} m: ground {gy:F1}, deck {avenue.Y[at]:F1}: " + string.Join("; ", PlanetSurface.Infra.MadeGrounds.Probe(m.World.Source.Grounds, px, pz, gy, m.World.Width, m.World.Height)));
+                }
+            }
+            shots.Add(Level("street", eye, new Vector3((float)avenue.X[near], avenue.Y[near] + 22f, (float)avenue.Z[near])));
+        }
+        // A house's frontage from its street: lawn, drive, fence and the house set back behind them.
+        if (lots.Where(l => l.Kind is "house" or "terrace").OrderBy(l => l.Kind == "house" ? 0 : 1).ThenBy(l => Math.Abs((l.X0 + l.X1) / 2 - city.CenterX) + Math.Abs((l.Z0 + l.Z1) / 2 - city.CenterZ)).FirstOrDefault() is { } home)
+        {
+            bool alongX = home.Front is PoiGenerator.Gen.Dir.North or PoiGenerator.Gen.Dir.South;
+            float sx = (float)home.Crossover.X + (alongX ? 16f : 0f), sz = (float)home.Crossover.Z + (alongX ? 0f : 16f);
+            var eye = new Vector3(sx, m.World.GroundHeight(sx, sz) + 1.7f, sz);
+            shots.Add(Level("homes", eye, new Vector3((float)home.Gate.X, home.Pad + 2.5f, (float)home.Gate.Z)));
+        }
+        // The city's services from their streets: a fire station, a police station, a school, a campus.
+        foreach (string kind in new[] { "fire", "police", "school", "university" })
+            if (lots.FirstOrDefault(l => l.Kind == kind) is { } svc)
+            {
+                bool alongX = svc.Front is PoiGenerator.Gen.Dir.North or PoiGenerator.Gen.Dir.South;
+                float back = kind is "school" or "university" ? 30f : 18f, outward = svc.Front is PoiGenerator.Gen.Dir.North or PoiGenerator.Gen.Dir.West ? -1f : 1f;
+                float sx = (float)svc.Crossover.X + (alongX ? 14f : outward * 6f), sz = (float)svc.Crossover.Z + (alongX ? outward * 6f : 14f);
+                var eye = new Vector3(sx, m.World.GroundHeight(sx, sz) + (kind is "school" or "university" ? 9f : 1.7f), sz);
+                shots.Add(Level(kind, eye, new Vector3((float)(svc.X0 + svc.X1) / 2, svc.Pad + 4f, (float)(svc.Z0 + svc.Z1) / 2)));
+            }
+        // Inside the tallest tower's lobby: at eye height where nothing is nearer than 2 m, toward the lobby's far side.
+        {
+            var site = tall.Site;
+            var inst = site.Instance;
+            var lobby = inst.Layout.Modules.FirstOrDefault(md => md.Purpose == "lobby");
+            if (lobby != null)
+            {
+                var cells = lobby.Cells.ToList();
+                PoiGenerator.Gen.Int3 lo = cells.Aggregate(PoiGenerator.Gen.Int3.Min), hi = cells.Aggregate(PoiGenerator.Gen.Int3.Max);
+                bool Open(PoiGenerator.Gen.Int3 c) => !PoiGenerator.Gen.BlockInfo.Collides(inst.Blocks.Get(c).Type);
+                var spot = cells.Where(c => c.Y == lo.Y + 1)
+                    .Where(c => Enumerable.Range(-2, 5).All(dx => Enumerable.Range(-2, 5).All(dz => Enumerable.Range(0, 3).All(dy => Open(new PoiGenerator.Gen.Int3(c.X + dx, lo.Y + dy, c.Z + dz))))))
+                    .OrderBy(c => Math.Abs(c.X - (lo.X + (hi.X - lo.X) / 4)) + Math.Abs(c.Z - (lo.Z + (hi.Z - lo.Z) / 4))).FirstOrDefault();
+                var eye = new Vector3(site.Origin.X + spot.X + 0.5f, site.Origin.Y + lo.Y + 1.7f, site.Origin.Z + spot.Z + 0.5f);
+                var far = new Vector3(site.Origin.X + hi.X + 0.5f, site.Origin.Y + lo.Y + 1.9f, site.Origin.Z + hi.Z + 0.5f);
+                GD.Print($"lobby {lo}..{hi}, eye at {spot}");
+                shots.Add(Level("inside", eye, far));
+            }
+        }
+        return which == "all" ? shots : shots.Where(s => s.Name == which).ToList();
+    }
+
+    /// <summary>
+    /// A typed place's frames (--airfield=all, or one by name; --type=airport, airstrip, starport...): the whole of it from the air, the
+    /// terminal's landside and airside, a hangar with its door open to the apron, the tower, the runway from standing height.
+    /// </summary>
+    List<Shot> AirfieldShots(Main m, string which)
+    {
+        // (The type asked for, where the world has others of its own too.)
+        var place = m.World.Pois.Select(p => p.Whole).Where(t => t != null).OrderBy(t => t.Sketch.Type.Id == PlanetSurface.Poi.PoiSiting.ForceType ? 0 : 1).First();
+        var pieces = PoiGenerator.Gen.PlaceTypes.Pieces(place.Sketch, place.Turn);
+        var fb = PoiGenerator.Gen.PlaceTypes.Turn(place.Sketch.Footprint, place.Turn);
+        float y = place.PadY;
+        Vector3 At(PoiGenerator.Gen.SketchBox b, float up) => new((float)(place.X + b.Cx), y + up, (float)(place.Z + b.Cz));
+        Vector3 Out(PoiGenerator.Gen.TypePiece p, float by, float up, int way = 1)
+        {
+            var v = PoiGenerator.Gen.Dirs.Vec(p.Front);
+            float reach = (p.Front is PoiGenerator.Gen.Dir.North or PoiGenerator.Gen.Dir.South ? p.Box.D : p.Box.W) / 2 + by;
+            return At(p.Box, up) + new Vector3(v.X, 0, v.Z) * reach * way;
+        }
+        Shot Aim(string name, Vector3 from, Vector3 at)
+        {
+            from.Y = Mathf.Max(from.Y, m.World.GroundHeight(from.X, from.Z) + 1.7f);
+            Vector3 d = at - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        GD.Print($"airfield: {place.Why} at {place.X:F0},{place.Z:F0} level {place.PadY}; {place.Parts.Count} parts");
+        var shots = new List<Shot>();
+        // From the air: off the landside, high enough to take in the whole length.
+        var terminal = pieces.FirstOrDefault(p => p.Item.Part.Id == "terminal");
+        Vector3 centre = At(fb, 0);
+        var land = terminal != null ? -(Out(terminal, 0, 0) - At(terminal.Box, 0)).Normalized() : new Vector3(0, 0, 1);
+        shots.Add(Aim("air", centre + land * fb.Long * 0.55f + Vector3.Up * fb.Long * 0.3f, centre));
+        if (terminal != null)
+        {
+            shots.Add(Aim("landside", Out(terminal, 70, 1.7f, -1), At(terminal.Box, 6)));
+            shots.Add(Aim("airside", Out(terminal, 90, 1.7f) + new Vector3(15, 0, 15), At(terminal.Box, 6)));
+        }
+        // Its gate, with the world's road coming to it: from up the road and above, looking back in.
+        if (place.Anchor?.Gates.FirstOrDefault() is { } gate)
+        {
+            var g = new Vector3(gate.Cell.X + 0.5f, gate.Cell.Y, gate.Cell.Z + 0.5f);
+            var away = new Vector3(gate.OutX, 0, gate.OutZ).Normalized();
+            foreach (var f in pieces.Where(f => f.Plan.Parts[0].Arg("what") == "fence"))
+                GD.Print($"fence run {f.Front} at {place.X + f.Box.X0:F0}..{place.X + f.Box.X1:F0} x {place.Z + f.Box.Z0:F0}..{place.Z + f.Box.Z1:F0}: gates {f.Plan.Parts[0].Arg("gates")}; the place's gate at {gate.Cell.X},{gate.Cell.Z} out {gate.OutX},{gate.OutZ}");
+            shots.Add(Aim("gate", g + away * 70 + new Vector3(away.Z, 0, -away.X) * 25 + Vector3.Up * 22, g + Vector3.Up * 2));
+            shots.Add(Aim("gatenear", g + away * 20 + new Vector3(away.Z, 0, -away.X) * 4 + Vector3.Up * 3f, g + Vector3.Up * 1.2f));
+        }
+        if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "hangar") is { } hangar)
+            shots.Add(Aim("hangar", Out(hangar, 35, 1.7f) + new Vector3(4, 0, 4), At(hangar.Box, 4)));
+        if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "tower") is { } tower)
+            shots.Add(Aim("tower", Out(tower, 70, 1.7f) + new Vector3(10, 0, 10), At(tower.Box, tower.Item.H * 0.6f)));
+        var grounds = PoiGenerator.Gen.PlaceTypes.Grounds(place.Sketch, place.Turn).ToList();
+        Vector3 On(PoiGenerator.Gen.Shape g, float along, float up) => new((float)(place.X + g.X + g.UX * along), y + up, (float)(place.Z + g.Z + g.UZ * along));
+        if (grounds.FirstOrDefault(g => g.Item.Part.Id == "runway") is { Item: not null } rw)
+            shots.Add(Aim("runway", On(rw.Lay, -rw.Lay.HalfU + 40, 1.7f) + new Vector3(rw.Lay.UZ, 0, -rw.Lay.UX) * rw.Lay.HalfV * 0.3f, On(rw.Lay, 0, 1.2f)));
+        // The runways' junction: down the second runway at standing height from 120 m out, and from the air over it.
+        if (grounds.FirstOrDefault(g => g.Item.Part.Id == "crosswind") is { Item: not null } x && grounds.FirstOrDefault(g => g.Item.Part.Id == "runway") is { Item: not null } main)
+        {
+            var (a, b) = (x.Lay, main.Lay);
+            float t = ((b.X - a.X) * b.UZ - (b.Z - a.Z) * b.UX) / (a.UX * b.UZ - a.UZ * b.UX), sign = t > 0 ? -1 : 1;
+            shots.Add(Aim("crosswind", On(a, t + sign * 120, 1.7f), On(a, t, 1.2f)));
+            shots.Add(Aim("junction", On(a, t + sign * 160, 0) + new Vector3(b.UX, 0, b.UZ) * 120 + Vector3.Up * 140, On(a, t, 0)));
+        }
+        if (pieces.FirstOrDefault(p => p.Item.Part.Id == "gahangar") is { } ga)
+            shots.Add(Aim("ga", Out(ga, 40, 1.7f) + new Vector3(8, 0, 8), At(ga.Box, 3)));
+        // A recessed pad: from beside its ramp's head at standing height, looking down into it.
+        if (grounds.FirstOrDefault(g => PoiGenerator.Gen.PlaceTypes.Sink(g.Item) > 0) is { Item: not null } pad)
+        {
+            var (gx, gz) = PoiGenerator.Gen.PlaceTypes.Turn(pad.Item.Rolled["gx"], pad.Item.Rolled["gz"], place.Turn);
+            float r = pad.Lay.HalfU, sink = PoiGenerator.Gen.PlaceTypes.Sink(pad.Item);
+            var mid = new Vector3((float)(place.X + pad.Lay.X), y - sink, (float)(place.Z + pad.Lay.Z));
+            shots.Add(Aim("pad", mid + new Vector3(gx, 0, gz) * (r + sink * PoiGenerator.Gen.PlaceTypes.RampRun + 6) + new Vector3(-gz, 0, gx) * 9 + Vector3.Up * (sink + 1.7f), mid + Vector3.Up * 2));
+            shots.Add(Aim("pads", mid + new Vector3(gx, 0, gz) * (r + 60) + Vector3.Up * (sink + 70), mid));
+        }
+        // The middle of a spaceport (its hub, its authority building) from the ground, and its startown.
+        if (terminal != null && terminal.Plan.Parts[0].Arg("what") is "hub" or "authority")
+            shots.Add(Aim("main", Out(terminal, 60, 1.7f) + new Vector3(12, 0, 0), At(terminal.Box, terminal.Item.H * 0.4f)));
+        if (pieces.FirstOrDefault(p => p.Item.Part.Id == "town") is { } hut)
+            shots.Add(Aim("town", Out(hut, 24, 1.7f) + new Vector3(6, 0, 6), At(hut.Box, 3)));
+        return which == "all" ? shots : shots.Where(s => which.Split('+').Contains(s.Name)).ToList();
+    }
+
+    static double Dist(PlanetSurface.Infra.InfraRoute r, int i, PlanetSurface.Infra.CityPlan city) => Math.Abs(r.X[i] - city.CenterX) + Math.Abs(r.Z[i] - city.CenterZ);
+
+    /// <summary>
+    /// The ground round a place (--ground=town, works or farm): the nearest one of that kind to the landing site, from
+    /// the air (125 m out, 110 m up) and at a person's height 26 m out from its way in, looking at it.
+    /// </summary>
+    /// <summary>Steps in the ground beside the roads (--tears=1): where the surface jumps more than a metre and a half in half a metre, within 24 m of a road's deck, listed with what is stamped there.</summary>
+    void TearScan(Main m)
+    {
+        var w = m.World;
+        int steps = 0, looked = 0;
+        foreach (var r in w.Infra.Routes)
+            for (int i = 1; i + 1 < r.Count; i += 2)
+            {
+                if (r.Span[i] != GalHack.Terrain.RoadSpan.Ground) continue;
+                double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Sqrt(dx * dx + dz * dz);
+                if (l < 1e-6) continue;
+                double nx = -dz / l, nz = dx / l;
+                foreach (int side in new[] { -1, 1 })
+                    for (double o = r.HalfWidth - 1; o < r.HalfWidth + 24; o += 0.5)
+                    {
+                        double ax = r.X[i] + nx * side * o, az = r.Z[i] + nz * side * o, bx = ax + nx * side * 0.5, bz = az + nz * side * 0.5;
+                        float ha = w.GroundHeight(Mathx.WrapX(ax, w.Width), Mathx.Wrap(az, w.Height)), hb = w.GroundHeight(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height));
+                        looked++;
+                        if (Math.Abs(ha - hb) < 1.5f) continue;
+                        if (w.Source.WaterSurfaceAt(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height), out _)) continue;
+                        steps++;
+                        if (steps <= 12)
+                        {
+                            var near = w.Source.StampsAt(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height)).Select(k => w.Source.Stamps[k]).Where(t => t.Weight(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height)) > 0f).Select(t => $"{t.Shape} {t.Name}");
+                            GD.Print($"tear: {ha:F1} to {hb:F1} m at {bx:F1},{bz:F1}, {o:F1} m off {r.Kind} ({r.HalfWidth:F1} wide, deck {r.Y[i]:F1}): {string.Join("; ", near)}");
+                        }
+                        break;
+                    }
+            }
+        GD.Print($"tears: {steps} steps over 1.5 m in half a metre beside the roads, of {looked} looked at");
+    }
+
+    List<Shot> GroundShots(Main m, string which)
+    {
+        if (_args.ContainsKey("tears")) TearScan(m);
+        var w = m.World;
+        double lx = w.Landing.X, lz = w.Landing.Y;
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
+        bool Has(PoiGenerator.Gen.FamilyDef f, params string[] tags) => tags.Any(f.Tags.Contains);
+        (double X, double Z, float Y, double FX, double FZ, string Name, GalHack.Terrain.TerrainStamp Pad)? spot = null;
+        if (which == "farm" && w.Infra.Ruins.Where(r => Has(r.Family, "farmstead")).OrderBy(r => Away(r.Center.X, r.Center.Z)).FirstOrDefault() is { } farm)
+        {
+            var f = PoiGenerator.Gen.Dirs.Vec(farm.Layout.EntranceFacing);
+            spot = (farm.OriginX + farm.Layout.EntranceCell.X + 0.5, farm.OriginZ + farm.Layout.EntranceCell.Z + 0.5, farm.Stamp.PadY, f.X, f.Z, farm.Family.Name, farm.Stamp);
+        }
+        else
+        {
+            Func<PlanetSurface.Poi.PoiSite, bool> want = which switch
+            {
+                "town" => s => s.Instance.Townsfolk != null || Has(s.Family, "settlement", "civilian"),
+                "works" => s => Has(s.Family, "industry", "working", "mine", "power", "fuel"),
+                "farm" => s => Has(s.Family, "farm"),
+                _ => s => s.Family.Id == which,
+            };
+            if (w.Pois.Where(s => s.Siting != "city" && want(s)).OrderBy(s => Away(s.Center.X, s.Center.Z)).FirstOrDefault() is { } site)
+            {
+                var f = PoiGenerator.Gen.Dirs.Vec(site.Instance.Layout.EntranceFacing);
+                spot = (site.Entrance.X + 0.5, site.Entrance.Z + 0.5, site.Stamp.PadY, f.X, f.Z, site.Name, site.Stamp);
+            }
+        }
+        if (spot is not { } s0)
+        {
+            GD.Print($"ground: no {which} on this world");
+            return new List<Shot>();
+        }
+        GD.Print($"lanes: {w.Infra.NeighbourLanes} between neighbours, {w.Infra.Spurs} out to a road; {w.Infra.Isolated.Count} places isolated; {w.Infra.LaneLog}");
+        GD.Print($"ground: {which}: {s0.Name} at {s0.X:F0},{s0.Z:F0}, {Away(s0.X, s0.Z):F0} m from the landing site");
+        var at = new Vector3((float)s0.X, s0.Y, (float)s0.Z);
+        var out1 = new Vector3((float)s0.FX, 0f, (float)s0.FZ);
+        if (out1.LengthSquared() < 0.5f) out1 = Vector3.Back;
+        Shot Look(string name, Vector3 from, Vector3 to)
+        {
+            from.Y = Mathf.Max(from.Y, m.World.GroundHeight(from.X, from.Z) + 1.6f);
+            Vector3 d = to - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        var side = new Vector3(-out1.Z, 0f, out1.X);
+        // On the yard, toward its far corner from the way in, looking back across it at the way in.
+        var eye = at + out1 * 15f + side * 6f;
+        eye.Y = m.World.GroundHeight(eye.X, eye.Z) + 1.7f;
+        return new List<Shot>
+        {
+            Look("air", at + out1 * 110f + side * 60f + Vector3.Up * 110f, at - out1 * 20f),
+            Look("ground", eye, at + Vector3.Up * 1.2f),
+            Look("wide", at + out1 * 380f + side * 200f + Vector3.Up * 330f, at),
+        };
+    }
+
+    Vector3? _figure;
+
+    /// <summary>A person for scale: 1.8 m, in a bright coat, standing where asked.</summary>
+    void AddFigure(Main main)
+    {
+        if (_figure is not Vector3 at) return;
+        var coat = new StandardMaterial3D { AlbedoColor = new Color("d8552a") };
+        var head = new StandardMaterial3D { AlbedoColor = new Color("e0c0a0") };
+        var body = new MeshInstance3D { Mesh = new CapsuleMesh { Radius = 0.26f, Height = 1.55f, Material = coat }, Position = at + new Vector3(0, 0.78f, 0) };
+        var top = new MeshInstance3D { Mesh = new SphereMesh { Radius = 0.14f, Height = 0.28f, Material = head }, Position = at + new Vector3(0, 1.67f, 0) };
+        main.AddChild(body);
+        main.AddChild(top);
     }
 
     int Int(string key, int fallback) => _args.TryGetValue(key, out string s) ? int.Parse(s, CultureInfo.InvariantCulture) : fallback;
@@ -79,7 +673,7 @@ public partial class Screenshot : Node
         if ((_elapsed += delta) > TimeoutSeconds)
         {
             GD.PrintErr($"timed out (stage {_stage}, streamer pending {_main.Streamer.Pending}, settled {_main.Streamer.Settled})");
-            GetTree().Quit(1);
+            GalHack.Testing.Backstop.Quit(this, 1);
             return;
         }
         switch (_stage)
@@ -87,7 +681,8 @@ public partial class Screenshot : Node
             case 0:
                 if (_main.World == null) return;
                 _spec.Prepare?.Invoke(_main);
-                var (pos, heading, pitch) = _spec.Place(_main);
+                _series = _spec.Series?.Invoke(_main);
+                var (pos, heading, pitch) = _series is { Count: > 0 } ? (_series[0].Pos, _series[0].Heading, _series[0].Pitch) : _spec.Place(_main);
                 _main.Fly.Begin(pos, -Mathf.DegToRad(heading), Mathf.DegToRad(pitch));
                 _main.Player.ProcessMode = ProcessModeEnum.Disabled;
                 _main.Sky.TimeOfDay = _spec.TimeFor?.Invoke(_main) ?? _spec.Time;
@@ -95,18 +690,46 @@ public partial class Screenshot : Node
                 if (_spec.Weather is WeatherKind kind) _main.Weather.Snap(kind, _spec.Ground);
                 if (!_args.TryGetValue("hud", out string hud) || hud != "1") _main.Hud.HideAll();
                 if (_args.TryGetValue("debug", out string debug)) _main.Sky.DebugView(int.Parse(debug));
+                // The ground without its roads drawn, to weigh what drawing them costs.
+                if (_args.ContainsKey("noroads"))
+                    foreach (ShaderMaterial m in new[] { _main.Streamer.VoxelMaterial, _main.Streamer.FarMaterial }) m.SetShaderParameter("road_grid", Vector4.Zero);
+                RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
                 _stage = 1;
                 break;
             case 1:
                 _main.Streamer.SetFocus(_main.Camera.GlobalPosition);
-                bool settled = _main.Streamer.Settled && _main.Pois.Built && _main.Infra.Built;
+                bool settled = _main.Streamer.Settled && _main.Pois.Built && _main.Infra.Built && (!PlanetSurface.Poi.PoiLayer.Tiered || !_main.Pois.MidPending);
                 _settled = settled ? _settled + 1 : 0;
                 if (_settled == SettleFrames - 12) _spec.BeforeCapture?.Invoke(_main);
+                // --coast=1: never inside a tree or against a wall: up and on toward the water until the view is open.
+                if (_settled == SettleFrames - 12 && _args.ContainsKey("coast") && !_args.ContainsKey("ore") && _moved < 6 && Open(_main) is float open && open < 40f)
+                {
+                    Vector3 eye = _main.Camera.GlobalPosition, fwd = -_main.Camera.GlobalBasis.Z, flat = new Vector3(fwd.X, 0f, fwd.Z).Normalized();
+                    GD.Print($"view blocked at {open:F0} m: moving clear");
+                    _main.Fly.Begin(eye + Vector3.Up * 10f + flat * 25f, -Mathf.Atan2(fwd.X, -fwd.Z), Mathf.Atan2(fwd.Y, new Vector2(fwd.X, fwd.Z).Length()));
+                    (_moved, _settled) = (_moved + 1, 0);
+                    return;
+                }
+                // --body=1: turned to the biggest body up in the sky (a giant, a moon), from where the view stands.
+                if (_settled == SettleFrames - 12 && _args.ContainsKey("body") && _main.Sky.Drawn.Where(b => b.Direction.Y > 0.03f).OrderByDescending(b => b.Angular).FirstOrDefault() is { Body: not null } big)
+                    _main.Fly.Begin(_main.Camera.GlobalPosition, -Mathf.Atan2(big.Direction.X, -big.Direction.Z), Mathf.Atan2(big.Direction.Y, new Vector2(big.Direction.X, big.Direction.Z).Length()));
                 if (_settled == SettleFrames - 12 && _args.TryGetValue("hide", out string hide))
                     foreach (Node n in _main.Pois.GetChildren())
                         foreach (Node c in n.GetChildren())
                             if ((c is CpuParticles3D && hide.Contains("smoke")) || (c is MeshInstance3D && hide.Contains("mesh"))) ((Node3D)c).Visible = false;
                 if (_settled < SettleFrames) return;
+                // --frames=N: the GPU's time per frame, over N settled frames before the capture.
+                if (_gpuFrames < Int("frames", 0))
+                {
+                    double gpu = RenderingServer.ViewportGetMeasuredRenderTimeGpu(GetViewport().GetViewportRid());
+                    _gpuSum += gpu;
+                    _gpuWorst = Math.Max(_gpuWorst, gpu);
+                    _gpuFrames++;
+                    return;
+                }
+                if (_gpuFrames > 0) GD.Print($"GPU over {_gpuFrames} frames: mean {_gpuSum / _gpuFrames:F2} ms, worst {_gpuWorst:F2} ms, {Engine.GetFramesPerSecond():F0} fps");
+                _gpuFrames = 0;
+                _gpuSum = _gpuWorst = 0;
                 _stage = 2;
                 Capture();
                 break;
@@ -117,16 +740,42 @@ public partial class Screenshot : Node
     {
         await ToSignal(RenderingServer.Singleton, "frame_post_draw");
         Image image = GetViewport().GetTexture().GetImage();
-        Error result = image.SavePng(_out);
+        string file = _series is { Count: > 0 } ? _out.Replace(".png", $"-{_series[_shot].Name}.png") : _out;
+        Error result = image.SavePng(file);
         Vector3 p = _main.Camera.GlobalPosition;
         GD.Print($"{_main.World.Spec} · {_main.World.Sky.Summary} · camera {p.X:F0}, {p.Y:F0}, {p.Z:F0} · " +
                  $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalPrimitivesInFrame) / 1000} k primitives, " +
-                 $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} draw calls");
+                 $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} draw calls, " +
+                 $"{RenderingServer.ViewportGetMeasuredRenderTimeGpu(GetViewport().GetViewportRid()):F1} ms on the GPU, " +
+                 $"{RenderingServer.ViewportGetMeasuredRenderTimeCpu(GetViewport().GetViewportRid()) + RenderingServer.GetFrameSetupTimeCpu():F1} ms rendering on the CPU, " +
+                 $"{Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:F1} ms process");
         Vector3 fwd = -_main.Camera.GlobalBasis.Z;
         GD.Print($"time {_main.Sky.TimeOfDay:F3} · sun {_main.Sky.ToSun.X:F2}, {_main.Sky.ToSun.Y:F2}, {_main.Sky.ToSun.Z:F2} · facing {fwd.X:F2}, {fwd.Y:F2}, {fwd.Z:F2}");
         if (_main.Pois.DecoRooms > 0) GD.Print($"rooms dressed from the decorations library: {_main.Pois.DecoRooms}");
-        GD.Print(result == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {result}");
-        GetTree().Quit(result == Error.Ok ? 0 : 1);
+        GD.Print(result == Error.Ok ? $"saved {file}" : $"could not save {file}: {result}");
+        GD.Print($"LABEL {System.IO.Path.GetFileNameWithoutExtension(file)}|{Label(_main.World)}");
+        GD.Print($"PARTS {System.IO.Path.GetFileNameWithoutExtension(file)}|{PartColours(_main.World)}");
+        // The system the seed makes (its star, and each body's kind, seed, orbit and size): the palette must never change it.
+        GD.Print($"SYSTEM {System.IO.Path.GetFileNameWithoutExtension(file)}|{_main.World.Sky.Star} " + string.Join(" ", _main.World.StarSystem.Bodies.Select(b => $"{b.Kind}:{b.Seed % 1000000}:{b.Orbit:F4}:{b.Radius:F5}")));
+        // A series: on to its next frame, the world kept.
+        if (result == Error.Ok && _series != null && ++_shot < _series.Count)
+        {
+            Shot next = _series[_shot];
+            _main.Fly.Begin(next.Pos, -Mathf.DegToRad(next.Heading), Mathf.DegToRad(next.Pitch));
+            _elapsed = 0;
+            _settled = 0;
+            _stage = 1;
+            return;
+        }
+        // A batch: on to its next world.
+        if (_batch.Count > 0)
+        {
+            NextInBatch();
+            _main.Arrive(_spec.Planet);
+            (_elapsed, _settled, _stage, _series, _shot, _moved) = (0, 0, 0, null, 0, 0);
+            return;
+        }
+        GalHack.Testing.Backstop.Quit(this, result == Error.Ok ? 0 : 1);
     }
 }
 
@@ -156,7 +805,9 @@ public static class Views
         "cave" => new(PlanetSpec.Roll(9, Archetype.Temperate, 0), CaveView, CaveTime, WeatherKind.Clouds, Prepare: DigCave),
         "volcanic_dusk" => new(PlanetSpec.Roll(3, Archetype.Lava, 0), m => LookAtPeak(m, 1400, 120, 6), 0.735, WeatherKind.Clouds),
         _ when name.StartsWith("far:") => FarView(name),
+        _ when name.StartsWith("cliff:") => CliffViews.Get(name),
         _ when name.StartsWith("infra:") => InfraViews.Get(name),
+        _ when name.StartsWith("barren:") => BarrenViews.Get(name),
         _ => null,
     };
 

@@ -136,7 +136,7 @@ public partial class SkyLight : Node
     IEnumerable<Place> Standing() => Places?.Invoke() ?? Array.Empty<Place>();
 
     /// <summary>Stood still in the world: a flying vessel moves faster than the field does, and carries its own dark (<see cref="StructureSky"/>).</summary>
-    static bool Stands(Vessel v) => v.IsBase || v.Body.Velocity.LengthSquared() < 0.25f;
+    public static bool Stands(Vessel v) => v.IsBase || v.Body.Velocity.LengthSquared() < 0.25f;
 
     // ---- The worker -----------------------------------------------------------------------------
 
@@ -167,12 +167,12 @@ public partial class SkyLight : Node
         var near = new Vector3(x + SkyField.SizeX / 2, 0f, z + SkyField.SizeZ / 2);
         foreach (PlanetSurface.Poi.PoiSite s in Zone.Planet.Pois)
         {
-            BlockGrid g = s.Instance?.Blocks;
+            BlockGrid g = s.Built?.Blocks;
             if (g == null) continue;
             Vector3 at = Zone.Planet.NearestCopy(new Vector3(s.Origin.X, s.Origin.Y, s.Origin.Z), near);
             int ox = Mathf.RoundToInt(at.X), oy = s.Origin.Y, oz = Mathf.RoundToInt(at.Z);
             if (ox + g.Max.X < x || ox + g.Min.X >= x + SkyField.SizeX || oz + g.Max.Z < z || oz + g.Min.Z >= z + SkyField.SizeZ) continue;
-            snap.Sites.Add((g, s.Instance.Layout.Occupied, ox, oy, oz));
+            snap.Sites.Add((g, s.Layout.Occupied, ox, oy, oz));
         }
         foreach (Place p in Standing())
         {
@@ -185,13 +185,13 @@ public partial class SkyLight : Node
             if (Stands(v)) snap.Structures.Add((StructureSky.Stops(v.Structure), v.Node.GlobalTransform, v.Structure.Grid.CellSize));
         SkyField spare = _spare;
         _spare = null;
-        _job = Task.Run(() =>
+        _job = Task.Run(() => GalHack.Testing.AllocMeter.Measure("sky light", () =>
         {
             long t = System.Diagnostics.Stopwatch.GetTimestamp();
             Fill(spare, snap);
             spare.Flood();
             return (spare, (System.Diagnostics.Stopwatch.GetTimestamp() - t) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
-        });
+        }));
     }
 
     static void Fill(SkyField f, Snapshot s)
@@ -354,7 +354,7 @@ public partial class SkyLight : Node
         PlanetSurface.World.PlanetWorld w = Zone.Planet;
         _groundX = eye.X;
         _groundZ = eye.Z;
-        _groundJob = Task.Run(() =>
+        _groundJob = Task.Run(() => GalHack.Testing.AllocMeter.Measure("sky light ground", () =>
         {
             var heights = new float[GroundTexels * GroundTexels];
             for (int z = 0; z < GroundTexels; z++)
@@ -370,7 +370,7 @@ public partial class SkyLight : Node
                 heights[z * GroundTexels + x] = low;
             }
             return (heights, x0, z0);
-        });
+        }));
     }
 
     void ShowGround(float[] heights, float x0, float z0)

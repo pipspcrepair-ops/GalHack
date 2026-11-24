@@ -1,0 +1,116 @@
+# Faction sigils as painted cells: written by tools/sigils_from_png.py from docs/signs/sigils/png.
+# sigil <faction>, a colour per letter, then rows top to bottom; '.' is unpainted.
+
+sigil vharn
+  colours a=1b192a b=2edeb6
+  |................|
+  |................|
+  |.............aa.|
+  |............aa..|
+  |...........aa...|
+  |.a........aaa...|
+  |..a......aaa....|
+  |..aaa...aaaa....|
+  |...aaa.aaaa.....|
+  |...aaabbaaa.....|
+  |....aabbaa......|
+  |.....aaaa.......|
+  |......aaa.......|
+  |.......a........|
+  |.......a........|
+  |................|
+
+sigil kessari
+  colours a=54626b b=ffae00
+  |................|
+  |.aa....aa....aa.|
+  |.aa....aa....aa.|
+  |...a........a...|
+  |....aa.aa.aa....|
+  |....aa.aa.aa....|
+  |................|
+  |.aa.aa.bb.aa.aa.|
+  |.aa.aa.bb.aa.aa.|
+  |................|
+  |....aa.aa.aa....|
+  |....aa.aa.aa....|
+  |...a........a...|
+  |.aa....aa....aa.|
+  |.aa....aa....aa.|
+  |................|
+
+sigil meridian
+  colours a=1c54b6 b=d6271d
+  |............b...|
+  |.aaaaaaa..bbbbb.|
+  |.aaaaaaa.bbbbbb.|
+  |.aaaaaaa.bbbbbbb|
+  |.aaaaaaaabbbbbb.|
+  |.aaaaaaaa.bbbbb.|
+  |.aaaaaaaaa.bbb..|
+  |.aaaaaaaaaaa....|
+  |.aaaaaaaaaaaaaa.|
+  |.aaaaaaaaaaaaaa.|
+  |.aaaaaaaaaaaaaa.|
+  |.aaaaaaaaaaaaaa.|
+  |.aaaaaaaaaaaaaa.|
+  |.aaaaaaaaaaaaaa.|
+  |.aaaaaaaaaaaaaa.|
+  |................|
+
+sigil ledger
+  colours a=0d6a6d b=ee7719
+  |................|
+  |.....aaaa.b.....|
+  |...aaaaaa.bbb...|
+  |..aaaaaaa.bbbb..|
+  |..aaaaaaa.bbbb..|
+  |.aaaaaaaa.bbbbb.|
+  |.aaaaaaaa.bbbbb.|
+  |.aaaaaaaa.bbbbb.|
+  |.aaaaa.bbbbbbbb.|
+  |.aaaaa.bbbbbbbb.|
+  |.aaaaa.bbbbbbbb.|
+  |..aaaa.bbbbbbb..|
+  |..aaaa.bbbbbbb..|
+  |...aaa.bbbbbb...|
+  |.....a.bbbb.....|
+  |................|
+
+sigil reavers
+  colours a=a3421a b=ffc200
+  |................|
+  |.....aa.....aa..|
+  |..aa.aa..aa.aa..|
+  |..aa.aa..aa..bb.|
+  |..aa.aa..aa.bbbb|
+  |..aa.aa...bbbb..|
+  |..aa.aa..bbbb...|
+  |..aa...bbbb..a..|
+  |..aa..bbbb..aa..|
+  |..a.bbbb..a.aa..|
+  |...bbbb..aa.aa..|
+  |.bbbb....aa.aa..|
+  |bbbb.aa..aa.aa..|
+  |.b...aa..aa.aa..|
+  |.....aa......a..|
+  |................|
+
+sigil freeholders
+  colours a=65733e b=ffc200
+  |.......aa.......|
+  |.....aaaaaa.....|
+  |.....aa..aa.....|
+  |....aaaaaaaa....|
+  |....aaaaaaaa....|
+  |....aaaaaaaa....|
+  |....aaaaaaaa....|
+  |...aabbbbbbaa...|
+  |...aabbbbbbaa...|
+  |...aabbbbbbaa...|
+  |...aabbbbbbaa...|
+  |....aaaaaaaa....|
+  |....aaaaaaaa....|
+  |...aaaaaaaaaa...|
+  |...aaaaaaaaaa...|
+  |................|

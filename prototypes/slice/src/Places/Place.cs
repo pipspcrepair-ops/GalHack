@@ -5,6 +5,7 @@ using Godot;
 using PlanetSurface.Poi;
 using PoiGenerator;
 using PoiGenerator.Gen;
+using System.Threading.Tasks;
 using Layers = GalHack.Physics.Layers;
 
 namespace Slice.Places;
@@ -12,7 +13,7 @@ namespace Slice.Places;
 /// <summary>
 /// A place near the survivor stood up as a real structure in the surface world: its blocks as
 /// meshes and collision (on the world layer, so walking, E, the tool and every ray meet them),
-/// its doors as sliding leaves, its lift cars, its keycards lying where they fell, the tells of
+/// its doors as sliding leaves, its lift cars, the tells of
 /// its hidden rooms, the lamps nearest you, its rooms dressed from the decorations library, and
 /// its creatures. The node's local space is the place's grid: one unit a cell, cell (x, y, z)
 /// spanning [x, x+1], with the grid's origin at the site's origin in the world (the copy nearest
@@ -21,8 +22,14 @@ namespace Slice.Places;
 /// </summary>
 public partial class Place : Node3D
 {
-    /// <summary>Small chunks: each is a millisecond or two to put in, and a broken wall remeshes only a little.</summary>
-    public const int ChunkSize = 8;
+    /// <summary>Chunks: each is a millisecond or two to put in, and a broken wall remeshes only one or two.</summary>
+    public const int ChunkSize = 16;
+
+    /// <summary>A cube's full detail drawn as one mesh rather than a mesh a chunk (PlaceTest checks an edit splits it back; PopRoute --merge=0 for the old way).</summary>
+    public static bool MergeCubes = true;
+
+    /// <summary>The cubes it stands in: each has its own body, and is drawn near or left to the planet's merged drawing as one.</summary>
+    public const int GroupSize = PoiLayer.GroupSize;
 
     public PlaceMemory Memory { get; private set; }
     public PoiSite Site => Memory.Site;
@@ -38,8 +45,31 @@ public partial class Place : Node3D
     /// <summary>Beyond the drop radius, kept only because its blocks changed: drawn, nothing more.</summary>
     public bool Dormant { get; private set; }
 
-    public StaticBody3D Blocks { get; private set; }
-    readonly Dictionary<Int3, (MeshInstance3D Mesh, CollisionShape3D Shape)> _chunks = new();
+    /// <summary>One of the cubes a place stands in.</summary>
+    sealed class Group
+    {
+        public Int3 Key;
+        public StaticBody3D Body;
+        /// <summary>Its full-detail meshes are in and the planet's merged cube is hidden.</summary>
+        public bool Near;
+        /// <summary>Its blocks changed: it keeps its own meshes, whatever the distance.</summary>
+        public bool Modified;
+        public Task<List<ChunkMesh>> Meshing;
+        /// <summary>The cube's chunks merged on the meshing worker, one surface a material (null: drawn a chunk at a time, as a changed cube is).</summary>
+        public List<MeshBuild.Surface[]> Merging;
+        /// <summary>Its full detail as a few merged meshes (a draw a material each, where it was a draw a material a chunk), while its blocks are as built.</summary>
+        public readonly List<MeshInstance3D> Merged = new();
+        /// <summary>The next merged part to put in.</summary>
+        public int NextPart;
+        public int Next;
+        /// <summary>How far its full detail has dissolved in over the merged cube (0..1), and which way it is going (+1, -1, 0: still).</summary>
+        public float Blend;
+        public int Way;
+        public readonly List<Door> Doors = new();
+    }
+
+    readonly Dictionary<Int3, Group> _groups = new();
+    readonly Dictionary<Int3, (MeshInstance3D Mesh, List<CollisionShape3D> Shapes)> _chunks = new();
     BlockMaterials _materials;
     float _glow;
 
@@ -48,17 +78,30 @@ public partial class Place : Node3D
         var p = new Place { Name = $"Place {memory.Site.Name}", Memory = memory, Places = places };
         p._glow = memory.Inst.State switch { PoiState.Active => 2.4f, PoiState.Infested => 2.0f, _ => 1.6f };
         p._materials = new BlockMaterials(p._glow);
-        p.Blocks = new StaticBody3D { Name = "Blocks", CollisionLayer = Layers.World, CollisionMask = 0 };
-        p.AddChild(p.Blocks);
+        p.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // it stands still; only its doors and lifts move, a tick at a time
         return p;
     }
 
     /// <summary>The grid's origin in the world, canonical (x, z on the planet).</summary>
     public Vector3 Origin => new(Site.Origin.X, Site.Origin.Y, Site.Origin.Z);
 
+    /// <summary>Where its grid's origin stands in the world now (the copy nearest the focus), kept as it is moved: a person's or a creature's every look at a place is then no call into the engine.</summary>
+    public Vector3 WorldOrigin { get; private set; }
+
+    /// <summary>Puts the place at a point of the zone (the planet's copy nearest the focus).</summary>
+    internal void MoveTo(Vector3 at)
+    {
+        if (at == _at && IsInsideTree()) return;
+        _at = at;
+        Position = at;
+        WorldOrigin = GlobalPosition;
+    }
+
+    Vector3 _at;
+
     public Int3 CellAt(Vector3 world)
     {
-        Vector3 p = world - GlobalPosition;
+        Vector3 p = world - WorldOrigin;
         return new Int3(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y), Mathf.FloorToInt(p.Z));
     }
 
@@ -73,48 +116,112 @@ public partial class Place : Node3D
     }
 
     /// <summary>A cell's middle in the world.</summary>
-    public Vector3 WorldOf(Int3 c, float up = 0.5f) => GlobalPosition + new Vector3(c.X + 0.5f, c.Y + up, c.Z + 0.5f);
+    public Vector3 WorldOf(Int3 c, float up = 0.5f) => WorldOrigin + new Vector3(c.X + 0.5f, c.Y + up, c.Z + 0.5f);
 
-    public Vector3 ToWorld(Vector3 local) => GlobalPosition + local;
-    public Vector3 FromWorld(Vector3 world) => world - GlobalPosition;
+    public Vector3 ToWorld(Vector3 local) => WorldOrigin + local;
+    public Vector3 FromWorld(Vector3 world) => world - WorldOrigin;
 
     // ---- Blocks ---------------------------------------------------------------------------------
 
     /// <summary>The mesher's options for a near place: doors are the view's own; buried ground hides faces (an empty plug, as the planet's far drawing does).</summary>
-    public static MeshOptions Options(Int3 min)
+    public static MeshOptions Options(Int3 min, bool collision = true)
     {
-        MeshOptions o = MeshOptions.OnPlanet(min);
+        MeshOptions o = WalkableMesh.On(min); // doors are the view's own: Place.Fixtures' leaves, solid until opened
         o.ChunkSize = ChunkSize;
-        o.Doors = false;
+        o.Collision = collision;
         return o;
     }
 
-    /// <summary>Puts one chunk's mesh and collision in (or replaces them).</summary>
-    public void SetChunk(ChunkMesh chunk)
+    /// <summary>The whole place's collision at stand-up: the same faces, merged, drawn nowhere.</summary>
+    public static MeshOptions Solid(Int3 min)
     {
-        DropChunk(chunk.Chunk);
-        var mesh = new MeshInstance3D { Name = $"Chunk {chunk.Chunk}", Mesh = MeshBuild.ToMesh(chunk, _materials.BySurface) };
-        AddChild(mesh);
-        CollisionShape3D shape = null;
-        if (chunk.Collision.Count > 0)
-        {
-            shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk) };
-            Blocks.AddChild(shape);
-        }
-        _chunks[chunk.Chunk] = (mesh, shape);
+        MeshOptions o = Options(min);
+        o.Merged = true;
+        o.Drawn = false;
+        return o;
     }
-
-    void DropChunk(Int3 c)
-    {
-        if (!_chunks.Remove(c, out var old)) return;
-        old.Mesh.QueueFree();
-        old.Shape?.QueueFree();
-    }
-
-    public int ChunkCount => _chunks.Count;
 
     static int FloorDiv(int a, int b) => a >= 0 ? a / b : (a - b + 1) / b;
     public static Int3 ChunkOf(Int3 cell) => new(FloorDiv(cell.X, ChunkSize), FloorDiv(cell.Y, ChunkSize), FloorDiv(cell.Z, ChunkSize));
+    static Int3 GroupOf(Int3 chunk) { int k = GroupSize / ChunkSize; return new(FloorDiv(chunk.X, k), FloorDiv(chunk.Y, k), FloorDiv(chunk.Z, k)); }
+
+    Group GroupAt(Int3 key)
+    {
+        if (_groups.TryGetValue(key, out Group g)) return g;
+        g = new Group { Key = key };
+        _groups[key] = g;
+        return g;
+    }
+
+    /// <summary>
+    /// Puts one cube's collision in, a chunk a step: the physics builds each chunk's shape (its faces' tree) as it joins
+    /// the body, so a dense cube's all at once, its body made whole before it joined the world, was a hitch of tens of ms.
+    /// </summary>
+    public IEnumerable<int> SetGroupShapes(IEnumerable<ChunkMesh> chunks)
+    {
+        foreach (ChunkMesh c in chunks)
+        {
+            if (c.Collision.Count == 0) continue;
+            var shapes = new List<CollisionShape3D>();
+            _chunks[c.Chunk] = (_chunks.GetValueOrDefault(c.Chunk).Mesh, shapes);
+            // A piece a step: a dense chunk's faces all in one shape were one step of tens of ms.
+            for (int first = 0; first < c.Collision.Count; first += ShapePiece)
+            {
+                shapes.Add(AddPiece(c, first));
+                yield return 0;
+            }
+        }
+    }
+
+    /// <summary>The most of a chunk's collision one shape holds, floats (a triangle is nine): the physics builds a shape's face tree as it joins its body, in one go (1,024 triangles was a step of up to 5.7 ms).</summary>
+    const int ShapePiece = 512 * 9;
+
+    /// <summary>A piece of a chunk's collision (<see cref="ShapePiece"/> floats from <paramref name="first"/>) into its cube's body.</summary>
+    CollisionShape3D AddPiece(ChunkMesh chunk, int first)
+    {
+        Group g = GroupAt(GroupOf(chunk.Chunk));
+        if (g.Body == null)
+        {
+            g.Body = new StaticBody3D { Name = $"Blocks {g.Key}", CollisionLayer = Layers.World, CollisionMask = 0 };
+            AddChild(g.Body);
+        }
+        var shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk, first, ShapePiece) };
+        g.Body.AddChild(shape);
+        return shape;
+    }
+
+    /// <summary>A chunk's collision pieces in place of the ones it had (none: null).</summary>
+    void SwapShapes(Int3 ch, List<CollisionShape3D> shapes)
+    {
+        var old = _chunks.GetValueOrDefault(ch);
+        if (old.Shapes != null) foreach (CollisionShape3D s in old.Shapes) s.QueueFree();
+        _chunks[ch] = (old.Mesh, shapes is { Count: > 0 } ? shapes : null);
+    }
+
+    void SetChunkMesh(ChunkMesh chunk)
+    {
+        var old = _chunks.GetValueOrDefault(chunk.Chunk);
+        old.Mesh?.QueueFree();
+        MeshInstance3D mesh = null;
+        if (chunk.Surfaces.Any(s => s.Indices.Count > 0))
+        {
+            mesh = new MeshInstance3D { Name = $"Chunk {chunk.Chunk}", Mesh = MeshBuild.ToMesh(chunk, _materials.BySurface) };
+            AddChild(mesh);
+            // A cube still coming in shows nothing until all of it is in, and then dissolves in (ShowNear).
+            Group g = GroupAt(GroupOf(chunk.Chunk));
+            if (!g.Near || g.Way != 0) PlanetSurface.Fx.Fade.Set(mesh, 0f, g.Way != 0 ? g.Blend : 0f);
+        }
+        _chunks[chunk.Chunk] = (mesh, old.Shapes);
+    }
+
+    void SetChunkShape(ChunkMesh chunk)
+    {
+        var shapes = new List<CollisionShape3D>();
+        for (int first = 0; first < chunk.Collision.Count; first += ShapePiece) shapes.Add(AddPiece(chunk, first));
+        SwapShapes(chunk.Chunk, shapes);
+    }
+
+    public int ChunkCount => _chunks.Count;
 
     /// <summary>
     /// Some cells changed: the chunks they touch (and the ones whose faces and shading border them)
@@ -122,26 +229,499 @@ public partial class Place : Node3D
     /// </summary>
     public void Remesh(IEnumerable<Int3> cells)
     {
+        cells = cells as ICollection<Int3> ?? new List<Int3>(cells);
         Memory.Fauna?.Forget(cells);
-        foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize))
-        {
-            ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, Options);
-            if (mesh == null || mesh.Surfaces.All(s => s.Indices.Count == 0) && mesh.Collision.Count == 0) DropChunk(ch);
-            else SetChunk(mesh);
-        }
+        PlaceParts.Refresh(Memory, cells);
+        foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize)) Mesh(ch);
         Memory.Modified = true;
         Places.Zone.Light.Touch();
     }
+
+    /// <summary>
+    /// As <see cref="Remesh"/>, the chunks rebuilt from the next frame (<see cref="RebuildStale"/>): meshed on a worker, a merged cube
+    /// among them taken apart there too, and only their meshes and colliders put in here, a few a frame, so a fight's breakages never
+    /// land in one frame. The grid has changed already; only the drawing and the colliders follow a moment later.
+    /// </summary>
+    public void Rebuild(ICollection<Int3> cells)
+    {
+        Memory.Fauna?.Forget(cells);
+        PlaceParts.Refresh(Memory, cells);
+        foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize)) _stale.Add(ch);
+        Memory.Modified = true;
+    }
+
+    readonly HashSet<Int3> _stale = new();
+
+    /// <summary>A rebuild on its worker: each stale chunk meshed whole, and each merged cube near among them a mesh a chunk to draw (<see cref="Unmerge"/>'s work).</summary>
+    sealed class Rebuilt
+    {
+        public List<Int3> Keys;
+        /// <summary><see cref="_meshSerial"/> when it began: a chunk meshed here and now since keeps that newer mesh.</summary>
+        public int Serial, Next, CubeNext;
+        public readonly List<ChunkMesh> Chunks = new();
+        public readonly List<(Group Group, List<ChunkMesh> Built)> Cubes = new();
+        /// <summary>Chunks whose drawing went in with their cube's.</summary>
+        public readonly HashSet<Int3> Drawn = new();
+        /// <summary>The collision pieces put in so far of the chunk at <see cref="Next"/> (null: its drawing not yet in).</summary>
+        public List<CollisionShape3D> Shapes;
+    }
+
+    Rebuilt _rebuilt;
+    Task _rebuilding;
+    readonly Dictionary<Int3, int> _meshedAt = new();
+    int _meshSerial;
+
+    /// <summary>Chunks waiting on <see cref="Rebuild"/>, and one for a rebuild still in hand (tests).</summary>
+    public int Stale => _stale.Count + (_rebuilt != null ? 1 : 0);
+
+    /// <summary>The most a frame spends putting rebuilt chunks in, ms (one always goes, and a cube's chunks all together).</summary>
+    const double StaleMs = 1.5;
+
+    void RebuildStale()
+    {
+        Rebuilt job = _rebuilt;
+        if (job == null)
+        {
+            if (_stale.Count > 0) StartRebuild();
+            return;
+        }
+        if (!_rebuilding.IsCompleted) return;
+        if (_rebuilding.IsFaulted)
+        {
+            // (A block went while the worker read its cell: done again.)
+            GD.PushWarning($"rebuilding {Site.Name} again: {_rebuilding.Exception?.GetBaseException().Message}");
+            _stale.UnionWith(job.Keys);
+            _rebuilt = null;
+            return;
+        }
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool Spent() => System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds > StaleMs;
+        // A merged cube's chunk meshes go in a few a frame hidden behind it, and show in the frame it goes: never a hole.
+        while (job.Cubes.Count > 0)
+        {
+            var (g, built) = job.Cubes[0];
+            for (; job.CubeNext < built.Count && g.Near && g.Merged.Count > 0; job.CubeNext++)
+            {
+                if (job.CubeNext > 0 && Spent()) return;
+                SetChunkMesh(built[job.CubeNext]);
+                if (_chunks[built[job.CubeNext].Chunk].Mesh is { } hidden) hidden.Visible = false;
+                job.Drawn.Add(built[job.CubeNext].Chunk);
+            }
+            if (g.Near) FreeMerged(g);
+            foreach (ChunkMesh c in built)
+                if (_chunks.TryGetValue(c.Chunk, out var drawn) && drawn.Mesh != null) drawn.Mesh.Visible = g.Near;
+            ChunkMesh.Return(built);
+            job.Cubes.RemoveAt(0);
+            job.CubeNext = 0;
+        }
+        // Each chunk's drawing, then its collision a piece a step (a dense chunk's all in one frame was 7 ms), its old pieces kept
+        // until the last new one is in: never a gap to fall or shoot through.
+        while (job.Next < job.Chunks.Count)
+        {
+            ChunkMesh m = job.Chunks[job.Next];
+            bool current = _meshedAt.GetValueOrDefault(m.Chunk) <= job.Serial;
+            if (current && job.Shapes == null)
+            {
+                if (GroupAt(GroupOf(m.Chunk)).Near && !job.Drawn.Contains(m.Chunk)) SetChunkMesh(m);
+                job.Shapes = new List<CollisionShape3D>();
+                if (Spent()) return;
+            }
+            for (int first = job.Shapes?.Count * ShapePiece ?? 0; current && first < m.Collision.Count; first += ShapePiece)
+            {
+                if (first > 0 && Spent()) return;
+                job.Shapes.Add(AddPiece(m, first));
+            }
+            // (Meshed here and now meanwhile: what was put in of this one goes.)
+            if (current) SwapShapes(m.Chunk, job.Shapes);
+            else if (job.Shapes != null) foreach (CollisionShape3D s in job.Shapes) s.QueueFree();
+            job.Shapes = null;
+            ChunkMesh.Return(m);
+            job.Next++;
+            if (Spent()) return;
+        }
+        _rebuilt = null;
+        Places.Zone.Light.Touch();
+    }
+
+    /// <summary>The stale chunks handed to a worker to mesh (and the merged cubes near among them, to draw a chunk at a time).</summary>
+    void StartRebuild()
+    {
+        var job = new Rebuilt { Keys = new List<Int3>(_stale), Serial = _meshSerial };
+        _stale.Clear();
+        foreach (Int3 ch in job.Keys)
+        {
+            Group g = Changed(ch);
+            if (g.Near && g.Merged.Count > 0 && !job.Cubes.Exists(c => c.Group == g)) job.Cubes.Add((g, null));
+        }
+        BlockGrid blocks = Inst.Blocks;
+        CellMask occupied = Inst.Layout.Occupied;
+        _rebuilt = job;
+        _rebuilding = Task.Run(() => GalHack.Testing.AllocMeter.Measure("place rebuild", () =>
+        {
+            for (int i = 0; i < job.Cubes.Count; i++)
+            {
+                Int3 min = job.Cubes[i].Group.Key * GroupSize;
+                job.Cubes[i] = (job.Cubes[i].Group, Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false)));
+            }
+            foreach (Int3 ch in job.Keys) job.Chunks.Add(Mesher.BuildChunk(blocks, occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch });
+        }));
+    }
+
+    /// <summary>The cube a changed chunk is in, marked so (the planet's far drawing of it gives way for good).</summary>
+    Group Changed(Int3 ch)
+    {
+        Group g = GroupAt(GroupOf(ch));
+        if (!g.Modified) Places.Zone.Pois.Unocclude(Site, g.Key);
+        g.Modified = true;
+        return g;
+    }
+
+    /// <summary>One chunk meshed again from the grid here and now, its drawing (when near) and its colliders.</summary>
+    void Mesh(Int3 ch)
+    {
+        _stale.Remove(ch);
+        _meshedAt[ch] = ++_meshSerial;
+        Group g = Changed(ch);
+        if (g.Near) Unmerge(g);
+        ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
+        if (g.Near) SetChunkMesh(mesh);
+        SetChunkShape(mesh);
+        ChunkMesh.Return(mesh);
+    }
+
+    // ---- Near and far -----------------------------------------------------------------------------
+
+    int _tierTimer, _meshing;
+
+    /// <summary>How far a point (local) is from a cube.</summary>
+    static float Away(Int3 key, Vector3 p)
+    {
+        float lox = key.X * GroupSize, loy = key.Y * GroupSize, loz = key.Z * GroupSize;
+        float dx = MathF.Max(0f, MathF.Max(lox - p.X, p.X - lox - GroupSize));
+        float dy = MathF.Max(0f, MathF.Max(loy - p.Y, p.Y - loy - GroupSize));
+        float dz = MathF.Max(0f, MathF.Max(loz - p.Z, p.Z - loz - GroupSize));
+        return MathF.Sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    /// <summary>
+    /// The cubes round the eye drawn in full, from a worker, a few milliseconds' work a frame; the
+    /// planet's merged cube gives way in the frame the last of a cube's meshes is in, and comes back in
+    /// the frame they go, so there is never a hole or a double.
+    /// </summary>
+    void TickTiers()
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        foreach (Group g in _groups.Values)
+        {
+            if (g.Meshing is not { IsCompleted: true }) continue;
+            if (g.Meshing.IsFaulted)
+            {
+                GD.PushError($"could not mesh {Site.Name} at {g.Key}: {g.Meshing.Exception?.GetBaseException()}");
+                g.Meshing = null;
+                g.Next = 0;
+                _meshing--;
+                continue;
+            }
+            List<ChunkMesh> built = g.Meshing.Result;
+            double budget = PlanetSurface.Fx.LoadBudget.Left(Places.BudgetMs);
+            double before = clock.Elapsed.TotalMilliseconds;
+            if (g.Merging != null && !g.Modified)
+            {
+                // A part a step (each a few thousand vertices handed to the renderer), within the frame's loading allowance.
+                while (g.NextPart < g.Merging.Count && (g.NextPart == 0 || clock.Elapsed.TotalMilliseconds < budget))
+                {
+                    var step = StepClock.Start();
+                    SetMerged(g, g.Merging[g.NextPart++]);
+                    step.End(0, "a merged cube's part");
+                }
+                if (g.NextPart >= g.Merging.Count) g.Next = built.Count;
+            }
+            else
+            {
+                if (g.Merged.Count > 0) FreeMerged(g); // changed while its parts went in: a mesh a chunk after all
+                while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget)
+                {
+                    var step = StepClock.Start();
+                    SetChunkMesh(built[g.Next++]);
+                    step.End(0, "a chunk's mesh");
+                }
+            }
+            PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds - before);
+            if (g.Next < built.Count) break;
+            g.Merging = null;
+            g.NextPart = 0;
+            ChunkMesh.Return(built); // drawn: its lists for the next cube's meshing
+            g.Meshing = null;
+            g.Next = 0;
+            _meshing--;
+            var shown = StepClock.Start();
+            ShowNear(g, true);
+            shown.End(0, "a cube shown");
+        }
+        if (--_tierTimer > 0) return;
+        _tierTimer = 8;
+        Vector3 eye = FromWorld(Places.EyeAt());
+        PlaceRules rules = Places.Rules;
+        foreach (Group g in _groups.Values)
+        {
+            if (g.Meshing != null || g.Modified) continue;
+            if (Dormant && (g.Near || g.Way != 0)) DropNear(g, instant: true);
+            else if (g.Near && g.Way == 0 && Away(g.Key, eye) > rules.NearDrop)
+            {
+                var step = StepClock.Start();
+                DropNear(g);
+                step.End(0, "a cube dropped");
+            }
+        }
+        if (Dormant) return;
+        while (_meshing < 4)
+        {
+            Group next = null;
+            float best = rules.NearRadius;
+            foreach (Group g in _groups.Values)
+            {
+                if (g.Near || g.Meshing != null || g.Way != 0) continue;
+                float d = g.Modified ? 0f : Away(g.Key, eye);
+                if (d < best) { best = d; next = g; }
+            }
+            if (next == null) break;
+            MeshNear(next);
+        }
+    }
+
+    void MeshNear(Group g)
+    {
+        BlockGrid blocks = Inst.Blocks;
+        CellMask occupied = Inst.Layout.Occupied;
+        Int3 min = g.Key * GroupSize;
+        _meshing++;
+        bool merge = !g.Modified && MergeCubes;
+        g.Merging = null;
+        g.Meshing = Task.Run(() => GalHack.Testing.AllocMeter.Measure("place cubes", () =>
+        {
+            List<ChunkMesh> built = Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false));
+            if (merge) g.Merging = Parts(built);
+            return built;
+        }));
+    }
+
+    /// <summary>The most vertices a merged part holds: about a millisecond's handing over to the renderer.</summary>
+    const int PartVertices = 12000;
+
+    /// <summary>A cube's chunks merged on the worker into parts of at most <see cref="PartVertices"/> (a chunk bigger alone is a part of its own).</summary>
+    static List<MeshBuild.Surface[]> Parts(List<ChunkMesh> built)
+    {
+        var parts = new List<MeshBuild.Surface[]>();
+        var bin = new List<ChunkMesh>();
+        int verts = 0;
+        foreach (ChunkMesh c in built)
+        {
+            int n = 0;
+            foreach (MeshBuffer b in c.Surfaces) n += b.VertexCount;
+            if (n == 0) continue;
+            if (bin.Count > 0 && verts + n > PartVertices)
+            {
+                parts.Add(MeshBuild.Merge(bin));
+                bin.Clear();
+                verts = 0;
+            }
+            bin.Add(c);
+            verts += n;
+        }
+        if (bin.Count > 0) parts.Add(MeshBuild.Merge(bin));
+        return parts;
+    }
+
+    /// <summary>One part of a cube's full detail in as a mesh, from its chunks merged on the worker.</summary>
+    void SetMerged(Group g, MeshBuild.Surface[] part)
+    {
+        var mesh = new ArrayMesh();
+        for (int s = 0; s < part.Length; s++) MeshBuild.AddSurface(mesh, part[s], _materials.BySurface[s]);
+        if (mesh.GetSurfaceCount() == 0) return;
+        var m = new MeshInstance3D { Name = $"Cube {g.Key} {g.Merged.Count}", Mesh = mesh };
+        g.Merged.Add(m);
+        AddChild(m);
+        if (!g.Near || g.Way != 0) PlanetSurface.Fx.Fade.Set(m, 0f, g.Way != 0 ? g.Blend : 0f);
+    }
+
+    void FreeMerged(Group g)
+    {
+        foreach (MeshInstance3D m in g.Merged) m.QueueFree();
+        g.Merged.Clear();
+    }
+
+    /// <summary>A merged cube about to change: back to a mesh a chunk, built here and now (an edit is rare; the rest of the cube is redrawn as it was).</summary>
+    void Unmerge(Group g)
+    {
+        if (g.Merged.Count == 0) return;
+        FreeMerged(g);
+        List<ChunkMesh> built = Mesher.Build(new ChunkWindow(Inst.Blocks, g.Key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(g.Key * GroupSize, collision: false));
+        foreach (ChunkMesh c in built) SetChunkMesh(c);
+        ChunkMesh.Return(built);
+    }
+
+    /// <summary>Each cube's meshes, there and then (tests and the warm-up).</summary>
+    internal void MeshNearNow(Int3 key)
+    {
+        Group g = GroupAt(key);
+        if (g.Near) return;
+        var built = Mesher.Build(new ChunkWindow(Inst.Blocks, key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(key * GroupSize, collision: false));
+        foreach (ChunkMesh c in built) SetChunkMesh(c);
+        ChunkMesh.Return(built);
+        ShowNear(g, true, instant: true);
+    }
+
+    /// <summary>How long a cube's full detail and the planet's merged cube take to dissolve one into the other, s.</summary>
+    const float NearBlendSeconds = 0.45f;
+
+    readonly List<Group> _fading = new();
+
+    /// <summary>
+    /// A cube's full detail comes in over the planet's merged cube, or gives way to it: the two
+    /// dissolve one into the other through the fade pattern (PlanetSurface.Fx.Fade), so detail never
+    /// swaps in hard; collision is the full detail's throughout. Instant for tests, the warm-up and a dormant place.
+    /// </summary>
+    void ShowNear(Group g, bool near, bool instant = false)
+    {
+        if (g.Near != near || g.Way != 0)
+            PlanetSurface.Fx.PopLog.Note("detail", near ? "full detail in" : "full detail out", Away(g.Key, FromWorld(Places.EyeAt())), GroupSize, instant ? 1f : 1f / (60f * NearBlendSeconds));
+        g.Near = near;
+        if (instant)
+        {
+            g.Blend = near ? 1f : 0f;
+            EndBlend(g, near ? 1 : -1);
+            return;
+        }
+        g.Way = near ? 1 : -1;
+        Places.Zone.Pois.HideGroup(Site, g.Key, false);
+        foreach (Door d in g.Doors) d.Root.Visible = true;
+        Bands(g);
+        if (!_fading.Contains(g)) _fading.Add(g);
+    }
+
+    IEnumerable<MeshInstance3D> MeshesOf(Group g)
+    {
+        foreach (MeshInstance3D m in g.Merged) yield return m;
+        foreach (var (ch, c) in _chunks)
+            if (c.Mesh != null && GroupOf(ch) == g.Key) yield return c.Mesh;
+    }
+
+    void Bands(Group g)
+    {
+        foreach (MeshInstance3D m in MeshesOf(g)) PlanetSurface.Fx.Fade.Set(m, 0f, g.Blend);
+        foreach (Door d in g.Doors) PlanetSurface.Fx.Fade.Set(d.Root, 0f, g.Blend);
+        Places.Zone.Pois.FadeGroup(Site, g.Key, g.Blend);
+    }
+
+    void StepFades(float dt)
+    {
+        if (_fading.Count == 0) return;
+        foreach (Group g in _fading)
+        {
+            g.Blend = Mathf.Clamp(g.Blend + g.Way * dt / NearBlendSeconds, 0f, 1f);
+            if (g.Way > 0 ? g.Blend >= 1f : g.Blend <= 0f) EndBlend(g, g.Way);
+            else Bands(g);
+        }
+        _fading.RemoveAll(g => g.Way == 0);
+    }
+
+    /// <summary>A cube's blend is over: in (the merged cube hidden) or out (its full-detail meshes gone).</summary>
+    void EndBlend(Group g, int way)
+    {
+        g.Way = 0;
+        foreach (MeshInstance3D m in MeshesOf(g)) PlanetSurface.Fx.Fade.Clear(m);
+        foreach (Door d in g.Doors)
+        {
+            PlanetSurface.Fx.Fade.Clear(d.Root);
+            d.Root.Visible = way > 0;
+        }
+        Places.Zone.Pois.FadeGroup(Site, g.Key, 0f, done: true);
+        Places.Zone.Pois.HideGroup(Site, g.Key, way > 0);
+        if (way > 0) return;
+        FreeMerged(g);
+        foreach (Int3 ch in _chunks.Keys.ToList())
+        {
+            if (GroupOf(ch) != g.Key) continue;
+            var c = _chunks[ch];
+            c.Mesh?.QueueFree();
+            _chunks[ch] = (null, c.Shapes);
+        }
+    }
+
+    void DropNear(Group g, bool instant = false) => ShowNear(g, false, instant);
+
+    /// <summary>The place is going back to the planet's drawing: every cube of it shows there again.</summary>
+    /// <summary>Its cubes out of sight at once (a dropped place is taken down a piece a frame).</summary>
+    internal void HideCubes()
+    {
+        foreach (Group g in _groups.Values)
+            foreach (MeshInstance3D m in g.Merged) m.Visible = false;
+        foreach (var c in _chunks.Values)
+            if (c.Mesh != null && IsInstanceValid(c.Mesh)) c.Mesh.Visible = false;
+    }
+
+    internal void GiveBack()
+    {
+        foreach (Group g in _groups.Values)
+        {
+            Places.Zone.Pois.FadeGroup(Site, g.Key, 0f, done: true);
+            Places.Zone.Pois.HideGroup(Site, g.Key, false);
+        }
+        PlanetSurface.Fx.Fade.Forget(this);
+    }
+
+    /// <summary>Tests: a near cube drawn as one mesh, and a solid block in it (null: none).</summary>
+    internal (Int3 Key, Int3 Cell)? MergedCubeWithBlock()
+    {
+        foreach (Group g in _groups.Values)
+        {
+            if (g.Merged.Count == 0 || !g.Near || g.Way != 0) continue;
+            Int3 min = g.Key * GroupSize;
+            for (int y = 0; y < GroupSize; y++)
+            for (int z = 0; z < GroupSize; z++)
+            for (int x = 0; x < GroupSize; x++)
+            {
+                Int3 c = min + new Int3(x, y, z);
+                // A floor: a block with the place's own air over it, so its going changes what is drawn.
+                if (Inst.Blocks.Get(c).Type == BlockType.Cube && Inst.Blocks.Get(c + Int3.Up).IsAir && Inst.Layout.Occupied[c + Int3.Up]) return (g.Key, c);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Tests: how a cube is drawn now: as one mesh, and how many chunk meshes, and the triangles in all of them.</summary>
+    internal (bool Merged, int Chunks, long Triangles) CubeDrawing(Int3 key)
+    {
+        Group g = GroupAt(key);
+        long tris = 0;
+        int chunks = 0;
+        foreach (MeshInstance3D m in MeshesOf(g))
+        {
+            if (!g.Merged.Contains(m)) chunks++;
+            if (m.Mesh is ArrayMesh am) for (int s = 0; s < am.GetSurfaceCount(); s++) tris += am.SurfaceGetArrayIndexLen(s) / 3;
+        }
+        return (g.Merged.Count > 0, chunks, tris);
+    }
+
+    /// <summary>Cubes drawn as one mesh now (tests).</summary>
+    internal int MergedGroups => _groups.Values.Count(g => g.Merged.Count > 0);
+
+    /// <summary>Cubes drawn in full now (tests).</summary>
+    public int NearGroups => _groups.Values.Count(g => g.Near);
+    public int Groups => _groups.Count;
 
     // ---- The rest of the place, once the blocks are in ----------------------------------------
 
     internal IEnumerable<int> BuildFixtures()
     {
+        // The water it holds by design (a channel, a basin): a surface over the floor, never a block.
+        if (PoiGenerator.MeshBuild.Water(Inst) is { } water) AddChild(water);
+        yield return 0;
         foreach (int x in BuildDoors()) yield return x;
         BuildLifts();
         yield return 0;
-        BuildKeys();
         BuildTells();
+        BuildFittings();
         yield return 0;
         BuildLights();
         yield return 0;
@@ -154,7 +734,7 @@ public partial class Place : Node3D
         Dormant = dormant;
         foreach (Node n in GetChildren())
             if (n is CollisionObject3D body) body.ProcessMode = dormant ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
-            else if (n is Light3D || n is CpuParticles3D || n.Name.ToString().StartsWith("Deco") || n.Name == "Keys" || n.Name == "Creatures") ((Node3D)n).Visible = !dormant;
+            else if (n is Light3D || n is CpuParticles3D || n.Name.ToString().StartsWith("Deco") || n.Name == "Creatures") ((Node3D)n).Visible = !dormant;
         foreach (Door d in _doors) d.Root.ProcessMode = dormant ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
     }
 
@@ -168,8 +748,63 @@ public partial class Place : Node3D
 
     public override void _Process(double delta)
     {
-        if (!Ready || Dormant) return;
+        if (!Ready) return;
+        long t = System.Diagnostics.Stopwatch.GetTimestamp();
+        RebuildStale();
+        TickTiers();
+        t = Part(0, t);
+        var step = StepClock.Start();
+        StepFades((float)delta);
+        step.End(1, "cubes' dissolves");
+        step = StepClock.Start();
+        StepDressFades((float)delta);
+        step.End(1, "rooms' dissolves");
+        t = Part(1, t);
+        if (Dormant) return;
+        step = StepClock.Start();
         TickLights((float)delta);
+        step.End(2, "lamps");
+        t = Part(2, t);
+        TickDress();
+        Part(3, t);
+    }
+
+    /// <summary>Every standing place's frame work by part (cubes in and out, dissolves, lamps, rooms dressed), ms in all and the worst one call (checks read and clear them).</summary>
+    public static readonly string[] PartNames = { "cubes", "dissolves", "lamps", "dressing" };
+    public static readonly double[] PartMs = new double[4], PartWorst = new double[4];
+    /// <summary>The longest single step seen in each part, and what it was (checks read and clear them).</summary>
+    public static readonly double[] StepWorst = new double[4];
+    public static readonly string[] StepWhat = new string[4];
+
+    /// <summary>A step of a part took this long: kept if the longest yet.</summary>
+    internal static void Worst(int part, string what, double ms)
+    {
+        if (ms <= StepWorst[part]) return;
+        StepWorst[part] = ms;
+        StepWhat[part] = what;
+    }
+
+    /// <summary>One step's clock: its time goes to <see cref="Worst"/> unless a garbage collection landed in it (the runtime's, not the step's).</summary>
+    internal readonly struct StepClock
+    {
+        readonly long _at;
+        readonly int _gcs;
+        StepClock(long at, int gcs) { _at = at; _gcs = gcs; }
+        public static StepClock Start() => new(System.Diagnostics.Stopwatch.GetTimestamp(), GC.CollectionCount(0));
+        public void End(int part, string what)
+        {
+            if (GC.CollectionCount(0) != _gcs) return;
+            Worst(part, what, (System.Diagnostics.Stopwatch.GetTimestamp() - _at) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+        }
+    }
+
+    static long Part(int i, long from)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        double ms = (now - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        PartMs[i] += ms;
+        if (ms > PartWorst[i]) PartWorst[i] = ms;
+        return now;
     }
 }
 
@@ -184,6 +819,68 @@ public partial class Place
     public static PoiGenerator.Gen.NavGrid NavOf(PlaceMemory m, Dictionary<int, PlaceRoom> rooms) =>
         new(Routed(m, rooms), m.Inst.Layout.Occupied, m.Inst.Extras.Lifts, false);
 
+    /// <summary>
+    /// Where the place's people walk: the walking routes with the dressing standing in, but only on
+    /// foot: no lifts and no ladders (they ride and climb neither), so a route never takes anyone
+    /// straight up or down through a floor, and never over the furniture or a crate.
+    /// </summary>
+    public static PoiGenerator.Gen.NavGrid FootNavOf(PlaceMemory m, PlanetSurface.World.PlanetWorld planet = null)
+    {
+        // (The dressing's pieces and the furniture blocks are gone round as they really stand: see the parts below.)
+        var blocked = PlaceParts.Legacy ? new HashSet<Int3>(m.Rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>()) : new HashSet<Int3>();
+        BlockGrid g = m.Inst.Blocks;
+        Int3 min = g.Min, size = g.Size;
+        // Out of doors the grid's ground is flat at the place's level, but the land round a lot or a pad is the
+        // planet's: where it lies off that level (a city block's street side, the slope past a yard), nobody walks
+        // there, or they would stand in the air over it or sunk in it.
+        if (planet != null && m.Site != null && 0 >= min.Y && 0 < min.Y + size.Y)
+        {
+            var o = m.Site.Origin;
+            for (int z = min.Z; z < min.Z + size.Z; z++)
+                for (int x = min.X; x < min.X + size.X; x++)
+                {
+                    var c = new Int3(x, 0, z);
+                    if (m.Inst.Layout.Occupied[c] || !g.Get(c).IsAir) continue;
+                    float land = planet.GroundHeight(Planets.Gen.Mathx.WrapX(o.X + x + 0.5, planet.Width), Planets.Gen.Mathx.Wrap(o.Z + z + 0.5, planet.Height)) - o.Y;
+                    if (MathF.Abs(land) > 0.3f) blocked.Add(c);
+                }
+        }
+        for (int y = min.Y; y < min.Y + size.Y; y++)
+            for (int z = min.Z; z < min.Z + size.Z; z++)
+                for (int x = min.X; x < min.X + size.X; x++)
+                {
+                    var c = new Int3(x, y, z);
+                    if (g.Get(c).Type == BlockType.Ladder) blocked.Add(c);
+                }
+        var nav = new PoiGenerator.Gen.NavGrid(new Overlay(g, blocked, foot: true), m.Inst.Layout.Occupied, null, false);
+        if (PlaceParts.Fixed(m) is not { } parts) return nav;
+        // A lift door is no way for the town's routes (nobody is sent where they would stand before it); the rest they open as they come.
+        var lifts = new HashSet<Int3>(DoorWays.Of(m).Where(d => d.Lift).SelectMany(d => d.Cells));
+        // A person stands in a cell where somewhere in it they fit clear of the furniture and clutter, and steps
+        // to the next where their body gets by all the way: past a monitor, beside a locker, round a chair.
+        Func<int, int, int, bool> walls = WallsOf(nav);
+        nav.Fits = c => PersonSpot(parts, walls, c) != null;
+        nav.Passes = (a, b) =>
+        {
+            if (lifts.Contains(a) || lifts.Contains(b)) return false;
+            if (nav.RampAt(a, out _) || nav.RampAt(b, out _)) return true;
+            if (PersonSpot(parts, walls, a) is not { } pa || PersonSpot(parts, walls, b) is not { } pb) return false;
+            if (!parts.Touches(pa, PlaceParts.PersonRadius, PlaceParts.PersonHeight) && !parts.Touches(pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight)) return true;
+            return parts.Step(new Vector3I(a.X, a.Y, a.Z), pa, new Vector3I(b.X, b.Y, b.Z), pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius);
+        };
+        return nav;
+    }
+
+    /// <summary>Where a person stands in a cell of the walking grid: its middle, or among the parts where they fit, never hard by a wall.</summary>
+    public static Vector3? PersonSpot(Wildlife.PartSet parts, Func<int, int, int, bool> walls, Int3 c) =>
+        parts.Spot(c.X, c.Y, c.Z, c.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius);
+
+    /// <summary>The solid cells of a walking grid (one delegate a grid, so what's worked out against it is remembered).</summary>
+    public static Func<int, int, int, bool> WallsOf(PoiGenerator.Gen.NavGrid nav) => _walls.GetValue(nav, n => new WallsBox((x, y, z) => n.Solid(new Int3(x, y, z)))).Solid;
+
+    sealed class WallsBox { public readonly Func<int, int, int, bool> Solid; public WallsBox(Func<int, int, int, bool> s) => Solid = s; }
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PoiGenerator.Gen.NavGrid, WallsBox> _walls = new();
+
     /// <summary>The place's blocks as a walking route sees them, the dressing's solid pieces standing in.</summary>
     public static IBlockStructure Routed(PlaceMemory m, Dictionary<int, PlaceRoom> rooms = null) =>
         new Overlay(m.Inst.Blocks, new HashSet<Int3>((rooms ?? m.Rooms)?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>()));
@@ -196,14 +893,21 @@ public partial class Place
         readonly BlockGrid _g;
         readonly HashSet<Int3> _blocked;
         static readonly Block Crate = new(BlockType.Crate, PoiGenerator.Gen.Material.Timber, new Rgb(0, 0, 0), Role.Prop);
-        public Overlay(BlockGrid g, HashSet<Int3> blocked) { _g = g; _blocked = blocked; }
+        static readonly Block Piece = new(BlockType.Barricade, PoiGenerator.Gen.Material.Timber, new Rgb(0, 0, 0), Role.Prop);
+        /// <summary>On foot only: a piece of the dressing, or a crate, is gone round, never stood on.</summary>
+        readonly bool _foot;
+        public Overlay(BlockGrid g, HashSet<Int3> blocked, bool foot = false) { _g = g; _blocked = blocked; _foot = foot; }
         public Int3 Min => _g.Min;
         public Int3 Size => _g.Size;
         public bool InBounds(Int3 p) => _g.InBounds(p);
         public Block Get(Int3 p)
         {
             Block b = _g.Get(p);
-            return _blocked.Contains(p) && (b.IsAir || b.Type == BlockType.Growth) ? Crate : b;
+            // A piece stands in its cell over whatever doesn't stop a walker there (air, a floor plate, litter).
+            if (_foot && PlaceParts.Legacy) return (_blocked.Contains(p) && !BlockInfo.IsFullCube(b.Type)) || b.Type == BlockType.Crate ? Piece : b;
+            // On foot what fills only part of its cell is no block: the walking grid's parts test goes round its real shape (never on top of it).
+            if (_foot) return _blocked.Contains(p) && !BlockInfo.IsFullCube(b.Type) ? Piece : BlockInfo.IsPart(b.Type) ? Block.Air : b;
+            return _blocked.Contains(p) && (!BlockInfo.Collides(b.Type) || b.Type == BlockType.Growth) ? Crate : b;
         }
         public void Set(Int3 p, Block b) => _g.Set(p, b);
         public int CountBlocks() => _g.CountBlocks();

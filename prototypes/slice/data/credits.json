@@ -4,8 +4,8 @@
     {
       "name": "MUSIC AND SOUND",
       "rows": [
-        { "what": "Generated ambient drones (shared/Music), written for this game, no samples", "author": "The GalHack project", "source": "https://github.com/pipspcrepair-ops/GalHack", "licence": "PolyForm Noncommercial, as the rest of this repository" },
-        { "what": "All sound effects, synthesised in code", "author": "The GalHack project", "source": "https://github.com/pipspcrepair-ops/GalHack", "licence": "PolyForm Noncommercial, as the rest of this repository" }
+        { "what": "Generated ambient drones · no samples", "author": "The GalHack project", "source": "https://github.com/pipspcrepair-ops/GalHack", "licence": "PolyForm Noncommercial" },
+        { "what": "Sound effects · synthesised in code", "author": "The GalHack project", "source": "https://github.com/pipspcrepair-ops/GalHack", "licence": "PolyForm Noncommercial" }
       ]
     },
     {
@@ -14,6 +14,12 @@
         { "what": "Michroma", "author": "Vernon Adams, The Michroma Project Authors", "source": "https://github.com/google/fonts/tree/main/ofl/michroma", "licence": "SIL Open Font License 1.1" },
         { "what": "Oxanium", "author": "Severin Meyer, The Oxanium Project Authors", "source": "https://github.com/google/fonts/tree/main/ofl/oxanium", "licence": "SIL Open Font License 1.1" },
         { "what": "Space Mono Bold", "author": "Colophon Foundry, The Space Mono Project Authors", "source": "https://github.com/google/fonts/tree/main/ofl/spacemono", "licence": "SIL Open Font License 1.1" }
+      ]
+    },
+    {
+      "name": "DESIGN REFERENCES",
+      "rows": [
+        { "what": "Starport plans and views · followed as rules · nothing copied", "author": "Pearce Design Studio, LLC", "source": "Starports & Bases (the owner's reference images, reference-photos/spaceports)", "licence": "CC BY-NC 4.0" }
       ]
     },
     {

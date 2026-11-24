@@ -19,25 +19,17 @@ public partial class DamageTest : Node
 {
     int _passes, _failures;
     Catalogue _cat;
-    GridDef _large, _small;
 
     public override void _Ready()
     {
         _cat = GameData.Catalogue;
-        _large = _cat.Grid(GridSize.Large);
-        _small = _cat.Grid(GridSize.Small);
 
-        Buckets();
-        ShotsShowInTheMesh();
-        Materials();
-        FacesStayInTheirCell();
-        OnlyTheAffectedChunk();
-        Deterministic();
-        Crashes();
-        Repairs();
-        Devices();
-        NothingPiles();
-        RemeshCost();
+        // A check that throws still ends the run: a test never outlives itself.
+        foreach (Action test in new Action[] { Buckets, ShotsShowInTheMesh, Materials, FacesStayInTheirCell, OnlyTheAffectedChunk, Deterministic, Crashes, Repairs, Devices, NothingPiles, RemeshCost })
+        {
+            try { test(); }
+            catch (Exception e) { Check(false, $"{test.Method.Name} threw {e.Message}"); }
+        }
 
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         GetTree().Quit(_failures == 0 ? 0 : 1);
@@ -50,9 +42,9 @@ public partial class DamageTest : Node
         else _failures++;
     }
 
-    Structure Plate(int width, int depth, string type = "steel", GridDef grid = null)
+    Structure Plate(int width, int depth, string type = "iron-plated")
     {
-        var s = new Structure(_cat, grid ?? _large);
+        var s = new Structure(_cat);
         for (int x = 0; x < width; x++)
             for (int z = 0; z < depth; z++)
                 s.Set(new Int3(x, 0, z), Building.Make(s, _cat.Type(type)));
@@ -87,8 +79,8 @@ public partial class DamageTest : Node
         Check(Worst(whole.Opaque) == 0, $"an undamaged plate has no damage in its mesh ({quads} vertices)");
 
         var report = new DamageReport();
-        Damage.Hit(s, p, DamageType.Kinetic, 200f, report);
-        float expected = (200f - 10f) * 0.9f;
+        Damage.Hit(s, p, DamageType.Kinetic, 100f, report);
+        float expected = (100f - 10f) * 0.9f;
         Check(MathF.Abs(s.Get(p).Hp - (max - expected)) < 0.01f && report.BlocksHit == 1, $"a shot takes armour and resistance off: {max:F0} to {s.Get(p).Hp:F0} hit points");
         Check(s.RecentHits.Count == 1 && s.RecentHits[0].Cell == p && !s.RecentHits[0].Destroyed, "and it is noted for the effects");
 
@@ -112,22 +104,22 @@ public partial class DamageTest : Node
 
     void Materials()
     {
-        foreach (var (id, want) in new[] { ("steel", DamageLook.Metal), ("hardened", DamageLook.Metal), ("combat", DamageLook.Metal), ("concrete", DamageLook.Concrete) })
+        foreach (var (id, want) in new[] { ("iron-plated", DamageLook.Metal), ("hardened-plated", DamageLook.Metal), ("combat-plated", DamageLook.Metal), ("concrete-plated", DamageLook.Concrete) })
         {
             Structure s = Plate(1, 1, id);
             Wear(s, Int3.Zero, 0.4f);
             ChunkMeshData data = ChunkMesher.Build(s, Int3.Zero);
             Check(_cat.Type(id).DamageLook == want && data.Opaque.UV2s.All(uv => WearOf(uv) == (int)want), $"{id} wears as {want}");
         }
-        Check(_cat.Type("glass").DamageLook == DamageLook.Glass, "glass wears as glass");
+        Check(_cat.Type("glass-plated").DamageLook == DamageLook.Glass, "glass wears as glass");
 
-        Structure pane = Plate(3, 1, "glass");
+        Structure pane = Plate(3, 1, "glass-plated");
         int before = ChunkMesher.Build(pane, Int3.Zero).Glass.VertexCount;
         Wear(pane, new Int3(1, 0, 0), 0.1f);
         ChunkMeshData cracked = ChunkMesher.Build(pane, Int3.Zero);
         Check(cracked.Opaque.VertexCount == 0 && cracked.Glass.VertexCount > before && Worst(cracked.Glass) == 3, "glass stays in the glass surface, its block's damage in its own faces (the shader shatters it)");
 
-        BlockType steel = _cat.Type("steel");
+        BlockType steel = _cat.Type("iron-plated");
         DamageLook kept = steel.DamageLook;
         steel.DamageLook = DamageLook.Alien; // no alien armour in building's own catalogue; the slice's has precursor alloy
         Structure alloy = Plate(1, 1);
@@ -138,10 +130,10 @@ public partial class DamageTest : Node
 
     void FacesStayInTheirCell()
     {
-        foreach (GridDef grid in new[] { _large, _small })
-            for (int bucket = 2; bucket <= 3; bucket++)
+        GridDef grid = _cat.Grid;
+        for (int bucket = 2; bucket <= 3; bucket++)
             {
-                Structure s = Plate(1, 1, "steel", grid);
+                Structure s = Plate(1, 1);
                 Wear(s, Int3.Zero, bucket == 2 ? 0.4f : 0.1f);
                 ChunkMeshData data = ChunkMesher.Build(s, Int3.Zero);
                 float half = grid.CellSize * 0.5f + 1e-3f;
@@ -165,7 +157,7 @@ public partial class DamageTest : Node
         Structure wall = Plate(3, 3);
         Wear(wall, new Int3(1, 0, 1), 0.1f);
         ChunkMeshData holed = ChunkMesher.Build(wall, Int3.Zero);
-        Check(holed.Boxes.Count == 1 && holed.Boxes[0].size.IsEqualApprox(new Vector3(6, 2, 6)), "a holed block still collides as a whole cell: the look changes, the collider doesn't");
+        Check(holed.Boxes.Count == 1 && holed.Boxes[0].size.IsEqualApprox(new Vector3(3, 1, 3) * grid.CellSize), "a holed block still collides as a whole cell: the look changes, the collider doesn't");
     }
 
     void OnlyTheAffectedChunk()
@@ -204,9 +196,11 @@ public partial class DamageTest : Node
         Structure changed = Scene();
         Wear(changed, new Int3(1, 0, 2), 0.4f);
         Wear(changed, new Int3(2, 0, 1), 0.7f);
-        var centre = new Vector3(4, 0, 4);
-        var alone = Around(ChunkMesher.Build(Scene(), Int3.Zero), centre, 0.99f);
-        var crowded = Around(ChunkMesher.Build(changed, Int3.Zero), centre, 0.99f);
+        // The holed block at (2, 0, 2), out to just short of its cell's edges.
+        float cell = _cat.Grid.CellSize, reach = cell * 0.5f - 0.01f;
+        var centre = new Vector3(2, 0, 2) * cell;
+        var alone = Around(ChunkMesher.Build(Scene(), Int3.Zero), centre, reach);
+        var crowded = Around(ChunkMesher.Build(changed, Int3.Zero), centre, reach);
         Check(alone.Count > 0 && alone.SequenceEqual(crowded), $"a holed block keeps its exact shape and seed when its neighbours are damaged ({alone.Count} vertices)");
 
         var seeds = new HashSet<uint>();
@@ -228,7 +222,7 @@ public partial class DamageTest : Node
         Check(report.BlocksHit > 1 && centre > side && corner == 0f, $"a crash spreads from where it struck, hardest there: {centre:F0} at the point, {side:F0} two cells off, {corner:F0} at the far corner");
         Check(MathF.Abs(report.Dealt - 600f * 0.9f) < 1f, $"and every hit point of it lands, less kinetic resistance ({report.Dealt:F0} of 600)");
 
-        Structure combat = Plate(9, 9, "combat");
+        Structure combat = Plate(9, 9, "combat-plated");
         var soft = new DamageReport();
         Damage.Crash(combat, point, N.Vector3.UnitY, 100f, soft);
         Check(soft.Dealt > 0f, $"a gentle crash isn't stopped by flat armour, spread thin as it is ({soft.Dealt:F0} of 100 on combat steel, armour 50)");
@@ -242,7 +236,7 @@ public partial class DamageTest : Node
         Damage.Crash(far, new N.Vector3(1f, -6f, 1f), N.Vector3.UnitY, 100f, off);
         Check(off.BlocksHit > 0, "struck well away from any block (a leg's foot), the nearest block takes it");
 
-        Damage.Crash(new Structure(_cat, _large), point, N.Vector3.UnitY, 100f, new DamageReport());
+        Damage.Crash(new Structure(_cat), point, N.Vector3.UnitY, 100f, new DamageReport());
         Check(true, "an empty structure takes a crash without complaint");
     }
 
@@ -260,9 +254,11 @@ public partial class DamageTest : Node
         Check(Building.Repair(s, p, bag) == RepairStatus.NotEnoughMaterials && Damage.Bucket(s.Get(p).Hp, max) == 3, "with nothing to pay with, a repair restores nothing");
 
         Dictionary<string, int> part = Building.RepairCost(s, p, 0.25f), all = Building.RepairCost(s, p);
-        Check(part["iron"] == 3 && all["iron"] == 9, $"repairs cost a share of the block's recipe: {part["iron"]} iron for a quarter of its health, {all["iron"]} for the 90% it lost (10 to build)");
+        // A plated block is repaired with its plates, four to a cube.
+        Check(part.Keys.SequenceEqual(new[] { "iron-plate" }) && part["iron-plate"] == 1 && all["iron-plate"] == 4,
+            $"repairs cost a share of the block's plates: {part.GetValueOrDefault("iron-plate")} for a quarter of its health, {all.GetValueOrDefault("iron-plate")} for the 90% it lost");
 
-        bag.Add(new Dictionary<string, int> { ["iron"] = 40 });
+        bag.Add(new Dictionary<string, int> { ["iron-plate"] = 40 });
         var stages = new List<int>();
         for (int step = 0; step < 4; step++)
         {
@@ -270,7 +266,7 @@ public partial class DamageTest : Node
             stages.Add(Worst(ChunkMesher.Build(s, Int3.Zero).Opaque));
         }
         Check(stages.SequenceEqual(new[] { 2, 1, 0, 0 }) || stages.SequenceEqual(new[] { 2, 1, 1, 0 }), $"its look steps back as its health returns: {string.Join(", ", stages)}");
-        Check(bag["iron"] < 40, $"and it was paid for: {40 - bag["iron"]} iron");
+        Check(bag["iron-plate"] < 40, $"and it was paid for: {40 - bag["iron-plate"]} iron plates");
         Check(!Building.IsDamaged(s, p) && Building.Repair(s, p, bag) == RepairStatus.NotDamaged, "a whole block has nothing to repair");
 
         ChunkMeshData back = ChunkMesher.Build(s, Int3.Zero);
@@ -279,9 +275,9 @@ public partial class DamageTest : Node
 
     void Devices()
     {
-        var s = new Structure(_cat, _small);
+        var s = new Structure(_cat);
         var p = new Int3(2, 0, 0);
-        s.Set(p, Building.Make(s, _cat.Type("generator")));
+        s.Set(p, Building.Make(s, _cat.Type("generator-t1")));
         Check(ChunkMesher.Build(s, Int3.Zero).Smoking.Count == 0, "a healthy device doesn't smoke");
         Wear(s, p, 0.1f);
         ChunkMeshData data = ChunkMesher.Build(s, Int3.Zero);
@@ -290,7 +286,7 @@ public partial class DamageTest : Node
         Building.Repair(s, p);
         Check(ChunkMesher.Build(s, Int3.Zero).Smoking.Count == 0, "repaired, it stops");
 
-        var lamp = new Structure(_cat, _small);
+        var lamp = new Structure(_cat);
         lamp.Set(Int3.Zero, Building.Make(lamp, _cat.Type("light")));
         Wear(lamp, Int3.Zero, 0.1f);
         bool lit = ChunkMesher.Build(lamp, Int3.Zero).Opaque.UV2s.Any(uv => (((int)uv.Y >> BlockMaterials.GlowShift) & 1) == 1);
@@ -308,13 +304,13 @@ public partial class DamageTest : Node
     /// <summary>A chunk's whole shell at one health, and the best of three timings of remeshing it (mesh only).</summary>
     (double ms, int vertices, int faces) ShellCost(float health)
     {
-        var s = new Structure(_cat, _small);
+        var s = new Structure(_cat);
         for (int x = 0; x < 16; x++)
             for (int y = 0; y < 16; y++)
                 for (int z = 0; z < 16; z++)
                     if (x == 0 || y == 0 || z == 0 || x == 15 || y == 15 || z == 15)
                     {
-                        Block b = Building.Make(s, _cat.Type("steel"));
+                        Block b = Building.Make(s, _cat.Type("iron-plated"));
                         b.Hp = s.MaxHp(b) * health;
                         s.Set(new Int3(x, y, z), b);
                     }

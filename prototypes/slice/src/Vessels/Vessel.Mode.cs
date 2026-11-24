@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items.Bridge;
@@ -21,32 +22,35 @@ public static class ModeFit
     public static string Name(CoreMode mode) => mode switch
     {
         CoreMode.Base => "BASE MODE",
-        CoreMode.Capital => "CAPITAL MODE",
         CoreMode.Hover => "HOVER MODE",
-        _ => "VESSEL MODE",
+        _ => "FLIGHT MODE",
     };
 
-    /// <summary>The modes a structure's core has: Base and Capital on a Big Core, Hover and Vessel on a Small Core.</summary>
-    public static CoreMode[] ModesOf(Structure s) =>
-        BuildingBridge.IsSmall(s) ? new[] { CoreMode.Hover, CoreMode.Vessel } : new[] { CoreMode.Base, CoreMode.Capital };
+    /// <summary>Every structure's core has all three modes.</summary>
+    public static readonly CoreMode[] Modes = Enum.GetValues<CoreMode>();
 
-    /// <summary>What's missing for a mode to hold a structure up and move it, or nothing. Base Mode needs nothing.</summary>
-    public static List<string> Missing(Structure s, CoreMode mode, Tunables tunables, float gravity)
+    /// <summary>
+    /// What's missing for a mode to hold a structure up and move it, or nothing. Base Mode needs
+    /// nothing; Hover a command chair, hover plates with enough lift, thrusters and power; Flight a
+    /// command chair, thrusters with enough upward thrust and power. <paramref name="carried"/> is
+    /// the tonnes parked on it, which its lift has to carry too.
+    /// </summary>
+    public static List<string> Missing(Structure s, CoreMode mode, Tunables tunables, float gravity, float carried = 0f)
     {
         var missing = new List<string>();
         if (mode == CoreMode.Base) return missing;
         var spec = new StructureVessel(s, tunables, mode);
-        HandlingStats stats = HandlingModel.Compute(spec, new FlightConditions(gravity, true), tunables);
+        HandlingStats stats = HandlingModel.Compute(spec, new FlightConditions(gravity, true), tunables, carried);
         bool powered = StructureStats.Compute(s).Powered;
         if (!s.Blocks().Any(b => s.TypeOf(b.block).IsCommandChair)) missing.Add("command chair");
         if (mode == CoreMode.Hover)
         {
             if (spec.HoverEngines.Count == 0) missing.Add("hover plates");
-            else if (!stats.CanLiftOff) missing.Add($"{-stats.LiftMargin:F0} kN more hover lift");
+            else if (!stats.CanLiftOff) missing.Add($"+{-stats.LiftMargin:F0} kN HOVER LIFT");
         }
         if (spec.Thrusters.Count == 0) missing.Add("thrusters");
         else if (!powered) missing.Add("generator");
-        else if (mode != CoreMode.Hover && !stats.CanLiftOff) missing.Add($"{-stats.LiftMargin:F0} kN more upward thrust");
+        else if (mode != CoreMode.Hover && !stats.CanLiftOff) missing.Add($"+{-stats.LiftMargin:F0} kN UP THRUST");
         return missing;
     }
 
@@ -56,24 +60,23 @@ public static class ModeFit
 }
 
 /// <summary>
-/// A core's mode on the body in the world. One value changes and no block does: a Big Core's
-/// structure anchors (Base Mode: a fixed body, walked on in the zone's world, nothing moves it) or
-/// flies (Capital Mode: the same hull as any vessel, on the flight model); a Small Core's craft rides
-/// its hover plates or flies on its thrusters. Nothing refuses a switch. A flying Big Core set to
-/// Base Mode cuts its engines, falls until it lands and anchors there; in space it comes to rest and
-/// anchors as a station.
+/// A core's mode on the body in the world. One value changes and no block does: a structure
+/// anchors (Base Mode: a fixed body, walked on in the zone's world, nothing moves it), flies
+/// (Flight Mode: the same hull as any vessel, on the flight model) or rides its hover plates near
+/// the ground (Hover Mode: a hover tank, a land carrier, a mobile base). Nothing refuses a switch. A flying structure set to Base Mode cuts its engines,
+/// falls until it lands and anchors there; in space it comes to rest and anchors as a station.
 /// </summary>
 public sealed partial class Vessel
 {
     /// <summary>What a mode lacks on this structure, here (empty: nothing).</summary>
-    public List<string> MissingFor(CoreMode mode) => ModeFit.Missing(Structure, mode, Zone.Data.Handling, Zone.Physics.Zone.Strength);
+    public List<string> MissingFor(CoreMode mode) => ModeFit.Missing(Structure, mode, Zone.Data.Handling, Zone.Physics.Zone.Strength, Units.Tonnes(Body.Carried));
 
     /// <summary>The console's warning for the mode it is in, or null: worked out again only when the build or the mode changes.</summary>
     public string ModeWarning
     {
         get
         {
-            var key = (Structure.Version, Structure.Mode);
+            var key = (Structure.Version, Structure.Mode, Body.Carried);
             if (key != _warned)
             {
                 _warned = key;
@@ -83,7 +86,7 @@ public sealed partial class Vessel
         }
     }
 
-    (int, CoreMode) _warned = (-1, CoreMode.Base);
+    (int, CoreMode, float) _warned = (-1, CoreMode.Base, 0f);
     string _warning;
 
     /// <summary>In Base Mode but not anchored yet: still falling or coming to rest.</summary>
@@ -95,6 +98,9 @@ public sealed partial class Vessel
     /// <summary>The metres a hull rises off its footings before the ground it held is let go.</summary>
     const float LetGoAfter = 1f;
 
+    N.Vector3? _lies;
+    int _refused;
+
     /// <summary>Changes the core's mode, whatever the structure is doing. Every block stays exactly as it was.</summary>
     public void SwitchMode(CoreMode mode)
     {
@@ -105,14 +111,32 @@ public sealed partial class Vessel
         Structure.DirtyChunks.Clear();
         Structure.DirtyChunks.UnionWith(dirty);
         if (IsBase && mode != CoreMode.Base) TakeFlight();
-        if (Spec != null) Body.Class = StructureBridge.ClassOf(Spec);
         RefreshLegs();
         TickMode();
     }
 
-    /// <summary>Each tick: a Big Core in Base Mode anchors once it has come to rest, and a hull that has left its footings lets go of them.</summary>
+    /// <summary>Each tick: the next chunk of collision still to build, if any; a structure in Base Mode anchors once it has come to rest, and a hull that has left its footings lets go of them.</summary>
     public void TickMode()
     {
+        BuildPendingShapes();
+        // A claimed wreck lies where it came down until it lifts off: nothing settles it on legs it hasn't got.
+        if (_lies is N.Vector3 lies)
+        {
+            if (Lifting != null) _lies = null;
+            else if (Flight != null && Flight.Input.Seated && Flight.Input.Move.Y > 0.1f && _refused == 0)
+            {
+                // Its pilot asks it up: the ground it lies in is cut along the straight climb and it rises, or the console says why not.
+                CapitalBase.Core.CutPlan plan = LiftOff();
+                if (!plan.Ok) { Controller?.Say(plan.Refusal); _refused = 600; }
+            }
+            else
+            {
+                if (_refused > 0) _refused--;
+                Body.Position = lies;
+                Body.Velocity = N.Vector3.Zero;
+            }
+        }
+        TickLift(1f / 60f);
         if (_liftedFrom is N.Vector3 from && N.Vector3.DistanceSquared(Body.Position, from) > LetGoAfter * LetGoAfter)
         {
             _liftedFrom = null;
@@ -125,8 +149,8 @@ public sealed partial class Vessel
             Anchor();
             return;
         }
-        // Nobody flies a falling base: no autopilot holds its course. In space the assist brings it to rest.
-        if (Flight.Input.Seated == false) Flight.Input = PilotInput.LetGo;
+        // Nobody flies a falling base: no autopilot holds its course. In space it is brought to rest.
+        if (Flight.Input.Seated == false) Flight.Input = PilotInput.Station;
     }
 
     /// <summary>A fixed structure becomes a hull on the flight model, landed where it stands until its pilot lifts it off.</summary>
@@ -147,9 +171,12 @@ public sealed partial class Vessel
         Flight = new HandlingFlight(Spec, Zone.Data.Handling);
         _legsKey = LegsKey();
         N.Quaternion rotation = Body.Rotation;
-        Body.Controller = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
+        N.Vector3 position = Body.Position;
+        Body.Controller = NewController();
         Controller.PlaceLanded(Body, Body.Position, MathX.Heading(rotation));
         Body.Rotation = rotation;
+        // A claimed wreck stays where it lies (in the ground it came down in, if it did) until it lifts off.
+        if (Derelict != null) Body.Position = (_lies = position).Value;
         Binding.Teleport();
         FollowPilot();
         Fx.Setup(this);
@@ -190,26 +217,37 @@ public sealed partial class Vessel
     }
 
     /// <summary>Every block anchored at or under the ground meets it flush (terrain-digging's rule 4).</summary>
-    void ClearGround()
+    public void ClearGround()
     {
         if (Zone.Edits == null) return;
+        var parts = GroundParts().SelectMany(g => g).ToList();
+        if (parts.Count > 0) Zone.Edits.ClearForStructure(parts); // one edit for them all
+    }
+
+    /// <summary>The blocks at and under the ground, grouped by the 16 m column of ground they stand in (so clearing can go a column a tick).</summary>
+    public List<List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>> GroundParts()
+    {
         float cell = Structure.Grid.CellSize;
-        foreach (var (p, _) in Structure.Blocks().ToList())
+        var groups = new SortedDictionary<(int, int), List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>>();
+        foreach (var (p, _) in Structure.Cells())
         {
             Vector3 at = ToWorld(StructureBridge.CellCenter(Structure, p));
-            if (at.Y - cell <= Zone.GroundAt(at.X, at.Z).Y) ClearGround(p);
+            if (at.Y - cell > Zone.GroundAt(at.X, at.Z).Y) continue;
+            var key = ((int)MathF.Floor(at.X / 16f), (int)MathF.Floor(at.Z / 16f));
+            if (!groups.TryGetValue(key, out var list)) groups[key] = list = new();
+            list.Add((GroundKey(p), VolumeOf(p)));
         }
+        return groups.Values.ToList();
     }
 
     /// <summary>
     /// A block of a base reaching into the ground: the cells whose centres lie inside it are cleared
     /// and its volume registered, so the ground meets its faces flush (terrain-digging's rule 4).
     /// </summary>
-    public void ClearGround(Int3 cell)
-    {
-        var volume = new TerrainDigging.Terrain.StructureVolume(Body.ToParent(StructureBridge.CellCenter(Structure, cell)), Body.Rotation, new N.Vector3(Structure.Grid.CellSize));
-        Zone.Edits?.ClearForStructure(GroundKey(cell), volume);
-    }
+    public void ClearGround(Int3 cell) => Zone.Edits?.ClearForStructure(GroundKey(cell), VolumeOf(cell));
+
+    TerrainDigging.Terrain.StructureVolume VolumeOf(Int3 cell) =>
+        new(Body.ToParent(StructureBridge.CellCenter(Structure, cell)), Body.Rotation, new N.Vector3(Structure.Grid.CellSize));
 
     /// <summary>A block's hold on the ground.</summary>
     public TerrainDigging.Terrain.VolumeKey GroundKey(Int3 cell) => new(Body.Id, cell.X, cell.Y, cell.Z);

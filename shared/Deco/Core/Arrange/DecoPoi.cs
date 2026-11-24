@@ -28,11 +28,15 @@ public sealed class DecoPoi
         _sites = new DecoSites(forge, arrangements);
     }
 
-    /// <summary>Dresses a room: the set comes from the room id, kit or tags unless the room already names one.</summary>
+    /// <summary>
+    /// Dresses a room: the set and recipe come from the room's role and the place's tags (see
+    /// <see cref="DecoArrangements.Resolve"/>) unless the room already names a set.
+    /// </summary>
     public DecoPlan Dress(DecoRoom room, string kit = null, bool disorder = true)
     {
-        room.Set ??= Arrangements.SetFor(room.RoomId, room.Tags, kit);
-        if (!Arrangements.Sets.ContainsKey(room.Set) && !(room.RoomId != null && Arrangements.Recipes.ContainsKey(room.RoomId))) room.Set = "office";
+        if (room.Set == null) (room.Set, room.Recipe) = Arrangements.Resolve(room.RoomId, room.Tags, kit);
+        else if (room.Recipe == null && room.RoomId != null && Arrangements.Recipes.ContainsKey(room.RoomId)) room.Recipe = room.RoomId;
+        if (!Arrangements.Sets.ContainsKey(room.Set) && room.Recipe == null) (room.Set, room.Recipe) = Arrangements.Resolve(null, null, null);
         DecoPlan plan = _planner.Plan(room);
         if (disorder) _disorder.Apply(plan);
         return plan;

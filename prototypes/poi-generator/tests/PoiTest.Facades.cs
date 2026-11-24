@@ -9,7 +9,10 @@ public partial class PoiTest
     /// <summary>Walls change colour in sheets, never from cell to cell, and every kit dresses its buildings.</summary>
     void Facades()
     {
-        Check(_lib.Kits.Values.All(k => k.BaseCourse != null && k.Coping != null && k.DoorFrame != null), $"all {_lib.Kits.Count} kits say how their buildings meet the ground, the sky and a door");
+        Check(_lib.Kits.Values.All(k => k.BaseCourse != null && k.Coping != null && k.DoorFrameRule is "trim" or "none"), $"all {_lib.Kits.Count} kits say how their buildings meet the ground, the sky and a door");
+        // A door is framed in its building's own trim or not at all, and never in a hazard yellow or gold.
+        Check(_lib.Kits.Values.All(k => k.DoorFrame == null || k.DoorFrame == k.Coping && !Facade.IsHazard(k.DoorFrame.Value)),
+            $"a door's frame is its building's trim or nothing, never hazard yellow: {string.Join(", ", _lib.Kits.Values.Where(k => k.DoorFrame != null).Select(k => k.Id))} frame theirs, the rest none");
         Check(_lib.Kits.Values.All(k => k.PanelWidth >= 4 && k.PanelHeight >= 3 && k.PanelShare < 0.5f), "a wall's other colours come in sheets of at least 4 by 3, and never outnumber its main colour");
         Check(_lib.Kits.Values.Select(k => (k.Palette.First(p => p.Symbol == '#').Colors[0], k.Coping, k.DoorFrame)).Distinct().Count() == _lib.Kits.Count, "no two kits dress alike");
 

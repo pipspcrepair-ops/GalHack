@@ -25,6 +25,15 @@ public sealed class SurfaceSampler
     const double Bucket = 128;      // bucket size; adjusted to divide the map exactly both ways
     const float Reach = 70f;  // metres beyond a channel edge that a river still shapes the land
     const float BankRise = 0.3f, BankFlat = 3f, BankFall = 0.25f;   // a bank's lip over the water, how far it runs flat, and its fall beyond (1 in 4)
+
+    /// <summary>
+    /// A river's water stands this far below its level, on the channel's sloping side under the bank's lip.
+    /// The lowest a river's level goes, so where it reaches the sea its water is at the sea's level.
+    /// </summary>
+    public const float RiverDrop = 0.15f;
+
+    /// <summary>How far past its channel's edge a river at this level holds the ground up to sea level (its levee).</summary>
+    public static float BankReach(float level) => BankFlat + Math.Max(0f, level + BankRise) / BankFall;
     readonly int _bx, _by;
     readonly double _bucketW, _bucketH, _height;
     readonly List<int>[] _buckets;
@@ -60,7 +69,7 @@ public sealed class SurfaceSampler
         y = Mathx.Wrap(y, _height);
         float e = _model.Elevation(x, y, spacing, out float meander);
         _model.Meander(x, y, meander, out double mx, out double my);
-        if (!NearestRiver(Mathx.WrapX(x + mx, _width), Mathx.Wrap(y + my, _height), out float d, out float level, out float width))
+        if (!NearestRiver(Mathx.WrapX(x + mx, _width), Mathx.Wrap(y + my, _height), out float d, out float level, out float width, out float hold))
             return new GroundSample(e, 0f, false);
 
         // A rounded channel below the river surface, then banks that rise away from it.
@@ -81,11 +90,15 @@ public sealed class SurfaceSampler
         float keep = Mathx.Smooth(half + Reach, half + Reach * 0.75f, d);
         float h = Mathx.Lerp(e, Math.Min(e, target), keep);
         // Water stays in its bed: past the channel the ground never stands lower than the water beside
-        // it, a low levee where the land dips, running down to meet the land at a walkable slope.
+        // it (any river's: where two meet at different levels, the higher's), a low levee where the land
+        // dips, running down to meet the land at a walkable slope. Not out in the sea (land under its
+        // level where the sea is drawn): a river that comes near it is at its level by then (RiverFit),
+        // and a levee there stood in the sea as a ring round the mouth.
         float bank = float.NegativeInfinity;
         if (d >= half)
         {
-            bank = level + BankRise - Math.Max(0f, d - half - BankFlat) * BankFall;
+            float sea = Mathx.Smooth(WorldMap.SeaFrom, WorldMap.SeaFrom + 0.5f, Map.Sample(Map.SeaDepth, x, y)) * Mathx.Smooth(0.5f, 0f, e);
+            bank = hold - sea * Reach;
             h = Math.Max(h, bank);
         }
         return new GroundSample(h, level, d < half + 1.5f, bank);
@@ -96,10 +109,12 @@ public sealed class SurfaceSampler
     /// <summary>The landforms at a point (both axes wrap), strongest first: cheap, and the same on every machine.</summary>
     public LandformBlend LandformsAt(double x, double y) => Map.LandformsAt(x, y);
 
-    bool NearestRiver(double x, double y, out float distance, out float level, out float width)
+    /// <param name="hold">the highest any river's levee stands over the point, of those it lies outside the channel of</param>
+    bool NearestRiver(double x, double y, out float distance, out float level, out float width, out float hold)
     {
         distance = float.MaxValue;
         level = width = 0f;
+        hold = float.NegativeInfinity;
         int bi = Math.Clamp((int)(x / _bucketW), 0, _bx - 1), bj = Math.Clamp((int)(y / _bucketH), 0, _by - 1);
         List<int> list = _buckets[bj * _bx + bi];
         if (list == null) return false;
@@ -118,12 +133,14 @@ public sealed class SurfaceSampler
             // Rank by distance to the channel edge so a big river wins over a nearby trickle.
             float d = MathF.Sqrt(dx * dx + dy * dy);
             float edge = d - w * 0.5f;
+            float at = Mathx.Lerp(g.la, g.lb, t);
+            if (edge >= 0f) hold = Math.Max(hold, at + BankRise - Math.Max(0f, edge - BankFlat) * BankFall);
             if (edge < best)
             {
                 best = edge;
                 distance = d;
                 width = w;
-                level = Mathx.Lerp(g.la, g.lb, t);
+                level = at;
             }
         }
         return best < Reach;

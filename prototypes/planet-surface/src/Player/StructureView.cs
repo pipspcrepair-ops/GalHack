@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Godot;
 using PlanetSurface.World;
 using TerrainDigging.Terrain;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Player;
 
@@ -43,7 +44,7 @@ public partial class StructureView : Node3D
     Node3D Build(Structure s)
     {
         Vector3 size = new(s.Box.Size.X, s.Box.Size.Y, s.Box.Size.Z);
-        var node = new StaticBody3D { Name = $"Block {s.Id}", CollisionLayer = Layers.Structure, CollisionMask = 0 };
+        var node = new StaticBody3D { Name = $"Block {s.Id}", CollisionLayer = Layers.Hull, CollisionMask = 0 };
         node.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = size * 0.995f }, MaterialOverride = _body });
         node.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(size.X * 1.002f, size.Y * 0.18f, size.Z * 1.002f) }, MaterialOverride = _stripe });
         node.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });

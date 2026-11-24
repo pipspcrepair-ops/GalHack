@@ -6,6 +6,7 @@
 #     rarity          common .. unique
 #     danger          0 calm .. 4 deadly
 #     salvage         scrap, salvage, military or rare
+#     hull <site>     a capital ship: the capital-hull site (data/sites.txt) its hull is composed from
 #     faction / held  who holds it while it's live (its core and defenders)
 #     zones           near (close to the start world), orbit, moon, belt, deep
 #
@@ -45,6 +46,7 @@ space derelict_freighter
   rarity common
   danger 1
   salvage salvage
+  hull hulk_nose_down
   zones near orbit belt
   tags wreck ship salvage
   pitch A bulk hauler dead in its orbit, cargo doors open, lights out since the collapse.
@@ -75,6 +77,7 @@ space drifting_hulk
   rarity uncommon
   danger 2
   salvage salvage
+  hull hulk_liner
   zones near orbit moon belt
   tags wreck ship hulk
   pitch A gutted liner on a slow spin, its spine broken, something still running inside.
@@ -95,6 +98,7 @@ space military_wreck
   rarity rare
   danger 3
   salvage military
+  hull hulk_warship
   zones orbit belt deep
   tags wreck military ship
   pitch A frigate cut in two, its point-defence still tracking anything that moves.
@@ -105,6 +109,7 @@ space generation_hulk
   rarity exotic
   danger 3
   salvage rare
+  hull hulk_liner
   zones belt deep
   tags wreck ship colony cryo
   pitch Kilometres of decks, gardens gone to dust, and cryo vaults still drawing power.

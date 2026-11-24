@@ -1,10 +1,12 @@
 # Builds a Godot project and opens it in the editor, or plays it with -Play.
-#   .\tools\godot.ps1                       # open prototypes/walkable-ship in the editor
+#   .\tools\godot.ps1                       # open prototypes/slice in the editor
 #   .\tools\godot.ps1 -Play                 # play it
 #   .\tools\godot.ps1 -Project prototypes/other -Play
+# For people at the keyboard (sound on, no queue). Agents run windowed scenes through
+# .tools\queue\godot-q.ps1 instead, so the machine never has more than 4 Godot runs (owner, 22 Nov).
 
 param(
-    [string]$Project = "prototypes/walkable-ship",
+    [string]$Project = "prototypes/slice",
     [switch]$Play
 )
 

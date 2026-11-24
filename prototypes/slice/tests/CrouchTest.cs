@@ -14,7 +14,8 @@ namespace Slice.Tests;
 /// Crouching, on a fresh random world, through the game's own keys: hold Ctrl and the eye eases
 /// down while the capsule shortens and the walk slows; a 1.2 m passage can't be walked standing and
 /// is walked crouched; under it, letting go of Ctrl doesn't stand you up (no room) until you are out
-/// from under; a crouched hop is low, and the jetpack still lifts a crouched body.
+/// from under; a crouched hop is low, and the jetpack still lifts a crouched body; and in shallow
+/// water a crouch goes down and stays there, steady, never setting you swimming.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/CrouchTest.tscn
 /// </summary>
@@ -153,7 +154,7 @@ public partial class CrouchTest : Node
             if (Z < rig.Near && Z > rig.Far) crouchedAllTheWay &= S.Crouched;
             lowest = MathF.Min(lowest, S.Body.WorldPosition.Y - rig.Top);
         }
-        Check(Z < rig.Far - 1.5f && crouchedAllTheWay, $"crouched, it walks the whole passage and out the far end (z {Z:F2}, end {rig.Far:F2}); lowest feet {lowest:F2} m over the pad");
+        Check(Z < rig.Far - 1.5f && crouchedAllTheWay, $"crouched, it walks the whole passage and out the far end (z {Z:F2}, end {rig.Far:F2}); lowest feet {lowest:F2} m over the pad{(Z < rig.Far - 1.5f ? "" : $"; in the way: {InTheWay()}")}");
 
         // ---- Back in, then let go of Ctrl: no room to stand ----------------------------------------------
         Keys.Hold(Key.W, false);
@@ -204,6 +205,59 @@ public partial class CrouchTest : Node
         foreach (int x in Until(() => S.Body.OnFloor, 600)) yield return x;
         foreach (int x in _drive.Wait(60)) yield return x;
         Check(S.Body.OnFloor && !S.Crouched && Mathf.IsEqualApprox(S.CapsuleHeight, Survivor.Height), "landed with Ctrl let go: standing, nothing stuck");
+
+        // ---- Crouching in shallow water: down and steady, never set swimming or floated off ----------------
+        GalHack.Physics.IWaterField dry = _game.Zone.Physics.Water;
+        foreach (float depth in new[] { 0.6f, 0.85f, 1.05f })
+        {
+            _game.Zone.Physics.Water = new StillWater(rig.Top + depth);
+            S.PlaceOutside(rig.Start.ToNumerics());
+            foreach (int x in _drive.Wait(60)) yield return x;
+            Keys.Hold(Key.Ctrl);
+            foreach (int x in _drive.Wait(90)) yield return x;
+            float eyeLo = float.MaxValue, eyeHi = float.MinValue, feetLo = float.MaxValue, feetHi = float.MinValue;
+            bool down = true, swam = false;
+            for (int i = 0; i < 120; i++)
+            {
+                yield return 0;
+                down &= S.Crouched;
+                swam |= S.Legs.Swimming;
+                eyeLo = MathF.Min(eyeLo, S.EyeAbove); eyeHi = MathF.Max(eyeHi, S.EyeAbove);
+                feetLo = MathF.Min(feetLo, S.WorldFeet.Y); feetHi = MathF.Max(feetHi, S.WorldFeet.Y);
+            }
+            Keys.ReleaseAll();
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Check(down && !swam && eyeHi - eyeLo < 0.01f && feetHi - feetLo < 0.02f && Mathf.Abs(eyeHi - Survivor.CrouchEyeHeight) < 0.03f,
+                $"crouched in {depth:F2} m of still water it stays down and steady: never swimming, the eye at {eyeLo:F2} to {eyeHi:F2} m, the feet within {(feetHi - feetLo) * 100f:F1} cm");
+        }
+        _game.Zone.Physics.Water = dry;
+    }
+
+    /// <summary>What solid stands just ahead of the body, -Z (when a walk stops short).</summary>
+    string InTheWay()
+    {
+        var query = new PhysicsShapeQueryParameters3D
+        {
+            Shape = new SphereShape3D { Radius = 0.6f },
+            Transform = new Transform3D(Basis.Identity, S.WorldFeet + new Vector3(0f, 0.6f, -0.5f)),
+            CollisionMask = uint.MaxValue,
+        };
+        var names = new List<string>();
+        foreach (var hit in _game.Zone.GetWorld3D().DirectSpaceState.IntersectShape(query, 8))
+            if (hit["collider"].AsGodotObject() is Node n) names.Add(n.GetPath().ToString());
+        return names.Count == 0 ? "nothing in the scene's physics" : string.Join(", ", names.Distinct());
+    }
+
+    /// <summary>A sheet of still water at one level everywhere (the shallows a crouch is tried in).</summary>
+    sealed class StillWater : GalHack.Physics.IWaterField
+    {
+        readonly float _level;
+        public StillWater(float level) => _level = level;
+        public bool SurfaceAt(System.Numerics.Vector3 point, out float surface)
+        {
+            surface = _level;
+            return true;
+        }
     }
 
     /// <summary>Taps jump on the ground and reports how high the feet rose.</summary>

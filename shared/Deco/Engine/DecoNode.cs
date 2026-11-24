@@ -31,10 +31,15 @@ public partial class DecoNode : Node3D
     public static DecoNode Create(DecoMeshCache cache, DecoLook look, Transform3D at, bool collide = true, bool lights = true)
     {
         DecoPiece piece = cache.Forge.Catalogue.Piece(look.Piece);
-        DecoMeshData data = cache.Forge.Mesh(look);
+        DecoMeshData data = cache.Data(look);
         var node = new DecoNode { Look = look, Transform = at, Name = piece.BlockId(look.State) };
         node._seed = DecoHash.Fnv(look.Piece) ^ (ulong)at.Origin.X.GetHashCode() ^ ((ulong)at.Origin.Z.GetHashCode() << 1);
-        node.MeshInstance = new MeshInstance3D { Mesh = cache.Mesh(look), Name = "Mesh" };
+        // Drawn out to where it is a pixel or two (its longest side over 600: a cup to 40 m, a chair to 600): a street of
+        // dressed rooms and a roadside wreck's hundred pieces cost the renderer nothing from far off.
+        Mesh mesh = cache.Mesh(look);
+        float longest = mesh.GetAabb().GetLongestAxisSize();
+        node.MeshInstance = new MeshInstance3D { Mesh = mesh, Name = "Mesh", VisibilityRangeEnd = MathF.Max(40f, longest * 600f) };
+        node._longest = longest;
         node.AddChild(node.MeshInstance);
         if (collide)
         {
@@ -64,8 +69,28 @@ public partial class DecoNode : Node3D
         };
         if (node._anim == "spark") node.AddSparks(DecoGodot.V(data.Spark.Value));
         node._phase = (node._seed % 1000) / 1000f * Mathf.Tau;
-        node.SetProcess(node._anim != null);
         return node;
+    }
+
+    // What moves is moved by the DecoAnimator: one call a frame for all of them, and only near the eye. A node
+    // of its own would be a call into this code every frame for every piece in every place standing.
+    internal int AnimIndex = -1;
+    internal byte AnimBand;
+    internal float AnimOwed;
+
+    // Its shadow cast only as far as it can be made out (DecoShadows).
+    float _longest;
+
+    public override void _EnterTree()
+    {
+        if (_anim != null) DecoAnimator.Join(this);
+        DecoShadows.Track(MeshInstance, _longest);
+    }
+
+    public override void _ExitTree()
+    {
+        if (_anim != null) DecoAnimator.Leave(this);
+        DecoShadows.Untrack(MeshInstance);
     }
 
     void AddSparks(Vector3 at)
@@ -93,9 +118,11 @@ public partial class DecoNode : Node3D
         return (_seed >> 40) / (float)(1UL << 24);
     }
 
-    public override void _Process(double delta)
+    /// <summary>One step of the animation, <paramref name="delta"/> seconds on from the last (the animator calls it; a farther piece is stepped seldom, and by a longer time).</summary>
+    internal void Animate(float delta)
     {
-        _t += (float)delta;
+        delta = Mathf.Min(delta, 1f);
+        _t += delta;
         float e = 1f;
         switch (_anim)
         {
@@ -117,7 +144,7 @@ public partial class DecoNode : Node3D
                     _flash.LightEnergy = 1.6f;
                     _next = _t + 1.2f + 3.5f * Rand();
                 }
-                _flash.LightEnergy = Mathf.MoveToward(_flash.LightEnergy, 0, (float)delta * 12f);
+                _flash.LightEnergy = Mathf.MoveToward(_flash.LightEnergy, 0, delta * 12f);
                 return;
         }
         MeshInstance.SetInstanceShaderParameter("energy", e);

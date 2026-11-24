@@ -87,7 +87,7 @@ public sealed class ItemView
         ItemCategory.Part or ItemCategory.Component when !IsCore(item) => ItemGroup.Parts,
         ItemCategory.Ammo => ItemGroup.Ammo,
         ItemCategory.Consumable => ItemGroup.Food,
-        ItemCategory.Tool => ItemGroup.Devices,
+        ItemCategory.Tool or ItemCategory.Weapon => ItemGroup.Devices,
         ItemCategory.Block => item.Family switch
         {
             BlockFamily.Armour => ItemGroup.Blocks,
@@ -98,7 +98,7 @@ public sealed class ItemView
         _ => ItemGroup.Other,
     };
 
-    static bool IsCore(ItemDef item) => System.Array.IndexOf(PlayerInventory.CoreItems, item.Id) >= 0;
+    static bool IsCore(ItemDef item) => item.Id == PlayerInventory.Core;
 
     /// <summary>The category words the text filter also matches: "raw ore", "block armour", "deco office".</summary>
     public static string CategoryWords(ItemDef item) =>

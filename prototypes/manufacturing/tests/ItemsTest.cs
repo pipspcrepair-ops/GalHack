@@ -23,7 +23,7 @@ public partial class ItemsTest : TestBase
 
     // The deposit kinds the planet generator places today (Planets.Gen.DepositKind), and the commons
     // it guarantees on every planet near any start.
-    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone", "Magnesium", "Cobalt", "Neodymium", "Gold", "Gravium", "Crystal", "Resin" };
+    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone", "Magnesium", "Cobalt", "Neodymium", "Gold", "Gravium", "Crystal", "Resin", "WarpFuel", "Starsilver" };
     static readonly string[] EveryPlanet = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone" };
 
     protected override void RunAll()
@@ -38,6 +38,7 @@ public partial class ItemsTest : TestBase
         Run("Names are GalHack's own", TestNames);
         Run("Breaking down never makes material", TestDeconstructionValue);
         Run("The constructor ladder builds itself", TestLadder);
+        Run("Generator fuel: a tier ladder, the early fuel the least efficient", TestFuels);
         Run("Starter small vessel: price and time", TestStarterVessel);
         Run("Ore deposit shapes", TestDeposits);
         Run("Deposit placement rules", TestDepositRules);
@@ -63,7 +64,8 @@ public partial class ItemsTest : TestBase
         }
         Check(Enum.GetValues<Rarity>().All(r => _items.Items.Any(i => i.Rarity == r)), "every step of the rarity ladder has items");
         Check(Rarities.Color(Rarity.Exotic) == 0xa64dff && Rarities.Color(Rarity.Unique) == 0xffbf2e, "exotic is purple and unique is gold");
-        foreach (ItemCategory c in Enum.GetValues<ItemCategory>())
+        // Hand weapons are the slice's own items (their rows are in shared/Arms), so the shared catalogue has none.
+        foreach (ItemCategory c in Enum.GetValues<ItemCategory>().Where(c => c != ItemCategory.Weapon))
             Check(_items.InCategory(c).Any(), $"the catalogue has {c} items");
 
         // A broken file is refused at load, not discovered later.
@@ -74,65 +76,79 @@ public partial class ItemsTest : TestBase
             catch (InvalidDataException) { return true; }
         }
         Check(Refused(n => n == ItemCatalogue.RecipesFile ? Read(n).Replace("\"iron-ore\": 2 }", "\"unobtainium\": 2 }") : null), "a recipe naming an unknown item is refused");
-        Check(Refused(n => n == ItemCatalogue.BlocksFile ? Read(n).Replace("{ \"hull-plate\": 1 },", "{ \"hull-plate\": 0 },") : null), "a zero count in a bill is refused");
+        Check(Refused(n => n == ItemCatalogue.BlocksFile ? Read(n).Replace("\"bill\": {\"polymer\": 1}", "\"bill\": {\"polymer\": 0}") : null), "a zero count in a bill is refused");
     }
 
     void TestBlockItems()
     {
         BuildingBridge.NameBlockItems(_items, _blocks);
-        foreach (bool small in new[] { true, false })
-        {
-            Check(_items.BlockItem("cpuext3", small).Recipe.InputsFor(1)["lattice-core"] > 0 && _items.BlockItem("cpuext4", small).Recipe.InputsFor(1)["lattice-array"] > 0,
-                $"the T3 and T4 CPU extenders ({(small ? "small" : "large")} grid) take lattice parts");
-        }
-        Check(new[] { "lattice-core", "lattice-array" }.All(id => _items.Item(id).Recipe == null && _items.Item(id).Source == ItemSource.Found), "lattice parts are found, never made");
-        Check(_items.BlockItem("factory", true) == null && _items.BlockItem("factory", false) != null, "the blueprint factory goes on bases and capital vessels only: the large grid, never the small");
-        int families = 0;
+        int blocks = 0;
         foreach (BlockBill b in _items.Blocks.All)
-            foreach (bool small in new[] { true, false })
-            {
-                if (!b.On(small)) continue;
-                ItemDef item = b.ItemFor(small);
-                families++;
-                bool ok = item != null && item.Category == ItemCategory.Block && item.Recipe != null && item.StackSize > 0 && item.MassKg > 0 && item.VolumeSu > 0
-                          && item.Unlock != null && item.BlockId == b.BlockId && item.SmallGrid == small && item.Recipe.InputsFor(1).Equals(b.For(small));
-                if (!ok) Check(false, $"block {b.BlockId} on the {(small ? "small" : "large")} grid is a block item with recipe, stack, mass, volume, unlock and classes");
-            }
-        Check(_items.BlockItems.Count() == families, $"every block family on both grids is an item: {families} block items, each with a recipe, stack, mass, volume, unlock and classes");
-        ItemDef steelL = _items.BlockItem("steel", false), steelS = _items.BlockItem("steel", true);
-        Check(steelL != steelS && steelL.Name == "Steel block (large)" && steelS.Name == "Steel block (small)", $"small and large are separate families: {steelS.Name}, {steelL.Name}");
-        Check(steelL.StackSize > _items.BlockItem("thruster", false).StackSize, $"armour stacks deep ({steelL.StackSize}), devices don't ({_items.BlockItem("thruster", false).StackSize})");
-        Check(Math.Abs(steelL.MassKg - _items.MassOf(_items.Blocks.For("steel", false))) < 1e-9 && Math.Abs(steelL.VolumeSu - _items.VolumeOf(_items.Blocks.For("steel", false))) < 1e-9,
-            $"a block item weighs and packs as what it is made of ({steelL.MassKg} kg, {steelL.VolumeSu} SU)");
-        Check(_items.BlockItem("core", false).Id == "big-core" && _items.BlockItem("core", false).Name == "Big Core" && _items.BlockItem("core", true).Id == "small-core" && _items.BlockItem("core", true).Name == "Small Core", "the core block's items are the Big Core and the Small Core");
-        var cores = _items.Items.Where(i => i.BlockId == "core" || i.Id.EndsWith("-core") && i.Category != ItemCategory.Part && i.Name.EndsWith("Core", StringComparison.OrdinalIgnoreCase) && i.Id != "fusion-core" && i.Id != "lattice-core").Select(i => i.Id).OrderBy(i => i).ToList();
-        Check(cores.SequenceEqual(new[] { "big-core", "small-core" }), $"there are exactly two cores: {string.Join(", ", cores)}");
-        foreach (var (old, now) in new[] { ("base-core", "big-core"), ("capital-core", "big-core"), ("vessel-core", "small-core"), ("hover-core", "small-core") })
-            Check(_items.Item(old).Id == now && _items.TryGet(old, out ItemDef item) && item.Id == now, $"the old id {old} loads as {now}");
+        {
+            ItemDef item = b.Item;
+            blocks++;
+            bool ok = item != null && item.Id == b.BlockId && item.Category == ItemCategory.Block && item.Recipe != null && item.StackSize > 0 && item.MassKg > 0
+                      && item.VolumeSu > 0 && item.Unlock != null && item.BlockId == b.BlockId && item.Recipe.InputsFor(1).Equals(b.Bill);
+            if (!ok) Check(false, $"block {b.BlockId} is one block item, by its own id, with recipe, stack, mass, volume and unlock");
+        }
+        Check(_items.BlockItems.Count() == blocks, $"one item per block: {blocks} block items, each with a recipe, stack, mass, volume and unlock");
+        Check(_items.BlockItems.All(i => !i.Id.Contains('@') && !i.Name.Contains("small", StringComparison.OrdinalIgnoreCase) && !i.Name.Contains("large", StringComparison.OrdinalIgnoreCase)),
+            "no block item is per grid or named small or large");
+        ItemDef steel = _items.BlockItem("iron-plated");
+        Check(steel.Name == "Iron plated block" && steel.StackSize > _items.BlockItem("thruster-t1").StackSize,
+            $"{steel.Name} stacks deep ({steel.StackSize}), devices don't ({_items.BlockItem("thruster-t1").StackSize})");
+        Check(Math.Abs(steel.MassKg - _items.MassOf(_items.Blocks.For("iron-plated"))) < 1e-9 && Math.Abs(steel.VolumeSu - _items.VolumeOf(_items.Blocks.For("iron-plated"))) < 1e-9,
+            $"a block item weighs and packs as what it is made of ({steel.MassKg} kg, {steel.VolumeSu} SU)");
+
+        // Old ids, the per-grid items among them, read as the items that replaced them.
+        var was = new (string old, string now)[]
+        {
+            ("steel@large", "iron-plated"), ("steel@small", "iron-plated"), ("cpuext@large", "iron-plated"), ("cpuext4@small", "iron-plated"),
+            ("hardened@large", "hardened-plated"), ("glass@small", "glass-plated"), ("thruster@small", "thruster-t1"), ("thruster@large", "thruster-t3"),
+            ("generator@large", "generator-t3"), ("container@large", "container-t4"), ("gear@large", "pad-t3"), ("door@small", "door-1x2x1"),
+            ("chair@large", "command-chair"), ("smallfab@large", "fabricator-t1"), ("big-core", "core"), ("small-core", "core"), ("hover-core", "core"),
+            ("hull-plate", "iron-plate"),
+        };
+        foreach (var (old, now) in was)
+            Check(_items.TryGet(old, out ItemDef item) && item.Id == now, $"the old id {old} loads as {now}");
         var kept = new SharedStorage(_items, "old save", 500);
-        kept.Add("hover-core", 1);
-        kept.Add("vessel-core", 1);
-        Check(kept.Count("small-core") == 2 && kept.Count("hover-core") == 2 && kept.Stacks.Count() == 1, "stacks saved under old ids land on the one core's stack");
-        Check(_items.BlockItem("container", false).Unlock?.Level == 1, "devices (containers) are items too, unlocked in the tech tree");
-        // The two drives (data only): warp on small and capital vessels, hyperdrive on capital only, each with its own fuel and tank.
-        ItemDef warp = _items.BlockItem("warpdrive", true), hyper = _items.BlockItem("hyperdrive1", false);
-        Check(warp != null && _items.BlockItem("warpdrive", false) != null && _items.BlockItem("warptank", true) != null,
-            "a warp drive and its warp cell tank come on both grids");
-        Check(hyper != null && _items.BlockItem("hyperdrive1", true) == null && _items.BlockItem("hyperdrive2", false) != null && _items.BlockItem("foldtank", true) == null,
-            "hyperdrives T1 and T2 and the fold crystal tank are large-grid only");
-        Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Rarity == Rarity.Common), "warp cells are made in constructors from common materials");
-        Check(_items.Item("fold-crystal").Uses.Contains("Hyperdrive") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is hyperdrive fuel and still feeds shields");
-        // The constructor tiers make the right blocks.
+        kept.Add("big-core", 1);
+        kept.Add("small-core", 1);
+        Check(kept.Count("core") == 2 && kept.Stacks.Count() == 1, "stacks saved under the two old cores land on the one core's stack");
+        var cores = _items.BlockItems.Where(i => _blocks.TryGetType(i.BlockId, out BlockType t) && t.IsCore).Select(i => i.Id).ToList();
+        Check(cores.SequenceEqual(new[] { "core" }) && _items.Item("core").Name == "Core", $"there is one core: {string.Join(", ", cores)}");
+
+        // Plates: a plated block is its base block's bill plus its plates.
+        foreach (BlockType t in _blocks.Types.Skip(1).Where(t => t.IsPlated))
+        {
+            Bill want = _items.Blocks.For(t.Base.Id).Add(t.Plate, t.Plates);
+            Check(_items.Blocks.For(t.Id).Equals(want) && _items.Item(t.Plate).Category == ItemCategory.Part, $"{t.Id} is {t.Base.Id} plus {t.Plates} {t.Plate}");
+        }
+        // One door item places every door size, a bigger door taking more of it.
+        BlockType door = _blocks.Type("door-1x2x1");
+        Check(_blocks.VariantsOf(door).All(d => !_items.Blocks.TryGet(d.Id, out _) == (d != door)) && _items.Item("door-1x2x1").Name == "Door",
+            "the door family is one item, Door, and one bill");
+        var s = new Structure(_blocks);
+        Block big = Building.Make(s, _blocks.Type("door-3x3x1"));
+        Check(BuildingBridge.ItemOf(_items, s, big)?.Id == "door-1x2x1" && BuildingBridge.ItemsOf(_items, s, big).Equals(Bill.Of(("door-1x2x1", 5)))
+              && BuildingBridge.BillOf(_items, s, big).Equals(new Bill().Add(_items.Blocks.For("door-1x2x1"), 5)),
+            "a 3x3 door is placed from the door item and takes 5 of them");
+        Check(_items.Blocks.Get("door-1x2x1").Cells == 2 && _items.Blocks.Get("iron-plated").Xp == 1 && _items.Blocks.Get("thruster-t5").Xp == 8
+              && Math.Abs(_items.Blocks.Get("core").AssemblySeconds - 0.4) < 1e-9 && Math.Abs(_items.Blocks.Get("fabricator-t2").AssemblySeconds - 1.6) < 1e-9,
+            "assembly time and XP go by the cells a block fills (0.4 s at one cell, 1.6 s at eight; 1 XP an armour block, up to 8 a device)");
+
+        // The fabricator tiers make the right blocks.
         Constructor Make(string tier) => new(_items, _items.Machines.Get(tier), SharedStorage.Unbounded(_items, "t"), new WorldRules());
         Constructor survival = Make("survival"), smallFab = Make("small"), large = Make("large");
-        foreach (string id in new[] { "steel", "glass", "concrete", "container", "generator", "fueltank", "smallfab", "light", "ladder" })
-            Check(survival.Knows(_items.BlockItem(id, false)), $"the survival constructor makes {_items.BlockItem(id, false).Name}");
-        Check(survival.Knows(_items.BlockItem("core", false)), "the survival constructor makes the Big Core");
-        foreach (string id in new[] { "thruster", "chair", "gyro", "gear", "core" })
-            Check(!survival.Knows(_items.BlockItem(id, true)) && smallFab.Knows(_items.BlockItem(id, true)), $"{_items.BlockItem(id, true).Name} needs the small constructor");
-        foreach (string id in new[] { "hardened", "combat", "thruster" })
-            Check(!smallFab.Knows(_items.BlockItem(id, false)) && large.Knows(_items.BlockItem(id, false)), $"{_items.BlockItem(id, false).Name} needs the large constructor");
-        Check(_items.BlockItem("steel", false).Recipe.Tier == 0 && _items.BlockItem("hardened", false).Recipe.Tier == 2, "steel is a survival-tier block, hardened a large-constructor block (as Empyrion's hardened steel)");
+        foreach (string id in new[] { "base-block", "iron-plated", "glass-plated", "concrete-plated", "container-t1", "generator-t1", "fabricator-t1", "light", "ladder", "core" })
+            Check(survival.Knows(_items.BlockItem(id)), $"the survival constructor makes {_items.BlockItem(id).Name}");
+        foreach (string id in new[] { "thruster-t1", "command-chair", "gyro-t1", "pad-t1", "hover-t1" })
+            Check(!survival.Knows(_items.BlockItem(id)) && smallFab.Knows(_items.BlockItem(id)), $"{_items.BlockItem(id).Name} needs Fabricator T1");
+        foreach (string id in new[] { "hardened-plated", "combat-plated", "thruster-t3" })
+            Check(!smallFab.Knows(_items.BlockItem(id)) && large.Knows(_items.BlockItem(id)), $"{_items.BlockItem(id).Name} needs Fabricator T2");
+        Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Id == "pentaxite") && _items.Item("pentaxite").IsGathered && _items.Current("warp-fuel-ore") == "pentaxite",
+            "warp cells are refined from pentaxite, a mined ore (the old warp fuel ore reads as it), never made from common materials");
+        Check(_items.Item("fold-crystal").Uses.Contains("Fold fuel") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is fold fuel and still feeds shields");
     }
 
     void TestDecoItems()
@@ -141,14 +157,13 @@ public partial class ItemsTest : TestBase
         DecoCatalogue deco = DecoCatalogue.LoadDirectory(DataPaths.Items);
         int before = items.Items.Count;
         deco.AddBillsTo(items);
-        int grids = deco.Pieces.Sum(p => (p.OnLarge ? 1 : 0) + (p.OnSmall ? 1 : 0));
-        Check(items.Items.Count == before + grids, $"every intact deco piece is a block item on each grid it goes on ({grids} items from {deco.Pieces.Count} pieces)");
+        Check(items.Items.Count == before + deco.Pieces.Count, $"every intact deco piece is one block item ({deco.Pieces.Count})");
         DecoPiece first = deco.Pieces[0];
-        ItemDef d = items.BlockItem(first.Id, false);
+        ItemDef d = items.BlockItem(first.Id);
         Check(d != null && d.Family == BlockFamily.Deco && d.Name == first.Name && d.Group == first.Set && d.Unlock?.Tab == "deco" && d.Recipe.InputsFor(1).Equals(first.Bill),
             $"{d?.Name}: a deco block item, made from its bill, on the deco tab, in its set ({d?.Group})");
-        Check(d.Id == first.NodeId(false) && d.Unlock.Level == first.UnlockLarge.Level && d.Unlock.Parent == first.UnlockLarge.Parent, "its unlock is the piece's node, mapped one to one");
-        Check(!items.Has(first.BlockId(DecoState.Broken)) && items.BlockItem(first.BlockId(DecoState.Broken), false) == null, "damaged states are Creative and POI only: no item");
+        Check(d.Id == first.Id && d.Unlock == first.Unlock, "its unlock is the piece's node");
+        Check(!items.Has(first.BlockId(DecoState.Broken)) && items.BlockItem(first.BlockId(DecoState.Broken)) == null, "damaged states are Creative and POI only: no item");
         List<string> problems = items.Validate();
         foreach (string p in problems.Take(10)) Note("rule broken: " + p);
         Check(problems.Count == 0, $"the catalogue with deco keeps every design rule ({problems.Count} broken)");
@@ -163,7 +178,7 @@ public partial class ItemsTest : TestBase
 
         // A cycle slipped into the data is caught at load and named.
         string recipes = File.ReadAllText(Path.Combine(DataPaths.Items, ItemCatalogue.RecipesFile))
-            .Replace("\"from\": { \"iron-ore\": 2 }", "\"from\": { \"hull-plate\": 2 }");
+            .Replace("\"from\": { \"iron-ore\": 2 }", "\"from\": { \"iron-plate\": 2 }");
         try
         {
             ItemCatalogue.Load(n => n == ItemCatalogue.RecipesFile ? recipes : File.ReadAllText(Path.Combine(DataPaths.Items, n)));
@@ -171,7 +186,7 @@ public partial class ItemsTest : TestBase
         }
         catch (InvalidDataException e)
         {
-            Check(e.Message.Contains("cycle") && e.Message.Contains("iron-bar") && e.Message.Contains("hull-plate"), $"a recipe cycle is refused and named ({e.Message})");
+            Check(e.Message.Contains("cycle") && e.Message.Contains("iron-bar") && e.Message.Contains("iron-plate"), $"a recipe cycle is refused and named ({e.Message})");
         }
     }
 
@@ -188,24 +203,21 @@ public partial class ItemsTest : TestBase
         // Raw rarity follows the design table.
         Check(_items.Item("iron-ore").Rarity == Rarity.Common && _items.Item("cobalt-ore").Rarity == Rarity.Uncommon
             && _items.Item("fold-crystal-raw").Rarity == Rarity.Rare && _items.Item("voidglass-shard").Rarity == Rarity.Exotic
-            && _items.Item("lattice-core").Rarity == Rarity.Unique, "ore rarities follow the design's ladder");
+            && _items.Item("echo-shard").Rarity == Rarity.Unique, "ore rarities follow the design's ladder");
         // Rarity reaches all the way up: an item made from an exotic is exotic, from a unique is unique.
-        Check(_items.Item("voidglass-lens").Rarity == Rarity.Exotic && _items.Item("lattice-processor").Rarity == Rarity.Unique, "rarity carries up the tree");
+        Check(_items.Item("voidglass-lens").Rarity == Rarity.Exotic && _items.Item("charge-plating").Rarity == Rarity.Unique, "rarity carries up the tree");
     }
 
     void TestBlocksHavePaths()
     {
         int checkedBlocks = 0, uniqueOnly = 0;
-        foreach (BlockType t in _blocks.Types.Skip(1))
+        foreach (BlockType t in _blocks.Types.Skip(1).Where(t => t.Head == null || t.Head == t)) // a door of any size is placed from the family's one item
         {
             bool hasBill = Check(_items.Blocks.TryGet(t.Id, out BlockBill bill), $"{t.Id} has a bill");
             if (!hasBill) continue;
             checkedBlocks++;
-            foreach (bool small in new[] { true, false })
             {
-                if (!bill.On(small)) continue;
-                Bill b = bill.For(small);
-                string grid = small ? "small" : "large";
+                Bill b = bill.Bill;
                 var blockers = new List<string>();
                 foreach (string id in b.Ids)
                 {
@@ -214,22 +226,21 @@ public partial class ItemsTest : TestBase
                 }
                 if (bill.UniqueOnly)
                 {
-                    Check(blockers.Count > 0 && blockers.All(id => _items.Item(id).IsUnique), $"{t.Id} ({grid}) is unique-only and needs only unique finds beyond ore");
-                    if (small) uniqueOnly++;
+                    Check(blockers.Count > 0 && blockers.All(id => _items.Item(id).IsUnique), $"{t.Id} is unique-only and needs only unique finds beyond ore");
+                    uniqueOnly++;
                 }
                 else
                 {
-                    Check(blockers.Count == 0, $"{t.Id} ({grid}) is made from mined ore alone{(blockers.Count > 0 ? ": blocked by " + string.Join(", ", blockers) : "")}");
+                    Check(blockers.Count == 0, $"{t.Id} is made from mined ore alone{(blockers.Count > 0 ? ": blocked by " + string.Join(", ", blockers) : "")}");
                     int tier = b.Ids.Max(id => _items.Graph.TierNeeded(_items.Item(id)));
-                    Check(tier <= 3, $"{t.Id} ({grid}) can be made by some constructor (needs {_items.Machines.TierName(tier)})");
+                    Check(tier <= 3, $"{t.Id} can be made by some constructor (needs {_items.Machines.TierName(tier)})");
                 }
             }
         }
-        Note($"{checkedBlocks} block types priced on both grids ({uniqueOnly} unique-only: precursor armour, lattice extenders)");
-        // Every armour upgrade's bill holds the one it upgrades, so upgrading never loses material.
+        Note($"{checkedBlocks} block types priced ({uniqueOnly} unique-only: precursor plating)");
+        // Every plating up keeps the base under it, so upgrading never loses the block.
         foreach (BlockType t in _blocks.Types.Skip(1).Where(t => t.Upgrade != null))
-            foreach (bool small in new[] { true, false })
-                Check(_items.Blocks.For(t.Upgrade.Id, small).Covers(_items.Blocks.For(t.Id, small)), $"{t.Upgrade.Id} costs at least what {t.Id} does");
+            Check(_items.Blocks.For(t.Upgrade.Id)["polymer"] >= _items.Blocks.For(t.Id)["polymer"], $"{t.Upgrade.Id} is the same base block under new plates as {t.Id}");
         // Weapons say what they fire.
         Check(_items.Blocks.AmmoFor("turret") == "shells-40mm" && _items.Blocks.AmmoFor("gatling") == "belt-12mm" && _items.Blocks.AmmoFor("rocketpod") == "rocket",
             "every gun names its ammo");
@@ -238,7 +249,7 @@ public partial class ItemsTest : TestBase
     void TestUniques()
     {
         var uniques = _items.InCategory(ItemCategory.Unique).ToList();
-        Check(uniques.Count >= 4, $"the design's unique finds are in ({string.Join(", ", uniques.Select(u => u.Name))})");
+        Check(uniques.Count >= 2, $"the design's unique finds are in ({string.Join(", ", uniques.Select(u => u.Name))})");
         Check(uniques.All(u => u.Recipe == null && u.Source == ItemSource.Found && u.DepositKind == null), "unique finds have no recipe, no deposit, and come from exploring");
         Check(!_items.Items.Any(i => i.IsGathered && i.Rarity == Rarity.Unique), "nothing gathered from the ground is unique");
         Check(!_items.Recipes.Any(r => r.Output.IsUnique), "no recipe makes a unique find");
@@ -281,7 +292,7 @@ public partial class ItemsTest : TestBase
         // Each machine's bill needs only recipes a lower tier knows (Validate checks it; say it here).
         foreach (MachineDef m in _items.Machines.All)
         {
-            Bill bill = m.ItemId != null ? _items.Item(m.ItemId).Recipe.InputsFor(1) : _items.Blocks.For(m.BlockId, false);
+            Bill bill = m.ItemId != null ? _items.Item(m.ItemId).Recipe.InputsFor(1) : _items.Blocks.For(m.BlockId);
             int need = bill.Ids.Max(id => _items.Graph.TierNeeded(_items.Item(id)));
             string what = m.Kind == MachineKind.Constructor ? $"tier {m.Tier}" : m.Kind == MachineKind.Deconstructor ? "returns " + _items.Machines.DeconstructorReturn.ToString("P0") : "factory";
             Note($"{m.Name,-22} {what,-12} speed {m.Speed:0.##}x  built with a {_items.Machines.TierName(need)} constructor");
@@ -289,30 +300,55 @@ public partial class ItemsTest : TestBase
         // The foothold base needs nothing the carried survival constructor can't make.
         Bill foothold = _items.Blocks.Total(_items.Machines.Reference.Foothold);
         Expansion e = _items.Graph.Expand(foothold);
-        Check(e.MaxTier == 0, $"the foothold base (core, power, fuel, small constructor, storage, floor) is built from survival-constructor recipes (needs tier {e.MaxTier})");
+        Check(e.MaxTier == 0, $"the foothold base (core, power, small constructor, storage for its fuel, floor) is built from survival-constructor recipes (needs tier {e.MaxTier})");
+    }
+
+    // ---- Generator fuel ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Empyrion's ladder (ItemsConfig: bio fuel 10, small energy cell 15, energy cell 30, large 150, fusion 300): every item
+    /// with fuel units is generator fuel, and up the tech tree each holds more per item and per storage unit than the one
+    /// before. Each is made at its tier's constructor, biofuel from plant matter; the fold crystal is no generator fuel.
+    /// </summary>
+    void TestFuels()
+    {
+        var fuels = _items.Items.Where(i => i.FuelUnits > 0).OrderBy(i => i.Unlock?.Level ?? 0).ThenBy(i => i.FuelUnits).ToList();
+        foreach (ItemDef f in fuels)
+            Note($"{f.Name,-22} {f.FuelUnits,4} units  {f.VolumeSu,4:0.##} SU  {f.FuelUnits / f.VolumeSu,6:0.#} a SU  level {f.Unlock?.Level}  {_items.Machines.TierName(f.Recipe?.Tier ?? -1)} constructor, from {_items.Describe(f.Recipe?.InputsFor(1))}");
+        Check(fuels.Select(f => f.Id).SequenceEqual(new[] { "biofuel", "energy-cell", "fuel-pack", "large-fuel-pack", "fusion-cell" })
+              && fuels.Select(f => f.FuelUnits).SequenceEqual(new[] { 10, 15, 30, 150, 300 }),
+            $"five generator fuels on Empyrion's values: {string.Join(", ", fuels.Select(f => $"{f.Id} {f.FuelUnits}"))}");
+        bool climbs = fuels.Zip(fuels.Skip(1), (a, b) => b.FuelUnits > a.FuelUnits && b.FuelUnits / b.VolumeSu > a.FuelUnits / a.VolumeSu).All(x => x);
+        Check(climbs, "each fuel up the tree holds more units per item and per storage unit than the one before");
+        Check(fuels.All(f => f.Recipe != null && f.Unlock != null) && fuels.Zip(fuels.Skip(1), (a, b) => b.Recipe.Tier >= a.Recipe.Tier && b.Unlock.Level >= a.Unlock.Level).All(x => x),
+            "each is crafted, at a constructor tier and a level no lower than the fuel before it");
+        ItemDef bio = _items.Item("biofuel");
+        Check(bio.Recipe.Tier == 0 && bio.Unlock.Level == 1 && bio.Recipe.Inputs.All(i => i.Item.Source == ItemSource.Harvested),
+            "biofuel, the first, comes from plant matter at the survival constructor from level 1");
+        Check(_items.Item("fold-crystal").FuelUnits == 0 && _items.Item("warp-cell").FuelUnits == 0, "the jump fuels are not generator fuel");
     }
 
     // ---- The starter small vessel ---------------------------------------------------------
 
     void TestStarterVessel()
     {
-        Structure gadfly = DataPaths.LoadBlueprint("gadfly.gbp");
-        List<BlockCount> blocks = BuildingBridge.BlocksOf(gadfly);
+        Structure skiff = DataPaths.LoadBlueprint(DataPaths.Slice("starter.gbp"));
+        List<BlockCount> blocks = BuildingBridge.BlocksOf(skiff);
         Bill parts = _items.Blocks.Total(blocks);
         Expansion vessel = _items.Graph.Expand(parts);
         ReferenceRates reference = _items.Machines.Reference;
         Expansion foothold = _items.Graph.Expand(_items.Blocks.Total(reference.Foothold));
         Expansion fuel = _items.Graph.Expand(reference.StarterFuel);
 
-        var stats = StructureStats.Compute(gadfly);
-        Note($"Gadfly: {gadfly.Count} small blocks, {stats.Mass * 1000:0} kg, thrust/weight {stats.ThrustToWeightMax:0.0} g, flies: {stats.Flies}");
+        var stats = StructureStats.Compute(skiff);
+        Note($"Skiff: {skiff.BlockCount} blocks, {stats.Mass * 1000:0} kg, thrust/weight {stats.ThrustToWeightMax:0.0} g, flies: {stats.Flies}");
         Note($"  parts: {_items.Describe(parts)}");
         Note($"  ore:   {_items.Describe(vessel.Leaves)}  = {vessel.Leaves.Total} ore");
         Note($"  craft: {vessel.Runs} constructor runs, {vessel.Seconds / 60:0.0} min on a small constructor");
         Note($"Foothold base: {_items.Describe(foothold.Leaves)} = {foothold.Leaves.Total} ore, {foothold.Seconds / 60 / _items.Machines.Get("survival").Speed:0.0} min on the survival constructor");
         Note($"Fuel (20 energy cells): {fuel.Leaves.Total} ore");
 
-        Check(stats.Flies && stats.ThrustToWeightMax > 1.2, "the Gadfly is a working small vessel (powered, lifts its own weight)");
+        Check(stats.Flies && stats.ThrustToWeightMax > 1.2, "the Skiff is a working small vessel (powered, lifts its own weight)");
         var allowed = new HashSet<string>(_items.Items.Where(i => i.IsRaw && (EveryPlanet.Contains(i.DepositKind) || i.Source == ItemSource.Dug)).Select(i => i.Id));
         Check(vessel.Leaves.Ids.All(allowed.Contains) && foothold.Leaves.Ids.All(allowed.Contains) && fuel.Leaves.Ids.All(allowed.Contains),
             "everything for the first vessel comes from what every planet has (iron, copper, silicon, carbon, ice, dug stone)");
@@ -321,25 +357,20 @@ public partial class ItemsTest : TestBase
         double ore = vessel.Leaves.Total + foothold.Leaves.Total + fuel.Leaves.Total;
         double gather = ore / reference.GatherOrePerMinute;
         double craft = foothold.Seconds / 60 / _items.Machines.Get("survival").Speed + (vessel.Seconds + fuel.Seconds) / 60 / _items.Machines.Get("small").Speed;
-        double place = (gadfly.Count + reference.Foothold.Sum(b => b.Count)) * reference.PlaceSecondsPerBlock / 60;
+        double place = (skiff.BlockCount + reference.Foothold.Sum(b => b.Count)) * reference.PlaceSecondsPerBlock / 60;
         double worst = gather + craft + place;                    // nothing overlaps
         double best = Math.Max(gather, craft) + place;            // the constructor works while the player gathers
         Note($"TOTAL first vessel from the crash: {ore:0} ore; gather {gather:0} min at {reference.GatherOrePerMinute:0}/min, craft {craft:0} min, place {place:0} min");
         Note($"  => {best:0} to {worst:0} minutes for an experienced player (the design asks for 1 to 2 hours)");
         Check(vessel.Leaves.Total is >= 400 and <= 2500, $"the vessel costs a sensible amount of ore ({vessel.Leaves.Total})");
-        Check(best >= 30 && worst <= 120, $"the first vessel takes {best:0}-{worst:0} min, inside an hour or two with the rest of survival");
+        // The Skiff is the cheapest flyer (owner, 13 Nov: about 600 ore, every world has the ores), which brings the
+        // first vessel under the design's hour: at least 20 minutes, never past two hours.
+        Check(best >= 20 && worst <= 120, $"the first vessel takes {best:0}-{worst:0} min, at least 20 minutes and never past two hours with the rest of survival");
 
-        // For comparison: the physics sandbox's walk-in shuttle, if it is there.
-        string corsairPath = Path.Combine(DataPaths.Repo, "prototypes", "physics-sandbox", "data", "blueprints", "corsair.gbp");
-        if (File.Exists(corsairPath))
-        {
-            Structure corsair = Blueprint.Load(File.ReadAllText(corsairPath), _blocks, out List<string> errors);
-            if (corsair != null && errors.Count == 0)
-            {
-                Expansion c = _items.Graph.Expand(_items.Blocks.Total(BuildingBridge.BlocksOf(corsair)));
-                Note($"Corsair 9 (walk-in shuttle, {corsair.Count} blocks): {c.Leaves.Total} ore, {c.Seconds / 60:0} min of crafting");
-            }
-        }
+        // For comparison: the walk-in Shuttle.
+        Structure shuttle = DataPaths.LoadBlueprint(DataPaths.Slice("shuttle.gbp"));
+        Expansion c = _items.Graph.Expand(_items.Blocks.Total(BuildingBridge.BlocksOf(shuttle)));
+        Note($"Shuttle (walk-in, {shuttle.BlockCount} blocks): {c.Leaves.Total} ore, {c.Seconds / 60:0} min of crafting");
     }
 
     // ---- Deposits ---------------------------------------------------------------------------

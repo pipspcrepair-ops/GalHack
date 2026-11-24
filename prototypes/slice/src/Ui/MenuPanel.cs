@@ -116,6 +116,11 @@ public abstract partial class MenuPanel : Control
                 Feed(ToDesign(b.Position), pressed: b.Pressed, released: !b.Pressed, held: b.Pressed, right: false, shift: b.ShiftPressed, ctrl: b.CtrlPressed, rightHeld: _rightHeld);
                 AcceptEvent();
                 break;
+            case InputEventMouseButton { ButtonIndex: MouseButton.Middle } m3:
+                Gui.MiddleHeld = m3.Pressed;
+                Feed(ToDesign(m3.Position), false, false, _held, false, m3.ShiftPressed, m3.CtrlPressed, rightHeld: _rightHeld);
+                AcceptEvent();
+                break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Right } r:
                 _rightHeld = r.Pressed;
                 Feed(ToDesign(r.Position), false, false, _held, right: r.Pressed, shift: r.ShiftPressed, ctrl: r.CtrlPressed, rightReleased: !r.Pressed, rightHeld: r.Pressed);
@@ -128,7 +133,7 @@ public abstract partial class MenuPanel : Control
                 break;
             case InputEventMouseMotion m:
                 Gui.Mouse = ToDesign(m.Position);
-                if (LaysOutOnHover || Gui.DragId != null || _held) Feed(Gui.Mouse, false, false, _held, false, m.ShiftPressed, m.CtrlPressed, rightHeld: _rightHeld);
+                if (LaysOutOnHover || Gui.DragId != null || _held || Gui.MiddleHeld) Feed(Gui.Mouse, false, false, _held, false, m.ShiftPressed, m.CtrlPressed, rightHeld: _rightHeld);
                 break;
         }
     }

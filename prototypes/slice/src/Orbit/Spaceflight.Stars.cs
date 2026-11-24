@@ -11,10 +11,12 @@ public partial class Spaceflight
     /// <summary>The direction to look, in the world, to see a direction of the catalogue.</summary>
     public Vector3 LookAlong(N.Vector3 catalogue)
     {
+        // Round a body with no ground no surface's sky stands under you: the zone's own frame, turned into the system's.
+        if (Game.InOrbit && !Orbit.HasGround) return GalaxySky.Basis(N.Quaternion.Conjugate(WorldToSystem(Orbit))) * (Stars.Field.Inverse() * new Vector3(catalogue.X, catalogue.Y, catalogue.Z));
         SkyRig sky = Game.Surface.Sky;
         return (sky.Stars.Field * sky.SkyToStars).Inverse() * new Vector3(catalogue.X, catalogue.Y, catalogue.Z);
     }
 
     /// <summary>The direction to look, in the world, to see a catalogue star.</summary>
-    public Vector3 LookToward(int star) => LookAlong(Game.Surface.Sky.Stars.View.Direction[star]);
+    public Vector3 LookToward(int star) => LookAlong(Stars.View.Direction[star]);
 }

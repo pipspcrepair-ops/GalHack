@@ -16,6 +16,8 @@ public sealed class RoomDef
     public string Name = "";
     public ModuleKind Kind = ModuleKind.Room;
     public int WMin = 4, WMax = 10;
+    /// <summary>The floor area it wants, m2 (0: any): planning practice for a room of its purpose (data/references.txt).</summary>
+    public int AMin, AMax;
     public List<(string Prop, float Weight)> Props = new();
     public float Fill = 0.35f;
     public List<string> Island = new();
@@ -26,9 +28,9 @@ public sealed class RoomDef
     public int SpawnMin, SpawnMax = 1;
     public int TerminalMin, TerminalMax;
     public string Light = "warm";      // warm, cold, dim, red, green, none, glyph
-    public string? Lock;               // the keycard clearance its door needs
+    public bool Secure;                // a secure room: no extra doors to its neighbours
     public bool Blast;                 // its door is a blast door
-    public List<string> Tags = new();  // keyspot, core, secure, quarantine, story...
+    public List<string> Tags = new();  // core, secure, quarantine, story...
     public List<string> Story = new(); // environmental scenes it can host
     /// <summary>The decorations library's set or theme for this room (wired in after proto/deco merges).</summary>
     public string Deco = "";
@@ -85,6 +87,26 @@ public sealed class SitePart
     public int Int(string k, int d = 0) => Args.TryGetValue(k, out var v) ? int.Parse(v, CultureInfo.InvariantCulture) : d;
     public float Num(string k, float d = 0f) => Args.TryGetValue(k, out var v) ? float.Parse(v, CultureInfo.InvariantCulture) : d;
     public override string ToString() => $"{Kind} at {X},{Z}";
+
+    /// <summary>
+    /// This part as one spawn builds it: any whole-number argument written as a range ("count 3..6",
+    /// "len 50..90") rolled from the spawn's own seed, so no two spawns of a site lay it out alike.
+    /// </summary>
+    public SitePart Rolled(Rng rng)
+    {
+        if (!Args.Values.Any(v => v.Contains(".."))) return this;
+        var p = new SitePart { Kind = Kind, X = X, Z = Z, Rot = Rot };
+        foreach (var (k, v) in Args.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            int at = v.IndexOf("..", StringComparison.Ordinal);
+            if (at < 0) { p.Args[k] = v; continue; }
+            int n = rng.Range(int.Parse(v[..at], CultureInfo.InvariantCulture), int.Parse(v[(at + 2)..], CultureInfo.InvariantCulture) + 1);
+            if (k == "@x") p.X = n;
+            else if (k == "@z") p.Z = n;
+            else p.Args[k] = n.ToString(CultureInfo.InvariantCulture);
+        }
+        return p;
+    }
 }
 
 /// <summary>
@@ -138,6 +160,7 @@ public static class ArchParser
                 case "name": R().Name = string.Join(' ', p.Skip(1)); break;
                 case "kind": R().Kind = Enum.Parse<ModuleKind>(p[1], true); break;
                 case "width": R().WMin = I(p[1]); R().WMax = I(p[^1]); break;
+                case "area": R().AMin = I(p[1]); R().AMax = I(p[^1]); break;
                 case "props":
                     for (int i = 1; i + 1 < p.Length; i += 2) R().Props.Add((p[i], F(p[i + 1])));
                     break;
@@ -150,7 +173,7 @@ public static class ArchParser
                 case "spawns": R().SpawnMin = I(p[1]); R().SpawnMax = I(p[^1]); break;
                 case "terminals": R().TerminalMin = I(p[1]); R().TerminalMax = I(p[^1]); break;
                 case "light": R().Light = p[1]; break;
-                case "lock": R().Lock = p[1]; break;
+                case "secure": R().Secure = true; break;
                 case "blast": R().Blast = true; break;
                 case "tags": R().Tags = p.Skip(1).ToList(); break;
                 case "story": R().Story = p.Skip(1).ToList(); break;
@@ -268,7 +291,11 @@ public static class ArchParser
                 case "part":
                 {
                     // part <kind> <x> <z> [rot <n>] [key value]...
-                    var part = new SitePart { Kind = p[1], X = I(p[2]), Z = I(p[3]) };
+                    // (x or z written lo..hi stands where each spawn rolls it: kept as "@x"/"@z" until then.)
+                    int Lo(string s) => I(s.Contains("..") ? s[..s.IndexOf("..", StringComparison.Ordinal)] : s);
+                    var part = new SitePart { Kind = p[1], X = Lo(p[2]), Z = Lo(p[3]) };
+                    if (p[2].Contains("..")) part.Args["@x"] = p[2];
+                    if (p[3].Contains("..")) part.Args["@z"] = p[3];
                     for (int i = 4; i + 1 < p.Length; i += 2)
                     {
                         if (p[i] == "rot") part.Rot = I(p[i + 1]);

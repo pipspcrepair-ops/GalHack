@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
@@ -22,7 +23,7 @@ namespace Slice.Orbit;
 /// the start system's wrecks near the world, built from the POI generator's data, to board, loot,
 /// take apart and claim.
 ///
-/// It is a zone like the surface (the same game layer plays in both: the castaway, vessels,
+/// It is a zone like the surface (the same game layer plays in both: the sleeper, vessels,
 /// containers, the menu and the visor), with none of the surface's ground: no terrain, sea, weather
 /// or wildlife. Its data is made on worker threads as soon as a climb looks likely; it then enters
 /// the scene parked (disabled and hidden) and is set up a piece a frame, so it is complete before
@@ -51,33 +52,54 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>What every other body looks like from afar: the surface's sky paints them, and both skies show them.</summary>
     public PlanetSurface.Skies.BodySurfaces Surfaces { get; init; }
 
-    /// <summary>The globe's mapping between its directions and the map's points.</summary>
-    public GlobeMap Map { get; private set; }
+    /// <summary>The start world as a body of this zone: its globe, its frame, its surface.</summary>
+    public Celestial Home { get; }
 
-    public float GlobeRadius { get; private set; }
+    /// <summary>The start world's moon within reach of thrusters, once it is being made (null till then): the first of the moons.</summary>
+    public Celestial Moon { get; private set; }
+
+    /// <summary>Every moon with ground in the zone, the thruster moon first.</summary>
+    public IEnumerable<Celestial> Moons => Bodies.Where(c => !c.IsHome);
+
+    /// <summary>The body whose frame everything flies in: it holds still, the others move round it.</summary>
+    public Celestial Anchor { get; private set; }
+
+    /// <summary>Every body with ground in the zone, the start world first.</summary>
+    public readonly List<Celestial> Bodies = new();
+
+    /// <summary>The start world's globe's mapping between its directions and the map's points.</summary>
+    public GlobeMap Map => Home.Map;
+
+    public float GlobeRadius => Home.GlobeRadius;
 
     /// <summary>The rim of air drawn round the globe.</summary>
-    public float AtmosphereRadius { get; private set; }
+    public float AtmosphereRadius => Home.AtmosphereRadius;
 
     /// <summary>Crossing under this radius is the descent.</summary>
-    public float ShellRadius { get; private set; }
+    public float ShellRadius => Home.ShellRadius;
 
     /// <summary>The surface's atmosphere ceiling: a climb crosses here. The shell is this, less the gap, over the globe's ground.</summary>
     public float Ceiling { get; private set; }
     public float Gap { get; private set; }
 
-    public Globe Globe { get; private set; }
+    public Globe Globe => Home.Globe;
     public SpaceSky Space { get; private set; }
 
-    /// <summary>The globe's place in the world: world = Turn × globe + Shift.</summary>
-    public N.Quaternion Turn { get; private set; } = N.Quaternion.Identity;
-    public N.Vector3 Shift { get; private set; }
+    /// <summary>The start world's globe's place in the world: world = Turn × globe + Shift.</summary>
+    public N.Quaternion Turn => Home.Turn;
+    public N.Vector3 Shift => Home.Shift;
 
-    public N.Vector3 ToWorld(N.Vector3 globe) => Shift + N.Vector3.Transform(globe, Turn);
-    public N.Vector3 ToGlobe(N.Vector3 world) => N.Vector3.Transform(world - Shift, N.Quaternion.Conjugate(Turn));
+    public N.Vector3 ToWorld(N.Vector3 globe) => Home.ToWorld(globe);
+    public N.Vector3 ToGlobe(N.Vector3 world) => Home.ToGlobe(world);
+
+    /// <summary>The clock (days on the system's one clock, the surface's sky's): set by whoever runs the zone.</summary>
+    public Func<double> Days = () => 0.0;
 
     /// <summary>The wrecks set adrift so far.</summary>
     public readonly List<Vessel> Wrecks = new();
+
+    /// <summary>Made in play (a warp's destination), not behind the loading screen: its wrecks are drawn and made solid a chunk at a time once it runs, so no piece of setting it up is a hitch.</summary>
+    public bool DrawLater { get; init; }
 
     /// <summary>Its paint and its wrecks are made (worker threads); it can enter the scene.</summary>
     public bool Prepared => _preparing.IsCompletedSuccessfully;
@@ -104,18 +126,21 @@ public partial class OrbitZone : SurfaceZone
         Spec = below.Spec;
         Ceiling = ceiling;
         Gap = rules.Crossing.Gap;
-        GlobeRadius = (float)(below.Width / (2 * Math.PI) * rules.Globe.RadiusScale);
-        AtmosphereRadius = GlobeRadius * (1f + (float)rules.Globe.Atmosphere);
-        ShellRadius = GlobeRadius + ceiling - Gap;
-        Map = new GlobeMap(below.Width, below.Height, GlobeRadius);
+        PlanetSurface.Skies.StarSystem model = below.StarSystem;
+        Home = new Celestial(model.Home, home: true) { World = below, Seen = model };
+        Size(Home, below.Width, below.Height, ceiling);
+        Home.AtmosphereRadius = Home.GlobeRadius * (1f + (float)rules.Globe.Atmosphere);
+        Bodies.Add(Home);
+        Anchor = Home;
         GlobeMap map = Map;
         float shell = ShellRadius;
         var library = PoiCatalog.Library;
         _preparing = Task.Run(() =>
         {
             var watch = Stopwatch.StartNew();
-            GlobePaint paint = GlobePaint.Make(below.Spec, below.Map, rules.Globe, cloudCoverage);
+            GlobePaint paint = GlobePaint.Make(below.Spec, below.Map, rules.Globe, cloudCoverage, (x, z) => below.Palette.FarGround(x, z, 64f), below.Pois);
             List<DerelictPlan> wrecks = Derelicts.Plan(library, systemSeed, map, shell, rules, data.Catalogue, data.Items);
+            foreach (DerelictPlan p in wrecks) p.Colliders = PhysicsSandbox.Bridges.StructureBridge.Colliders(p.Structure);
             PrepareMs = watch.Elapsed.TotalMilliseconds;
             return (paint, wrecks);
         });
@@ -134,11 +159,14 @@ public partial class OrbitZone : SurfaceZone
     public override void _Ready()
     {
         ProcessPhysicsPriority = 50;
+        StandStill();
         if (_preparing.IsFaulted) throw new InvalidOperationException("the orbit failed to build", _preparing.Exception);
         Physics = new PhysicsWorld(Data.Physics);
         // No weight anywhere and never in the atmosphere: the handling model flies by its space rules.
         Physics.Zone.Strength = 0f;
         Physics.Zone.Ceiling = float.NegativeInfinity;
+        // How far over the crossing of the body whose reach a craft is in: what its cap goes by (HandlingStats.TopAt).
+        Physics.Zone.Above = p => { Vector3 at = p.ToGodot(); Celestial c = OwnerOf(at); return c.Height(at) - c.Ceiling; };
         Host = new PhysicsHost(Physics);
         AddChild(Host);
         Physics.MotionChanged += body => VesselOf(body)?.BecomeWreck();
@@ -152,21 +180,26 @@ public partial class OrbitZone : SurfaceZone
         Loot = new Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
         // The globe and the moons stand in the globe's frame; the sky turns with it.
-        _sphere = new Node3D { Name = "Sphere" };
-        AddChild(_sphere);
+        Home.Sphere = new Node3D { Name = "Sphere" };
+        AddChild(Home.Sphere);
+        Shell(Home);
+        Solids();
         Space = new SpaceSky { Name = "Sky" };
         AddChild(Space);
         // Under a plain node, so a parked orbit's hidden zone doesn't hide it: it is the far land from the surface too.
-        var apart = new Node { Name = "Apart" };
-        AddChild(apart);
-        Globe = new Globe { Name = "Globe" };
-        apart.AddChild(Globe);
+        _apart = new Node { Name = "Apart" };
+        AddChild(_apart);
+        Home.Globe = new Globe { Name = "Globe" };
+        _apart.AddChild(Home.Globe);
+        foreach (Celestial c in Moons) Hang(c); // solid from the first moment, their globes set up once painted
         _building = Build().GetEnumerator();
     }
 
     /// <summary>One piece of setting up, called once a frame while it waits parked: a texture, a wreck.</summary>
     public void BuildStep()
     {
+        CatchUp();
+        if (Ready) MoonStep();
         if (Ready || _building == null) return;
         var watch = Stopwatch.StartNew();
         if (!_building.MoveNext())
@@ -186,14 +219,19 @@ public partial class OrbitZone : SurfaceZone
     IEnumerable<int> Build()
     {
         var (paint, wrecks) = _preparing.Result;
-        Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces);
+        foreach (int x in Space.Setup(paint?.Look, Below?.Sky ?? _lit, Home.Seen, Rules.Space, Surfaces, (float)Rules.Globe.Atmosphere)) yield return x;
         yield return 0;
-        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
+        if (HasGround)
+        {
+            foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
+            Home.Ready = true;
+        }
         foreach (DerelictPlan p in wrecks)
         {
             yield return 0;
-            Vessel wreck = Vessel.SpawnDerelict(this, p.Structure, ToWorld(p.Position), N.Quaternion.Normalize(Turn * p.Rotation));
+            Vessel wreck = Vessel.SpawnDerelict(this, p.Structure, ToWorld(p.Position), N.Quaternion.Normalize(Turn * p.Rotation), p.Colliders, DrawLater);
             wreck.Derelict = p;
+            foreach (int x in wreck.DressSteps(p.Hull?.Decor)) yield return x;
             if (!p.Loot.IsEmpty)
             {
                 GalHack.Items.Bill left = wreck.Storage.AddAll(p.Loot);
@@ -203,19 +241,44 @@ public partial class OrbitZone : SurfaceZone
         }
     }
 
-    Node3D _sphere;
+    Node _apart;
+
+    readonly Queue<BodyBinding> _catchUp = new();
+    readonly HashSet<BodyBinding> _catchingUp = new();
+
+    /// <summary>A body's node put where its body is now (which resets its interpolation too).</summary>
+    void Sync(BodyBinding binding)
+    {
+        _catchingUp.Remove(binding);
+        if (IsInstanceValid(binding.Node)) binding.Teleport();
+    }
+
+    /// <summary>Nodes left out of sight by <see cref="Align"/> catch up with their bodies, a millisecond's worth a frame.</summary>
+    void CatchUp()
+    {
+        long started = Stopwatch.GetTimestamp();
+        while (_catchUp.TryDequeue(out BodyBinding binding))
+        {
+            if (_catchingUp.Contains(binding)) Sync(binding);
+            if (Stopwatch.GetElapsedTime(started).TotalMilliseconds > 1.0) return;
+        }
+    }
 
     /// <summary>
-    /// Lays the zone out so the map point (x, z) lies under the world point (sx, sz): the globe's
-    /// ground tangent to sea level there, its local east, up and south along the world's axes.
-    /// Everything in the zone moves with it rigidly, so nothing changes to the eye.
+    /// Lays the zone out so the start world's map point (x, z) lies under the world point (sx, sz):
+    /// the globe's ground tangent to sea level there, its local east, up and south along the world's
+    /// axes. Everything in the zone moves with it rigidly, so nothing changes to the eye.
     /// </summary>
-    public void Align(double x, double z, float sx, float sz)
+    public void Align(double x, double z, float sx, float sz) => Align(Home, x, z, sx, sz);
+
+    /// <summary>The same over any body's map: it becomes the anchor, laid out under the world point.</summary>
+    public void Align(Celestial c, double x, double z, float sx, float sz)
     {
-        N.Quaternion turn = N.Quaternion.Conjugate(Map.Frame(x, z));
-        var shift = new N.Vector3(sx, -GlobeRadius, sz);
-        N.Quaternion d = N.Quaternion.Normalize(turn * N.Quaternion.Conjugate(Turn));
-        N.Vector3 Moved(N.Vector3 w) => shift + N.Vector3.Transform(ToGlobe(w), turn);
+        Anchor = c;
+        N.Quaternion turn = N.Quaternion.Conjugate(c.Map.Frame(x, z));
+        var shift = new N.Vector3(sx, -c.GlobeRadius, sz);
+        N.Quaternion d = N.Quaternion.Normalize(turn * N.Quaternion.Conjugate(c.Turn));
+        N.Vector3 Moved(N.Vector3 w) => shift + N.Vector3.Transform(c.ToGlobe(w), turn);
         foreach (Body b in Physics.Bodies)
         {
             if (b.Frame != null) continue; // riders stay where they are aboard
@@ -224,24 +287,44 @@ public partial class OrbitZone : SurfaceZone
             b.Velocity = N.Vector3.Transform(b.Velocity, d);
             b.AngularVelocity = N.Vector3.Transform(b.AngularVelocity, d);
             b.Up = N.Vector3.Transform(b.Up, d);
-            BodyBinding binding = Host.BindingOf(b);
-            binding?.Teleport();
-            binding?.Node.ResetPhysicsInterpolation();
+            // Its node follows: at once if it can be seen, otherwise over the next frames (CatchUp). A big hull's node is thousands
+            // of shapes and meshes, and putting them all in their new place cost the crossing 20 ms; out of sight that can wait.
+            if (Host.BindingOf(b) is not BodyBinding binding) continue;
+            if (binding.Node.IsVisibleInTree()) Sync(binding);
+            else if (_catchingUp.Add(binding)) _catchUp.Enqueue(binding);
         }
         foreach (Lootable l in Loot.All)
         {
             l.Position = Moved(l.Position.ToNumerics()).ToGodot();
             if (l.Node != null) l.Node.GlobalPosition = l.Position;
         }
-        Turn = turn;
-        Shift = shift;
-        _sphere.Transform = new Transform3D(turn.ToBasis(), shift.ToGodot());
-        Globe.PlaceRing(_sphere.Transform);
+        foreach (Celestial o in Bodies)
+        {
+            if (o == c) continue;
+            o.Shift = Moved(o.Shift);
+            o.Turn = N.Quaternion.Normalize(d * o.Turn);
+            o.ShiftWas = o.Shift;
+            o.TurnWas = o.Turn;
+            Placed(o);
+        }
+        c.Turn = turn;
+        c.Shift = shift;
+        c.TurnWas = turn;
+        c.ShiftWas = shift;
+        Placed(c);
+    }
+
+    /// <summary>A body's globe-framed nodes follow it.</summary>
+    static void Placed(Celestial c)
+    {
+        if (c.Sphere == null) return;
+        c.Sphere.Transform = new Transform3D(c.Turn.ToBasis(), c.Shift.ToGodot());
+        c.Globe?.PlaceRing(c.Sphere.Transform);
     }
 
     public override void _Process(double delta) { }
 
-    public override void _PhysicsProcess(double delta) { } // no seams to wrap in space
+    public override void _PhysicsProcess(double delta) => Move(); // no seams to wrap in space: the bodies move instead
 
     /// <summary>No ground anywhere in space.</summary>
     public override Vector3 GroundAt(float x, float z) => new(x, float.NegativeInfinity, z);

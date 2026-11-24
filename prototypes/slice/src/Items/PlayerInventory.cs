@@ -6,7 +6,7 @@ using GalHack.Items;
 namespace Slice.Items;
 
 /// <summary>What the selected toolbar slot puts in your hands.</summary>
-public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Other }
+public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Scanner, Other, Weapon, Plater }
 
 /// <summary>Which toolbar the number keys use: your own, or the remote one (items left in cores' storage).</summary>
 public enum BarSource { Personal, Remote }
@@ -39,7 +39,7 @@ public sealed class RemoteSlot
 /// </summary>
 public sealed class PlayerInventory
 {
-    public const int ToolbarSlots = 9, Columns = 8, Rows = 6;
+    public const int ToolbarSlots = 9, Columns = 10, Rows = 7;
 
     /// <summary>The bag's room, storage units (a big suit pack: the grid's slots are usually the limit).</summary>
     public const double Capacity = 1500;
@@ -47,12 +47,11 @@ public sealed class PlayerInventory
     /// <summary>Toolbar shortcut for the starter vessel's blueprint (the blueprint projector).</summary>
     public const string BlueprintBlock = "@blueprint";
 
-    /// <summary>The hand tools, plainest first: each is the survival tool's gather, shoot and deconstruct, faster.</summary>
-    public static readonly string[] ToolItems = { "survival-tool", "mining-drill", "plasma-drill" };
+    /// <summary>The hand tools, plainest first: each is the Sleeper tool's gather and repair, faster.</summary>
+    public static readonly string[] ToolItems = { "sleeper-tool", "mining-drill", "plasma-drill" };
 
-    /// <summary>The two cores' items: the Big Core runs a base or a capital vessel, the Small Core a small or hover vessel.</summary>
-    public const string BigCore = "big-core", SmallCore = "small-core";
-    public static readonly string[] CoreItems = { BigCore, SmallCore };
+    /// <summary>The core's item: it founds a structure, whatever its mode.</summary>
+    public const string Core = "core";
 
     public readonly SharedStorage Storage;
     public readonly ItemGrid Grid;
@@ -88,13 +87,16 @@ public sealed class PlayerInventory
         Grid = new ItemGrid(Storage, Columns, Rows, ToolbarSlots);
     }
 
-    /// <summary>The survival tool, which is never dropped, wherever it sits.</summary>
-    public const string SurvivalTool = "survival-tool";
+    /// <summary>The plating gun: sprays plates onto blocks, strips them, tops them up.</summary>
+    public const string PlatingGun = "plating-gun";
+
+    /// <summary>The Sleeper tool, which is never dropped, wherever it sits.</summary>
+    public const string SleeperTool = "sleeper-tool";
 
     /// <summary>
-    /// What a death leaves on the body: the bag goes, the toolbar and the survival tool stay with you
-    /// (design: the survival tool is never dropped; the owner: nor is anything on the toolbar).
-    /// Takes the rest out of the pack and returns it, for the backpack.
+    /// What a death leaves on the body: the bag goes, the toolbar and the Sleeper tool stay with you
+    /// (design: the Sleeper tool is never dropped; the owner: nor is anything on the toolbar).
+    /// Takes the rest out of the pack and returns it, for their bag.
     /// </summary>
     public Bill TakeBagForDeath()
     {
@@ -105,7 +107,7 @@ public sealed class PlayerInventory
         var drop = new Bill();
         foreach (var (id, count) in Storage.Contents)
         {
-            int kept = id == SurvivalTool ? count : Math.Min(count, keep[id]);
+            int kept = id == SleeperTool ? count : Math.Min(count, keep[id]);
             if (count > kept) drop.Add(id, count - kept);
         }
         Storage.TryTake(drop);
@@ -185,7 +187,7 @@ public sealed class PlayerInventory
             Bar = BarSource.Personal;
             return null;
         }
-        if (RemoteEmpty) return "The remote toolbar is empty: drag an item from a core's storage tab onto it";
+        if (RemoteEmpty) return "REMOTE TOOLBAR · EMPTY";
         Bar = BarSource.Remote;
         return null;
     }
@@ -257,10 +259,15 @@ public sealed class PlayerInventory
             string id = HandItem;
             if (id == null || !_items.TryGet(id, out ItemDef item)) return HandKind.Empty;
             if (ToolItems.Contains(id)) return HandKind.Tool;
+            if (item.Category == ItemCategory.Weapon) return HandKind.Weapon;
             if (id == "hover-bike") return HandKind.Vehicle;
-            if (CoreItems.Contains(id)) return HandKind.Core;
+            if (id == "scanner") return HandKind.Scanner;
+            if (id == PlatingGun) return HandKind.Plater;
+            if (id == Core) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;
-            if (_items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
+            if (id == Slice.Vessels.Device.ClimateItem || _items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
+            if (Slice.Game.GameData.Shared.Rules.ForceFields.TierOf(id) != null) return HandKind.Device; // a force field component: drawn across an opening
+
             if (item.Category == ItemCategory.Consumable || id == "meat") return HandKind.Consumable;
             return HandKind.Other;
         }

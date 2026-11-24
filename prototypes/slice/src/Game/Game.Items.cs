@@ -31,6 +31,9 @@ public sealed class OpenContainer
 
 public partial class Game
 {
+    /// <summary>The light block the CORE tab is styling (Shift+E on it), or null for every light.</summary>
+    public Int3? LightEdit;
+
     /// <summary>The container open beside your bag in the inventory view (E on it), or null.</summary>
     public OpenContainer Opened { get; private set; }
 
@@ -42,7 +45,7 @@ public partial class Game
     /// <summary>
     /// E: feed at a replicator within reach; otherwise what is under the crosshair, in the world
     /// you are in: a container block (a locker, a cargo box: the structure's shared storage), a
-    /// body or a backpack on the ground, or a device. Nothing else answers E.
+    /// body or a bag on the ground, or a device. Nothing else answers E.
     /// </summary>
     void Use()
     {
@@ -55,7 +58,7 @@ public partial class Game
         }
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         if (PickUpBike(eye, dir)) return;
-        if (UseKeycard(eye, dir)) return;
+        if (UseBuiltDoor(eye, dir)) return;
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         float reach = hit ? look.Distance : UseReach;
         // A living creature in the way stops the reach (its body is solid to E as well).
@@ -73,22 +76,17 @@ public partial class Game
         }
         if (Bunker?.SealedAlong(eye, dir, reach + 0.3f) is Slice.Start.BunkerLocker sealedOne)
         {
-            Say($"Locker {sealedOne.Number} is sealed: its sleeper never woke", Tones.Caution);
             return;
         }
         if (!hit)
         {
-            Say("Nothing to use here", Tones.Caution);
             return;
         }
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
         {
-            if (device.Constructor != null)
-            {
-                Menu.OpenCore(device); // the full panel: hopper beside the recipes and queue
-                return;
-            }
-            Open(new OpenContainer { Title = $"{device.Label} hopper", Grid = device.Grid, Device = device, Where = () => device.GlobalPosition });
+            // The full panel: hopper beside the recipes and queue. A climate pod has only its fuel slot, opened beside the bag.
+            if (device.Constructor != null) Menu.OpenCore(device);
+            else Open(new OpenContainer { Title = device.Label, Grid = device.Grid, Device = device, Where = () => device.GlobalPosition });
             return;
         }
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
@@ -101,12 +99,21 @@ public partial class Game
             }
             if (type.IsCommandChair)
             {
-                Say("F to take the command chair", Tones.Text);
+                return;
+            }
+            if (type.IsLifeSupport)
+            {
+                UseLifeSupport(v);
+                return;
+            }
+            if (type.IsLight && Godot.Input.IsKeyPressed(Godot.Key.Shift))
+            {
+                LightEdit = look.Cell; // Shift+E: style this one light on the CORE tab
+                Menu.OpenCore(v, 0);
                 return;
             }
             if (type.IsLight && v.ToggleLight(look.Cell))
             {
-                Say(v.Structure.Get(look.Cell).Off ? "Light off" : "Light on", Tones.Text);
                 return;
             }
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null)
@@ -118,30 +125,57 @@ public partial class Game
             }
         }
         if (UsePlace(look)) return;
-        Say("Nothing to use here", Tones.Caution);
+    }
+
+    /// <summary>E at a life support pod: a working one tops the suit's air up to full.</summary>
+    public bool UseLifeSupport(Vessel v)
+    {
+        if (!v.LifeSupport) return false;
+        Suit.Vitals.Oxygen = Suit.Sim.OxygenCapacity;
+        return true;
+    }
+
+    /// <summary>F at a climate pod: it goes back in the pack with the fuel still in its slot.</summary>
+    bool PickUpPod()
+    {
+        if (Menu.IsOpen || !WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look)
+            || Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider && d.IsClimate) is not Device pod) return false;
+        var back = new Bill();
+        back.Add(Device.ClimateItem, 1);
+        foreach (var (id, n) in pod.Storage.Contents) back.Add(id, n);
+        var spill = new Bill();
+        foreach (var (id, n) in back)
+            foreach (var (left, m) in Pack.Add(id, n)) spill.Add(left, m);
+        if (!spill.IsEmpty) SetDown(spill, pod.GlobalPosition);
+        Zone.Devices.Remove(pod);
+        pod.QueueFree();
+        return true;
     }
 
     /// <summary>What E (or F) would do with what is under the crosshair, for the prompt beside it; empty if nothing usable is in reach.</summary>
     public string UsePrompt()
     {
-        if (Survivor != null && Survivor.OnBike != null && !Menu.IsOpen) return "F  Get off  ·  W/S throttle  A/D steer  Shift boost  Space hop";
+        if (Survivor != null && Survivor.OnBike != null && !Menu.IsOpen) return "F  Get off  ·  W/S throttle  Mouse or A/D steer  Alt look  Shift boost  Space hop";
         if (Survivor == null || Suit == null || Suit.Dead || Survivor.Seated != null || Menu.IsOpen) return "";
         if (Spaceflight.UsePrompt() is string door) return door;
-        if (Bikes?.Aimed(Survivor.WorldEye(), Survivor.WorldLook(), UseReach) != null) return "F  Ride the hover bike  ·  E  Pick it up";
+        if (Bikes?.Aimed(Survivor.WorldEye(), Survivor.WorldLook(), UseReach) != null) return "F  Ride  ·  E  Pick up";
         if (Bunker?.Mine is Slice.Start.CryoPod pod && !pod.Open && Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) < 1.5f) return "F  Open the pod";
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         if (Zone.Loot.Pick(eye, dir, (hit ? look.Distance : UseReach) + 0.3f, out _) is Lootable loot) return $"E  Open {loot.Name.ToLowerInvariant()}";
-        if (Bunker?.SealedAlong(eye, dir, (hit ? look.Distance : UseReach) + 0.3f) is Slice.Start.BunkerLocker sealedOne) return $"Locker {sealedOne.Number}: sealed";
+        if (Bunker?.SealedAlong(eye, dir, (hit ? look.Distance : UseReach) + 0.3f) is Slice.Start.BunkerLocker sealedOne) return $"LOCKER {sealedOne.Number} · SEALED";
         if (PlacePrompt(eye, dir, hit, look) is { Length: > 0 } place) return place;
         if (!hit) return "";
-        if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open the {device.Label.ToLowerInvariant()}";
+        if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
+            return device.Constructor != null ? $"E  Open {device.Label.ToLowerInvariant()}"
+                : $"E  Fuel  ·  F  Pick up  ·  {(device.Running ? "ON" : "OFF")}  ·  {Slice.Ui.Alerts.Clock(device.SecondsLeft)}";
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
         {
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
-            if (type.IsCommandChair) return "F  Take the command chair";
-            if (type.IsLight) return b.Off ? "E  Switch the light on" : "E  Switch the light off";
+            if (type.IsCommandChair) return "F  Command chair";
+            if (type.IsLifeSupport) return $"E  Air  ·  {(v.LifeSupport ? "ON" : "OFF")}";
+            if (type.IsLight) return (b.Off ? "E  Light on" : "E  Light off") + "   ·   Shift+E  Colour";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }
         return "";
@@ -175,7 +209,7 @@ public partial class Game
         VitalsRules r = Suit.Sim.Data.Vitals;
         if (e.Food > 0 && v.Food >= r.Food.Max - 0.5 && e.Health <= 0 && e.Oxygen <= 0)
         {
-            Say("Not hungry", Tones.Text);
+            Say("NOT HUNGRY", Tones.Text);
             return false;
         }
         string name = Zone.Data.Items.Item(s.Item).Name;
@@ -183,21 +217,19 @@ public partial class Game
         if (e.Food > 0) v.Food = Math.Min(r.Food.Max, v.Food + e.Food * r.Food.Max);
         if (e.Health > 0) v.Heal(e.Health);
         if (e.Oxygen > 0) v.Oxygen = Math.Min(Suit.Sim.OxygenCapacity, v.Oxygen + e.Oxygen);
-        Say($"Used a {name}", Tones.Good);
         Stats.Used++;
         return true;
     }
 
-    /// <summary>Sets things down where they can be picked up again (a full bag, a full storage, a refund with nowhere to go). Never lost.</summary>
+    /// <summary>Sets things down where they can be picked up again (a full bag, a full storage, a refund with nowhere to go): into your bag lying there, or a new one. Never lost.</summary>
     public void SetDown(Bill items, Vector3 at)
     {
         if (items == null || items.IsEmpty) return;
-        Vector3 ground = Zone.GroundAt(at.X, at.Z);
-        Zone.Loot.Spill(items, new Vector3(at.X, MathF.Max(at.Y - 0.2f, ground.Y), at.Z));
-        Say($"Set down: {Zone.Data.Items.Describe(items, 3)} (no room)", Tones.Caution);
+        Zone.Loot.Spill(items, at);
+        Say($"BAG FULL · DROPPED {Zone.Data.Items.Describe(items, 3)}", Tones.Caution);
     }
 
-    /// <summary>Drops a stack from the bag onto the ground in front of you (dragged out of the inventory window).</summary>
+    /// <summary>Drops a stack from the bag onto the ground in front of you (dragged out of the inventory window): into your bag there (in space it floats where it was let go).</summary>
     public void Drop(ItemGrid from, int slot)
     {
         Slot s = from[slot];
@@ -208,20 +240,21 @@ public partial class Game
         s.Clear();
         from.Reconcile();
         Vector3 look = Survivor.WorldLook();
-        Vector3 ahead = Survivor.WorldFeet + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
-        Vector3 ground = Zone.GroundAt(ahead.X, ahead.Z);
-        Zone.Loot.Spill(bill, float.IsFinite(ground.Y) ? ground : ahead + Vector3.Up * 0.6f); // in space it floats where it was let go
-        Say($"Dropped {Zone.Data.Items.Describe(bill)}", Tones.Text);
+        Zone.Loot.Spill(bill, Survivor.WorldFeet + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f + Vector3.Up * 0.3f);
     }
 
-    // ---- Death and the backpack -----------------------------------------------------------------
+    // ---- Death and the bag ----------------------------------------------------------------------
 
     bool _wasDead;
 
-    /// <summary>The backpack your last death left, if it still holds anything.</summary>
-    public Lootable Backpack { get; private set; }
+    /// <summary>The bag your last death left, while it holds anything.</summary>
+    public Lootable DeathBag { get; private set; }
 
-    /// <summary>On death the bag goes into a backpack where you fell, marked on the compass; the toolbar and the survival tool stay with you, and nothing is lost.</summary>
+    /// <summary>
+    /// On death your things go into your bag where you fell, marked on the compass and the map; the
+    /// toolbar and the Sleeper tool stay with you, and nothing is lost. Then whoever was about takes it
+    /// in (<see cref="Aftermath"/>).
+    /// </summary>
     void CheckDeath()
     {
         if (Suit.Dead && !_wasDead)
@@ -229,14 +262,16 @@ public partial class Game
             _wasDead = true;
             if (Survivor.Seated != null) Survivor.StandUp();
             Bill all = Pack.TakeBagForDeath();
-            int[] size = Zone.Data.Rules.Containers.Backpack;
-            Vector3 feet = Survivor.WorldFeet;
-            if (!all.IsEmpty) Backpack = Zone.Loot.Create(LootKind.Backpack, "Your backpack", feet, size[0], size[1], all);
+            Vector3 feet = Survivor.WorldFeet, ahead = Survivor.WorldLook() with { Y = 0f };
+            ahead = ahead.LengthSquared() > 1e-4f ? ahead.Normalized() : Vector3.Forward;
+            // At the feet, a little ahead of them: the body goes down the other way.
+            if (!all.IsEmpty) DeathBag = Zone.Loot.Bag(all, feet + ahead * 0.5f, "Your bag", Zone.Loot.YourColour, yours: true);
             Stats.Deaths++;
             CloseContainer();
             Menu.Close();
+            Aftermath(feet, -ahead);
         }
-        if (Backpack != null && !Zone.Loot.All.Contains(Backpack)) Backpack = null;
+        if (DeathBag != null && !Zone.Loot.All.Contains(DeathBag)) DeathBag = null;
     }
 
     void Respawn()
@@ -247,18 +282,22 @@ public partial class Game
         Survivor.Body.Velocity = N.Vector3.Zero;
         _wasDead = false;
         Report(o);
-        if (Backpack != null) Say("Your backpack is marked on the compass: E on it to take everything back", Tones.Caution);
     }
 
     // ---- Creatures' bodies ---------------------------------------------------------------------
 
     /// <summary>
-    /// A creature died: its body becomes a container holding its drops (wildlife's drop table:
-    /// meat by size, hide, and a rare part by chance). The player's kills are worth experience.
+    /// A creature died: its body holds its drops (wildlife's drop table: meat by size, hide, and a rare part
+    /// by chance; a person's weapon, ammo and goods) and is searched as a body (owner). Blown apart or
+    /// burned away, a person's bag drops from them, and what an animal had is in a bag where it was. The
+    /// player's kills are worth experience. The sleeper's own body is none of this: its things are in
+    /// its bag already.
     /// </summary>
     void OnCreatureDied(Creature c, ITarget killer)
     {
         Species s = c.Species;
+        if (s.Id == Slice.Player.CharacterModel.Sleeper.Id) return;
+        Laid(s);
         if (s.Rig == RigKind.Swarm)
         {
             // A swarm doesn't lie down and leave a body: the last of it goes in a burst.
@@ -273,22 +312,85 @@ public partial class Game
             }
             return;
         }
-        var drops = new Bill();
-        if (s.Drops.Meat > 0) drops.Add("meat", s.Drops.Meat);
-        drops.Add("hide", Math.Max(1, s.Drops.Meat / 3));
-        var rng = Wildlife.Rng.For(s.Seed, "drop", c.Id);
-        if (s.Drops.RarePart != "" && rng.Chance(s.Drops.RareChance)) drops.Add("rare-tissue", 1);
-        int[] size = Zone.Data.Rules.Containers.Corpse;
-        Vector3 at = Zone.Wildlife.WorldOf(c);
-        Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
-        body.Creature = c;
-        body.Radius = MathF.Max(0.5f, s.Stats.Radius);
+        Bill drops = BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", c.Id));
+        Arms?.People?.Drops(c, drops); // the weapon it carried, and the ammo it had left for it
+        if (_given.Remove(c, out Bill given)) drops = Less(drops, given); // (what it tossed you is on the ground already)
+        if (!EndCreature(c, out Vector3 left)) Corpse(s, drops, Zone.Wildlife.WorldOf(c), c, () => c.Removed);
+        else if (BagCarrier(s)) DropBag(s, drops, left, c.HitDir, c);
+        else Zone.Loot.Leftovers(drops, left, SackColour(s), c);
         if (killer == Target)
         {
             Stats.Kills++;
             Progress.Earn(s.Stats.Xp, $"{s.CommonName} brought down");
-            Say($"{Cap(s.CommonName)} down: E on its body to take its meat and hide", Tones.Good);
+            // One of a band out on a town's ground that never came for you: its people hear of it.
+            if (s.Behaviour == Behaviour.Folk && c.Herd?.Party?.Temper.Stance is { } rolled && rolled != Stance.Hostile)
+                Places?.TownHolding(Zone.Wildlife.WorldOf(c), BandReach)?.Did(Slice.Places.Deed.Kill);
         }
+    }
+
+    /// <summary>How far out from a town its people go about on its ground (bands on its roads), m: your standing with the town is your standing with them.</summary>
+    public const float BandReach = 400f;
+
+    /// <summary>Whether a body carries its things in a bag: a person (not a Husk, not a machine).</summary>
+    public static bool BagCarrier(Species s) => s.Figure != null && !s.Husk && !s.Mechanical;
+
+    /// <summary>The colour of someone's bag: their clothes' colour, gone toward their leather.</summary>
+    public static Color BagColour(Figure f) => f.Cloth.Lerp(f.Leather, 0.35f);
+
+    /// <summary>What's left of a bill once another is taken out of it.</summary>
+    static Bill Less(Bill from, Bill taken)
+    {
+        var left = new Bill();
+        foreach (var (id, n) in from) if (n > taken[id]) left.Add(id, n - taken[id]);
+        return left;
+    }
+
+    /// <summary>A person blown apart or burned away: their bag drops from their hip as they go, onto the ground where they were, on the side they didn't fall to.</summary>
+    void DropBag(Species s, Bill drops, Vector3 feet, Vector3 fell, object owner)
+    {
+        if (drops.IsEmpty) return;
+        Vector3 back = new(-fell.X, 0f, -fell.Z);
+        back = back.LengthSquared() > 1e-4f ? back.Normalized() : Vector3.Back;
+        Zone.Loot.Toss(drops, feet + Vector3.Up * s.Figure.Height * 0.5f, feet + back * 0.45f, "Bag", BagColour(s.Figure), owner);
+    }
+
+    /// <summary>
+    /// What a body holds follows what it was. A machine (robot, drone, cyborg) leaves salvage by its
+    /// size: metal, wiring, and a board or plate by chance. A person carries the goods of their trade
+    /// (slice.json "carried", each by chance) and what their hands held besides a weapon (their weapon
+    /// and its ammo are added from what they really had), never meat or hide. An animal, a Husk or a
+    /// Hollow leaves meat and hide (no coat has a material of its own yet) and its rare part by chance.
+    /// </summary>
+    public Bill BodyDrops(Species s, Wildlife.Rng rng)
+    {
+        var drops = new Bill();
+        if (s.Mechanical)
+        {
+            float r = MathF.Max(0.3f, s.Stats.Radius);
+            int bulk = Math.Clamp((int)MathF.Round(r * 4f), 1, 12);
+            drops.Add("iron-bar", bulk);
+            drops.Add("copper-wire", Math.Max(1, bulk / 2));
+            if (rng.Chance(MathF.Min(0.9f, 0.3f + r * 0.3f))) drops.Add("circuit-board", Math.Max(1, bulk / 4));
+            if (r >= 1f) drops.Add("hull-plate", Math.Max(1, bulk / 3));
+            return drops;
+        }
+        if (s.Figure != null && !s.Husk)
+        {
+            switch (s.Figure.Prop)
+            {
+                // (A weapon and its ammo are what they carried: Slice.Arms.SimArms.Drops.)
+                case "hoe" or "cane": if (rng.Chance(0.5f)) drops.Add("iron-bar", 1); break;
+                case "umbrella": drops.Add("polymer", 1); break;
+            }
+            if (Zone.Data.Rules.Carried.TryGetValue(s.Figure.Role.ToString().ToLowerInvariant(), out var goods))
+                foreach (SliceRules.CarriedGood g in goods)
+                    if (rng.Chance(g.Chance) && Zone.Data.Items.Has(g.Item)) drops.Add(g.Item, rng.Int(1, Math.Max(1, g.Most)));
+            return drops;
+        }
+        if (s.Drops.Meat > 0) drops.Add("meat", s.Drops.Meat);
+        drops.Add("hide", Math.Max(1, s.Drops.Meat / 3));
+        if (s.Drops.RarePart != "" && rng.Chance(s.Drops.RareChance)) drops.Add("rare-tissue", 1);
+        return drops;
     }
 
     static string Cap(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
@@ -308,6 +410,11 @@ public partial class Game
         Craft(Fabricator, t);
         foreach (Device d in Zone.Devices)
         {
+            if (d.Constructor == null)
+            {
+                d.Tick(dt); // a climate node draws in real time, whatever crafting's test scale
+                continue;
+            }
             Snapshot(d.Constructor);
             d.Tick(t);
             Finished(d.Constructor);
@@ -318,6 +425,7 @@ public partial class Game
             if (v.Stand != null && Survivor.Seated == v) v.Stand = null;
             v.HoldOnStand();
             v.TickMode();
+            v.TickPower(dt, (Mode == GameMode.Creative || FreePower) && v.IsPlayers); // in real time (Creative's free power is the player's own: others burn theirs): what its devices drew this tick, the climate nodes by it too
             if (v.Machines.Count == 0) continue;
             foreach (Constructor c in v.Machines.Values) Snapshot(c);
             v.TickMachines(t);
@@ -332,13 +440,13 @@ public partial class Game
             Pack.Grid.Reconcile();
             SetDown(over, Survivor.WorldFeet);
         }
-        foreach (Device d in Zone.Devices) d.Grid.Reconcile();
+        foreach (Device d in Zone.Devices) d.Grid?.Reconcile();
         AutoTransmit(dt);
         Zone.Loot.Tick();
-        // A structure's storage stays open while you are in its area; anything else within a few steps.
-        if (Opened != null && (Opened.Vessel != null
+        // A structure's storage stays open while you are in its area; anything else within a few steps; an emptied bag is gone at once.
+        if (Opened != null && (Opened.Loot != null && Zone.Loot.Open == null || (Opened.Vessel != null
                 ? !Slice.Construction.StructureArea.Contains(Opened.Vessel, Survivor.WorldFeet, Zone.Data.Rules.Build.Area)
-                : Opened.Where().DistanceTo(Survivor.WorldFeet) > 6f)) CloseContainer();
+                : Opened.Where().DistanceTo(Survivor.WorldFeet) > 6f))) CloseContainer();
     }
 
     float _transmitTimer;
@@ -375,7 +483,7 @@ public partial class Game
 
     void Snapshot(Constructor c)
     {
-        c.Lock ??= item => Progress.ItemAllowed(item) ? null : Progress.LockReason(item.Id)?.ToLowerInvariant();
+        c.Lock ??= item => Progress.ItemAllowed(item) ? null : Progress.LockReason(item.Id);
         if (!c.Busy) { _watch.Remove(c); return; }
         _watch[c] = c.AllJobs.Select(j => (j, j.RunsDone)).ToList();
     }
@@ -392,7 +500,7 @@ public partial class Game
             Stats.Crafted += runs * job.Recipe.Count;
             int xp = runs * Math.Max(1, (int)Math.Round(job.Recipe.Seconds / Progress.Rules.Xp.CraftSecondsPerXp));
             Progress.Earn(xp, $"made {job.Item.Name}");
-            if (!now.Contains(job) && job.Lane == Lane.Order) Say($"{c.Def.Name}: {job.Count} {job.Item.Name} done", Tones.Good);
+            if (!now.Contains(job) && job.Lane == Lane.Order) Notices.Post(Slice.Ui.NoticeKind.Made, "MADE", $"{job.Count} {job.Item.Name}");
         }
     }
 }

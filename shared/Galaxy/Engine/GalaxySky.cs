@@ -32,6 +32,9 @@ public sealed class GalaxySky
     /// <summary>Everything is on the graphics card: stars are showing.</summary>
     public bool Ready { get; private set; }
 
+    /// <summary>A baked sky is going up to the graphics card, a texture a <see cref="Poll"/>.</summary>
+    public bool Uploading => _uploading != null;
+
     public double MakeMs { get; private set; }
     public double BakeMs { get; private set; }
 
@@ -46,8 +49,8 @@ public sealed class GalaxySky
 
     readonly List<ShaderMaterial> _bound = new();
     Task<(Galaxy galaxy, int home)> _making;
-    Task<(SkyView view, Image cells, Image stars, Godot.Collections.Array<Image> glow)> _baking;
-    (SkyView view, Image cells, Image stars, Godot.Collections.Array<Image> glow)? _uploading;
+    Task<(SkyView view, byte[] cells, byte[] stars, byte[][] glow)> _baking;
+    (SkyView view, byte[] cells, byte[] stars, byte[][] glow)? _uploading;
     int _uploadStep;
     ImageTexture _cells, _stars;
     Cubemap _glow;
@@ -118,36 +121,70 @@ public sealed class GalaxySky
     {
         Galaxy g = Galaxy;
         Here = star;
+        // The worker only fills plain arrays: no engine object is touched off the main thread, so a
+        // bake still running when the game quits can't reach into an engine that is shutting down.
         _baking = Task.Run(() =>
         {
             var watch = Stopwatch.StartNew();
             SkyView v = SkyView.From(g, star);
-            Image cells = Image.CreateFromData(6 * SkyView.Grid, SkyView.Grid, false, Image.Format.Rf, Bytes(v.CellTexels));
-            Image stars = Image.CreateFromData(SkyView.StarsWide, v.StarRows, false, Image.Format.Rgbaf, Bytes(v.StarTexels));
-            var faces = new Godot.Collections.Array<Image>();
-            foreach (float[] face in v.Glow)
-            {
-                Image image = Image.CreateFromData(SkyView.GlowSize, SkyView.GlowSize, false, Image.Format.Rgbf, Bytes(face));
-                image.Convert(Image.Format.Rgbah);
-                faces.Add(image);
-            }
+            byte[] cells = Bytes(v.CellTexels), stars = Bytes(v.StarTexels);
+            var faces = new byte[v.Glow.Length][];
+            for (int i = 0; i < faces.Length; i++) faces[i] = HalfRgba(v.Glow[i]);
             BakeMs = watch.Elapsed.TotalMilliseconds;
             return (v, cells, stars, faces);
         });
     }
 
-    /// <summary>One texture a frame: the images were made on the worker, so only the copies to the card are left.</summary>
+    /// <summary>
+    /// Lets go of this sky now (a system folded away from): its textures, whatever a worker still has on its way, and the
+    /// materials it feeds. Nothing waits for the collector to find them.
+    /// </summary>
+    public void Release()
+    {
+        _bound.Clear();
+        _baking = null;
+        _uploading = null;
+        foreach (GodotObject t in new GodotObject[] { _cells, _stars, _glow, _newCells, _newStars, _newGlow })
+            t?.Dispose();
+        (_cells, _stars, _glow, _newCells, _newStars, _newGlow) = (null, null, null, null, null, null);
+        View = null;
+        Ready = false;
+    }
+
+    /// <summary>RGB floats as RGBA half floats (alpha 1): the glow cubemap's own format.</summary>
+    static byte[] HalfRgba(float[] rgb)
+    {
+        int n = rgb.Length / 3;
+        var bytes = new byte[n * 8];
+        ushort one = BitConverter.HalfToUInt16Bits((Half)1f);
+        for (int i = 0; i < n; i++)
+        {
+            for (int c = 0; c < 3; c++)
+            {
+                ushort h = BitConverter.HalfToUInt16Bits((Half)rgb[i * 3 + c]);
+                bytes[i * 8 + c * 2] = (byte)h;
+                bytes[i * 8 + c * 2 + 1] = (byte)(h >> 8);
+            }
+            bytes[i * 8 + 6] = (byte)one;
+            bytes[i * 8 + 7] = (byte)(one >> 8);
+        }
+        return bytes;
+    }
+
+    /// <summary>One texture a frame: the texels were made on the worker, so only wrapping them and the copies to the card are left.</summary>
     void UploadStep()
     {
         var watch = Stopwatch.StartNew();
         var (view, cells, stars, glow) = _uploading.Value;
         switch (_uploadStep++)
         {
-            case 0: _newCells = ImageTexture.CreateFromImage(cells); break;
-            case 1: _newStars = ImageTexture.CreateFromImage(stars); break;
+            case 0: _newCells = ImageTexture.CreateFromImage(Image.CreateFromData(6 * SkyView.Grid, SkyView.Grid, false, Image.Format.Rf, cells)); break;
+            case 1: _newStars = ImageTexture.CreateFromImage(Image.CreateFromData(SkyView.StarsWide, view.StarRows, false, Image.Format.Rgbaf, stars)); break;
             case 2:
+                var faces = new Godot.Collections.Array<Image>();
+                foreach (byte[] face in glow) faces.Add(Image.CreateFromData(SkyView.GlowSize, SkyView.GlowSize, false, Image.Format.Rgbah, face));
                 _newGlow = new Cubemap();
-                _newGlow.CreateFromImages(glow);
+                _newGlow.CreateFromImages(faces);
                 break;
             default:
                 // All of it swaps in one frame: a pixel never reads one sky's list from another's stars.
@@ -169,8 +206,19 @@ public sealed class GalaxySky
         m.SetShaderParameter("galaxy_cells", _cells);
         m.SetShaderParameter("galaxy_stars", _stars);
         m.SetShaderParameter("galaxy_glow", _glow);
+        // The central black hole from this sky's place: its shadow and disc are drawn where it really is, as big as it really looks.
+        Heart hole = Galaxy.Hole;
+        m.SetShaderParameter("galaxy_hole", V(hole.Position - View.Eye));
+        m.SetShaderParameter("galaxy_hole_axis", V(hole.Axis));
+        m.SetShaderParameter("galaxy_hole_zero", V(hole.Zero));
+        m.SetShaderParameter("galaxy_hole_size", new Vector4(hole.Shadow, hole.Inner, hole.Outer, View.HoleFront));
         m.SetShaderParameter("galaxy_on", true);
     }
+
+    static Vector3 V(N.Vector3 v) => new(v.X, v.Y, v.Z);
+
+    /// <summary>Toward the central black hole from this sky's place, the catalogue's frame (the map, the visor and the tests look it up here).</summary>
+    public N.Vector3 ToHole => View == null ? N.Vector3.UnitX : N.Vector3.Normalize(Galaxy.Hole.Position - View.Eye);
 
     static byte[] Bytes(float[] data)
     {

@@ -42,10 +42,10 @@ public static class Decay
                 {
                     Int3 w = cell + h.Vec(), behind = w + h.Vec();
                     if (c.Get(w).Role != Role.Wall || c.Occ.Contains(behind) || behind.Y > Assembler.GroundY) continue;
-                    if (c.Get(w + Int3.Up).Role != Role.Wall) continue;
+                    // The standard door's height (DoorSize), its head the wall over it.
+                    if (Enumerable.Range(1, DoorSize.Tall - 1).Any(k => c.Get(w + Int3.Up * k).Role != Role.Wall) || !BlockInfo.Collides(c.Get(w + Int3.Up * DoorSize.Tall).Type)) continue;
                     var color = c.Style.AccentColor.Scale(0.5f);
-                    c.Set(w, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, h.Opposite(), 1));
-                    c.Set(w + Int3.Up, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, h.Opposite(), 1));
+                    for (int k = 0; k < DoorSize.Tall; k++) c.Set(w + Int3.Up * k, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, h.Opposite(), 1));
                     c.X.Story.Add(new StoryProp("door to nowhere", w, "A welded door in a wall with nothing but rock behind it. Scratched from the other side."));
                     goto nextCorridor;
                 }
@@ -77,7 +77,7 @@ public static class Decay
     {
         var layout = inst.Layout;
         var x = layout.Extras;
-        bool powered = inst.State == PoiState.Active, plain = x.Plain.Count > 0;
+        bool powered = inst.State == PoiState.Active || inst.Ruin.Falling && inst.State != PoiState.Infested, plain = x.Plain.Count > 0; // mid-collapse the lights are still on
         foreach (var spot in x.Lights)
         {
             var lvl = LevelAt(layout, spot.Cell.Y);
@@ -94,6 +94,13 @@ public static class Decay
                 // Even running places flicker deep down.
                 if (w > 0.5f && rng.Chance(w * 0.5f)) l.Mode = LightMode.Flicker;
                 else if (w > 0.8f && rng.Chance(0.3f)) continue;
+                inst.Lights.Add(l);
+                continue;
+            }
+            // Abandoned but whole: the lights still mostly burn on whatever feeds them, and the place's feel
+            // (PlaceLights) sets a few flickering or failed. Deep wrongness still eats them.
+            if (inst.State == PoiState.Abandoned && !rng.Chance(0.1f + w * 0.6f))
+            {
                 inst.Lights.Add(l);
                 continue;
             }
@@ -142,7 +149,7 @@ public static class Decay
             }
         }
         // No window to leave lit (a mine mouth, a hatch): a work lamp still burns over the way in.
-        if (!inst.Lights.Any(l => l.Cell.Y >= 0))
+        if (!inst.Lights.Any(l => l.Cell.Y >= 0) && !Fences.Only(inst.Blocks)) // (a fence run has no way in to light)
         {
             Int3 out1 = layout.EntranceFacing.Vec();
             Int3 door = layout.EntranceCell - out1 * 2;
@@ -171,8 +178,7 @@ public static class Decay
         }
         inst.Markers.AddRange(x.Markers);
 
-        // Damp and disorder deep down whatever the state; the Bloom creeps in (thickest deepest) only where it has taken the place.
-        var nav = inst.Nav();
+        // The Bloom creeps in (thickest deepest) only where it has taken the place.
         foreach (var m in layout.Modules)
         {
             var lvl = LevelAt(layout, m.Min.Y);
@@ -186,12 +192,6 @@ public static class Decay
             {
                 StateTransforms.GrowAt(inst, r, rng.Between(4, 6 + (int)(w * 10)), rng);
                 if (rng.Chance(0.5f)) inst.Lights.Add(new LightSpot { Cell = r + Int3.Up, Color = BloomGlow, Mode = LightMode.Bloom, Energy = 0.9f + w, Range = 6f, Module = m.Index, Storey = m.Storey });
-            }
-            // Puddles and drips, things knocked over.
-            foreach (Int3 c in StateTransforms.FloorCells(inst, m, nav))
-            {
-                if (inst.Protected[c] && !rng.Chance(0.5f)) continue;
-                if (rng.Chance(0.05f * w)) inst.Blocks.Set(c, new Block(BlockType.Puddle, Material.Water, new Rgb(0x20, 0x26, 0x28), Role.Debris));
             }
         }
         // What you hear.
@@ -207,6 +207,7 @@ public static class Decay
             if (powered) inst.Sounds.Add(new SoundHook("hum", at(floor[0]), 0.5f, lvl.Storey));
         }
         inst.Sounds.AddRange(x.Sounds);
+        PoiLights.ApplyKitMood(inst);
     }
 
     static bool Touches(BlockGrid g, Int3 c)

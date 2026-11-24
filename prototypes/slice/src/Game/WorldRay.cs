@@ -10,7 +10,7 @@ using Slice.Vessels;
 namespace Slice.Game;
 
 /// <summary>What a look ray hit, in the zone's world (frame coordinates).</summary>
-public readonly record struct LookHit(Vector3 Point, Vector3 Normal, float Distance, Vessel Vessel, Int3 Cell, GodotObject Collider)
+public readonly record struct LookHit(Vector3 Point, Vector3 Normal, float Distance, Vessel Vessel, Int3 Cell, GodotObject Collider, int Shape = -1)
 {
     /// <summary>A structure's block (its cell is <see cref="Cell"/>).</summary>
     public bool OnBlock => Vessel != null;
@@ -31,7 +31,8 @@ public static class WorldRay
     public static bool Cast(SurfaceZone zone, Survivor survivor, float reach, uint mask, out LookHit hit) =>
         Cast(zone, survivor.Aboard, survivor.WorldEye(), survivor.WorldLook(), reach, mask, out hit);
 
-    public static bool Cast(SurfaceZone zone, Vessel aboard, Vector3 eye, Vector3 dir, float reach, uint mask, out LookHit hit)
+    /// <param name="skip">A collider passed by (the camera's own craft).</param>
+    public static bool Cast(SurfaceZone zone, Vessel aboard, Vector3 eye, Vector3 dir, float reach, uint mask, out LookHit hit, CollisionObject3D skip = null)
     {
         hit = default;
         float best = reach;
@@ -63,6 +64,7 @@ public static class WorldRay
         var zq = PhysicsRayQueryParameters3D.Create(eye, eye + dir * best, mask);
         var exclude = new Godot.Collections.Array<Rid>(Ignored);
         if (aboard?.Binding?.Collider is CollisionObject3D own) exclude.Add(own.GetRid());
+        if (skip != null) exclude.Add(skip.GetRid());
         zq.Exclude = exclude;
         Godot.Collections.Dictionary z = zone.GetWorld3D().DirectSpaceState.IntersectRay(zq);
         if (z.Count > 0)
@@ -74,9 +76,15 @@ public static class WorldRay
                 var collider = (GodotObject)z["collider"];
                 Vessel v = zone.VesselOf(zone.Host.BodyOf(collider));
                 Int3 cell = v == null ? default : CellOf(v, v.Body.ToLocal(point.ToNumerics()).ToGodot(), MathX.Unrotate(v.Body.Rotation, normal.ToNumerics()).ToGodot());
-                hit = new LookHit(point, normal, d, v, cell, collider);
+                hit = new LookHit(point, normal, d, v, cell, collider, (int)z["shape"]);
                 found = true;
             }
+        }
+        // Field emitters have no collider: met by their parts.
+        if ((mask & Layers.Hull) != 0 && ForceFields.EmitterAlong(zone, eye, dir, found ? hit.Distance : reach, out Vessel ev, out Int3 ec, out float ed, out Vector3 en))
+        {
+            hit = new LookHit(eye + dir * ed, en, ed, ev, ec, null);
+            found = true;
         }
         return found;
     }

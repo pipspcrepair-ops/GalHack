@@ -21,7 +21,7 @@ public partial class GenTest : Node
     public override void _Ready()
     {
         var total = Stopwatch.StartNew();
-        // -- --only=Relief,Distinctness runs just the named checks (handy while tuning).
+        // -- --only=Relief,TypesByForm runs just the named checks (handy while tuning).
         var only = new HashSet<string>();
         foreach (string arg in OS.GetCmdlineUserArgs())
             if (arg.StartsWith("--only=")) only.UnionWith(arg["--only=".Length..].Split(','));
@@ -32,6 +32,7 @@ public partial class GenTest : Node
             if (arg.StartsWith("--world=")) DebugWorld(arg["--world=".Length..]);
             else if (arg.StartsWith("--list=")) ListWorlds(arg["--list=".Length..]);
         Run("Determinism", Determinism);
+        Run("NaturalCraters", NaturalCraters);
         Run("SeamlessWrap", SeamlessWrap);
         Run("Poles", Poles);
         Run("LandFraction", LandFraction);
@@ -40,7 +41,7 @@ public partial class GenTest : Node
         Run("StarterMaterials", StarterMaterials);
         Run("Relief", ReliefCheck);
         Run("Performance", Performance);
-        Run("Distinctness", Distinctness);
+        Run("TypesByForm", TypesByForm);
         Run("LandformDeterminism", LandformDeterminism);
         Run("LandformSeams", LandformSeams);
         Run("LandformVariety", LandformVariety);
@@ -49,9 +50,11 @@ public partial class GenTest : Node
         Run("FlatLand", FlatLand);
         Run("Globe", GlobeChecks);
         Run("EveryOreOnEveryPlanet", EveryOreOnEveryPlanet);
+        Run("IceRule", IceRule);
         Run("SizeClasses", SizeClasses);
         Run("SizedWorlds", SizedWorlds);
         Run("TerrainCeiling", TerrainCeiling);
+        Run("BarrenWorlds", BarrenWorlds);
         GD.Print($"total test time {total.Elapsed.TotalSeconds:F1} s");
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);
@@ -84,6 +87,35 @@ public partial class GenTest : Node
             same &= sampler.HeightAt(x, y, 1) == again.HeightAt(x, y, 1);
         }
         Check(same, "determinism: fine terrain identical at 500 points");
+    }
+
+    /// <summary>
+    /// Natural impact craters only on the bodies that keep them (barren, airless rock: cratered arid, ice
+    /// and lava worlds): a living world's rolls never carry them, nor its terrain when asked for them.
+    /// Fresh seeds every run.
+    /// </summary>
+    void NaturalCraters()
+    {
+        var rng = new Random();
+        int rolled = 0, wrong = 0, kept = 0, airless = 0;
+        foreach (var (a, v) in Variants())
+            for (int i = 0; i < 300; i++)
+            {
+                var spec = PlanetSpec.Roll((ulong)rng.NextInt64(1, long.MaxValue), a, v, 8);
+                bool craters = Archetypes.For(spec).CraterSpacing > 0f;
+                if (!spec.Has(Modifier.Cratered)) { if (craters) wrong++; continue; }
+                rolled++;
+                if (!PlanetSpec.Craters(a) || !craters || !spec.Airless) wrong++;
+                else { kept++; airless++; }
+            }
+        Check(wrong == 0 && kept > 0, $"natural craters: {rolled} cratered rolls, all on barren airless rock ({airless} airless); {wrong} wrong");
+        int forced = 0;
+        foreach (var (a, v) in Variants().Where(t => !PlanetSpec.Craters(t.a)))
+        {
+            var spec = new PlanetSpec((ulong)rng.NextInt64(1, long.MaxValue), a, v, Modifier.Cratered, 8);
+            if (Archetypes.For(spec).CraterSpacing == 0f && !spec.Airless) forced++;
+        }
+        Check(forced == Variants().Count(t => !PlanetSpec.Craters(t.a)), $"natural craters: a living world told it's cratered grows none and keeps its air ({forced} types)");
     }
 
     /// <summary>
@@ -309,7 +341,9 @@ public partial class GenTest : Node
             int outside = 0;
             for (int s = 0; s < 20; s++)
             {
-                var map = PlanetGenerator.Generate(PlanetSpec.Roll((ulong)(1000 + s * 7919), a, v, 8));
+                PlanetSpec spec = PlanetSpec.Roll((ulong)(1000 + s * 7919), a, v, 8);
+                if (spec.Airless) continue; // no air, no sea: an airless world is all land (PlanetGenerator.BareFloor)
+                var map = PlanetGenerator.Generate(spec);
                 min = Math.Min(min, map.LandFraction);
                 max = Math.Max(max, map.LandFraction);
                 if (map.LandFraction < def.LandMin - 0.01f || map.LandFraction > def.LandMax + 0.01f) outside++;
@@ -353,10 +387,11 @@ public partial class GenTest : Node
     /// </summary>
     void StarterMaterials()
     {
-        const double Reach = 300;
+        const double Reach = 500; // a common ore's cell (three 200 m cells of ground) across its diagonal
         foreach (var (a, v) in Variants())
         {
-            double worst = 0, worstLanding = 0;
+            double worst = 0, worstLanding = 0, worstStart = 0, marks = 0;
+            int spots = 0;
             int deposits = 0, dry = 0, tooDeep = 0, unusable = 0;
             for (int s = 0; s < 4; s++)
             {
@@ -376,8 +411,14 @@ public partial class GenTest : Node
                 {
                     LandingSite site = Landing.Find(map, map.WidthMeters * l / 4, map.HeightMeters / 2);
                     for (int kind = 0; kind < DepositField.CommonKinds; kind++)
-                        worstLanding = Math.Max(worstLanding, field.Nearest((DepositKind)kind, site.X, site.Y));
+                        if ((DepositKind)kind != DepositKind.Water) // ice has its own rule: ice caps and ice worlds
+                            worstLanding = Math.Max(worstLanding, field.Nearest((DepositKind)kind, site.X, site.Y));
                 }
+
+                // The start's landing: the first ores within their promise.
+                LandingSite start = Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
+                foreach (DepositKind first in new[] { DepositKind.Iron, DepositKind.Copper, DepositKind.Silicon, DepositKind.Carbon })
+                    worstStart = Math.Max(worstStart, field.Nearest(first, start.X, start.Y));
 
                 // And anywhere else a player could stand.
                 var rng = new Rng((ulong)(s + 1) * 977);
@@ -387,14 +428,51 @@ public partial class GenTest : Node
                     if (!DepositField.Usable(map, map.CellAt(x, y))) continue;
                     p++;
                     for (int kind = 0; kind < DepositField.CommonKinds; kind++)
-                        worst = Math.Max(worst, field.Nearest((DepositKind)kind, x, y));
+                        if ((DepositKind)kind != DepositKind.Water)
+                            worst = Math.Max(worst, field.Nearest((DepositKind)kind, x, y));
+                    // The scanner's marks here: the kinds with a deposit within its 600 m.
+                    spots++;
+                    foreach (DepositKind kind in DepositField.EveryPlanet())
+                        if (field.Nearest(kind, x, y, 700) <= 600) marks++;
                 }
             }
             float dryShare = dry / (float)Math.Max(deposits, 1);
-            Check(worst <= Reach && worstLanding <= Reach && tooDeep == 0 && unusable == 0 && dryShare > 0.97f,
-                $"starter materials {a}/{v}: iron, copper, silicon, carbon, water and burnstone all within {worst:F0} m of any walkable spot " +
-                $"({worstLanding:F0} m from landing sites); {deposits / 4} deposits per planet, {dryShare:P1} on dry ground, none deeper than 3 m");
+            Check(worst <= Reach && worstLanding <= Reach && worstStart <= DepositField.StartReach + 1 && tooDeep == 0 && unusable == 0 && dryShare > 0.97f,
+                $"starter materials {a}/{v}: iron, copper, silicon, carbon and burnstone all within {worst:F0} m of any walkable spot " +
+                $"({worstLanding:F0} m from landing sites; iron, copper, silicon and carbon within {worstStart:F0} m of the start's); {deposits / 4} deposits per planet, {dryShare:P1} on dry ground, none deeper than 3 m; the scanner shows {marks / Math.Max(1, spots):F1} kinds on average");
         }
+    }
+
+    /// <summary>
+    /// The ice rule (owner's decision): ice ore on any ice world, in the ice caps (snow, glacier, snowfield, blue ice,
+    /// ice tundra and tundra) on any other living world, and never on an arid or lava world. Fresh worlds of every
+    /// type; the counts by archetype are printed.
+    /// </summary>
+    void IceRule()
+    {
+        var byArchetype = new Dictionary<Archetype, (int worlds, int withIce, int ice, int misplaced, int capCells)>();
+        foreach (var (a, v) in Variants())
+            for (int i = 0; i < 3; i++)
+            {
+                ulong seed = (ulong)Random.Shared.NextInt64(1, long.MaxValue);
+                var map = PlanetGenerator.Generate(PlanetSpec.Roll(seed, a, v, 16));
+                var ice = map.Deposits.All().Where(d => d.Kind == DepositKind.Water).ToList();
+                int misplaced = ice.Count(d =>
+                {
+                    int cell = map.CellAt(d.X, d.Y);
+                    return a == Archetype.Ice ? false : a is Archetype.Arid or Archetype.Lava || !DepositField.IceCap((Biome)map.Biome[cell]);
+                });
+                int caps = 0;
+                for (int c = 0; c < map.Count; c++) if (DepositField.IceCap((Biome)map.Biome[c])) caps++;
+                var t = byArchetype.GetValueOrDefault(a);
+                byArchetype[a] = (t.worlds + 1, t.withIce + (ice.Count > 0 ? 1 : 0), t.ice + ice.Count, t.misplaced + misplaced, t.capCells + caps);
+            }
+        foreach (var (a, t) in byArchetype.OrderBy(k => k.Key))
+            GD.Print($"  ice {a}: {t.worlds} worlds, {t.ice} ice deposits ({t.ice / (float)t.worlds:F0} a world), {t.withIce} worlds with any, {t.misplaced} misplaced, {t.capCells / t.worlds} cap cells a world");
+        Check(byArchetype.All(k => k.Value.misplaced == 0), "ice deposits lie only where the rule allows: any ice world, ice caps elsewhere");
+        Check(byArchetype[Archetype.Arid].ice == 0 && byArchetype[Archetype.Lava].ice == 0, $"no ice on arid or lava worlds ({byArchetype[Archetype.Arid].worlds} arid, {byArchetype[Archetype.Lava].worlds} lava)");
+        Check(byArchetype[Archetype.Ice].withIce == byArchetype[Archetype.Ice].worlds && byArchetype[Archetype.Ice].ice / (float)byArchetype[Archetype.Ice].worlds >= 100,
+            $"ice worlds keep plenty: {byArchetype[Archetype.Ice].ice / (float)byArchetype[Archetype.Ice].worlds:F0} deposits a world");
     }
 
     /// <summary>
@@ -410,12 +488,14 @@ public partial class GenTest : Node
             DepositField field = map.Deposits;
             var deposits = field.All().ToList();
             var counts = deposits.GroupBy(d => d.Kind).ToDictionary(g => g.Key, g => g.Count());
-            var missing = DepositField.EveryPlanet().Where(k => !counts.ContainsKey(k)).ToList();
+            // Ice goes only where it belongs (the ice rule below): a world without ice caps has none, an arid or lava world never.
+            var ores = DepositField.EveryPlanet().Where(k => k != DepositKind.Water || a == Archetype.Ice).ToList();
+            var missing = ores.Where(k => !counts.ContainsKey(k)).ToList();
             float Size(DepositKind k) => deposits.Where(d => d.Kind == k).Average(d => d.Amount);
             double far = 0;
             var site = Landing.Find(map, map.WidthMeters / 2, map.HeightMeters / 2);
-            foreach (DepositKind k in DepositField.EveryPlanet()) far = Math.Max(far, field.Nearest(k, site.X, site.Y));
-            bool fewer = missing.Count == 0 && DepositField.EveryPlanet().Where(k => DepositField.IsScarce(k) && k != map.Def.Signature)
+            foreach (DepositKind k in ores) far = Math.Max(far, field.Nearest(k, site.X, site.Y));
+            bool fewer = missing.Count == 0 && ores.Where(k => DepositField.IsScarce(k) && k != map.Def.Signature)
                 .All(k => counts[k] < counts[DepositKind.Iron] / 4 && Size(k) < Size(DepositKind.Iron));
             bool dry = deposits.All(d => DepositField.Usable(map, map.CellAt(d.X, d.Y)) && d.Depth <= DepositField.MaxShallowDepth);
             Check(missing.Count == 0 && fewer && dry && far < 3000,
@@ -490,34 +570,69 @@ public partial class GenTest : Node
     }
 
     /// <summary>
-    /// The blind test, automated: simple feature vectors from what a player sees (colour map) and
-    /// the terrain, then a nearest-centroid classifier trained on some seeds and scored on others.
+    /// Each type reads by its form and features, never by its colours (owner, 23 Nov: every element in a myriad of colours, so a
+    /// type has no colours of its own). Fresh worlds of every type with air, measured on the map and the globe's colour map:
+    /// lava glows (its self-lit share), ice is ice (white snow and ice cover), an arid world is thinly grown (scrub and oases)
+    /// where a temperate one is grown over, an alien one stands in crystal and fungus.
+    /// Then the blind test on those features and the terrain's: a nearest-centroid classifier trained on some worlds and scored
+    /// on others names the type. Colour's check is variety: worlds of one type differ in their land's colour.
     /// </summary>
-    void Distinctness()
+    void TypesByForm()
     {
-        const int train = 12, test = 10;
+        const int train = 8, test = 6;
+        var rng = new Random();
         var trainSet = new List<(float[] f, int label, int variant)>();
         var testSet = new List<(float[] f, int label)>();
+        var landColours = new Dictionary<Archetype, List<Oklab>>();
+        var byType = new Dictionary<Archetype, List<float[]>>();
         foreach (var (a, v) in Variants())
-        {
             for (int s = 0; s < train + test; s++)
             {
-                ulong seed = (ulong)(s < train ? 20000 + s * 31 : 90000 + s * 17);
-                float[] f = Features(PlanetGenerator.Generate(PlanetSpec.Roll(seed, a, v, 8)));
-                if (s < train) trainSet.Add((f, (int)a, v));
-                else testSet.Add((f, (int)a));
+                PlanetSpec spec;
+                do spec = PlanetSpec.Roll((ulong)rng.NextInt64(1, long.MaxValue), a, v, 8);
+                while (spec.Airless);
+                float[] f = Form(PlanetGenerator.Generate(spec), out Oklab? land);
+                // The classifier sees fire by its presence more than its amount (a lava world may hold little open lava): glow on a log scale.
+                float[] seen = f.Select((x, d) => d == 0 ? MathF.Log10(x + 1e-4f) : x).ToArray();
+                if (s < train) trainSet.Add((seen, (int)a, v));
+                else testSet.Add((seen, (int)a));
+                // (Today's look paints every world of a type alike, by design: its variety is the rest's.)
+                if (!WorldPalette.IsToday(spec) && land is Oklab l) (landColours.TryGetValue(a, out var colours) ? colours : landColours[a] = new List<Oklab>()).Add(l);
+                (byType.TryGetValue(a, out var forms) ? forms : byType[a] = new List<float[]>()).Add(f);
             }
+        // Each feature's least on the worlds that should show it, and its most on those that shouldn't.
+        float Least(Archetype a, int d) => byType[a].Min(f => f[d]);
+        float Most(Func<Archetype, bool> which, int d) => byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Max(f => f[d]);
+        foreach (var (a, forms) in byType.OrderBy(k => k.Key))
+            GD.Print($"      {Archetypes.Names[(int)a],-10} self-lit {forms.Min(f => f[0]):P1}..{forms.Max(f => f[0]):P1}, white {forms.Min(f => f[1]):P0}..{forms.Max(f => f[1]):P0}, cover {forms.Min(f => f[2]):F2}..{forms.Max(f => f[2]):F2}, crystal and fungus {forms.Min(f => f[6]):P0}..{forms.Max(f => f[6]):P0}");
+        // Lava burns: every lava world shows fire, and lava worlds burn many times more than temperate, arid and ice worlds do on
+        // average (an ice world's hot springs may glow a little; some lava worlds hold little open lava).
+        float Mean(Func<Archetype, bool> which, int d) => byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Average(f => f[d]);
+        float lavaGlow = Mean(a => a == Archetype.Lava, 0), otherGlow = Mean(a => a is not (Archetype.Lava or Archetype.Alien), 0);
+        Check(Least(Archetype.Lava, 0) > 0f && lavaGlow >= 0.05f && lavaGlow >= 10f * otherGlow, $"lava glows: every lava world shows fire (least {Least(Archetype.Lava, 0):P1}), {lavaGlow:P1} of a lava world self-lit on average against {otherGlow:P2} of a temperate, arid or ice one");
+        // Types told apart by the bulk of their worlds, each far tail judged against the other's middle: an arid world may have
+        // snow at its poles, scrub where its air is humid and oases in wetlands, and a temperate world a desert or badlands.
+        float At(Func<Archetype, bool> which, int d, float q) { var v = byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Select(f => f[d]).OrderBy(x => x).ToList(); return v[(int)(q * (v.Count - 1))]; }
+        (bool ok, string low, string high) Apart(Func<Archetype, bool> low, Archetype high, int d, string n)
+        {
+            var (lMid, lHigh, lMost) = (At(low, d, 0.5f), At(low, d, 0.9f), At(low, d, 1f));
+            var (hMid, hLow, hLeast) = (At(a => a == high, d, 0.5f), At(a => a == high, d, 0.1f), At(a => a == high, d, 0f));
+            return (lHigh < hLow && lMost < hMid && hLeast > lMid, $"median {lMid.ToString(n)}, 90th pct {lHigh.ToString(n)}, most {lMost.ToString(n)}", $"median {hMid.ToString(n)}, 10th pct {hLow.ToString(n)}, least {hLeast.ToString(n)}");
         }
+        var white = Apart(a => a is not (Archetype.Ice or Archetype.Temperate), Archetype.Ice, 1, "P0");
+        Check(white.ok, $"ice is ice: white with snow and ice, an arid, lava or alien world {white.low}; an ice world {white.high}");
+        var grown = Apart(a => a == Archetype.Arid, Archetype.Temperate, 2, "F2");
+        Check(grown.ok, $"an arid world is thinly grown, a temperate one grown over: land covered by what grows, arid {grown.low}; temperate {grown.high}");
+        float otherStrange = Most(a => a != Archetype.Alien, 6);
+        Check(Least(Archetype.Alien, 6) >= 0.3f && otherStrange == 0f, $"an alien world stands in crystal and fungus: at least {Least(Archetype.Alien, 6):P0} of every alien world's land, none of any other");
 
-        // Standardise every feature so none dominates by its units.
+        // The blind test on form alone: every feature standardised so none dominates by its units, one centroid per variant.
         int dims = trainSet[0].f.Length;
         var mean = new float[dims];
         var std = new float[dims];
         foreach (var t in trainSet) for (int d = 0; d < dims; d++) mean[d] += t.f[d] / trainSet.Count;
         foreach (var t in trainSet) for (int d = 0; d < dims; d++) std[d] += (t.f[d] - mean[d]) * (t.f[d] - mean[d]) / trainSet.Count;
         for (int d = 0; d < dims; d++) std[d] = MathF.Sqrt(std[d]) + 1e-6f;
-
-        // One centroid per archetype variant; a match on either variant names the archetype.
         var centroids = new float[10][];
         var labels = new int[10];
         for (int c = 0; c < 10; c++) centroids[c] = new float[dims];
@@ -527,31 +642,14 @@ public partial class GenTest : Node
             labels[c] = t.label;
             for (int d = 0; d < dims; d++) centroids[c][d] += (t.f[d] - mean[d]) / std[d] / train;
         }
-
         int correct = 0;
         var confusion = new int[5, 5];
         foreach (var t in testSet)
         {
-            int best = 0;
-            float bestDist = float.MaxValue;
-            for (int c = 0; c < 10; c++)
-            {
-                float dist = 0;
-                for (int d = 0; d < dims; d++)
-                {
-                    float z = (t.f[d] - mean[d]) / std[d] - centroids[c][d];
-                    dist += z * z;
-                }
-                if (dist < bestDist)
-                {
-                    bestDist = dist;
-                    best = c;
-                }
-            }
+            int best = Enumerable.Range(0, 10).MinBy(c => Enumerable.Range(0, dims).Sum(d => MathF.Pow((t.f[d] - mean[d]) / std[d] - centroids[c][d], 2f)));
             confusion[t.label, labels[best]]++;
             if (labels[best] == t.label) correct++;
         }
-        float accuracy = correct / (float)testSet.Count;
         var rows = new System.Text.StringBuilder("      confusion (rows = truth): T  A  I  L  X\n");
         for (int r = 0; r < 5; r++)
         {
@@ -560,51 +658,72 @@ public partial class GenTest : Node
             rows.Append('\n');
         }
         GD.Print(rows.ToString().TrimEnd());
-        Check(accuracy >= 0.95f, $"distinctness: nearest-centroid classifier names the archetype of {accuracy:P0} of {testSet.Count} unseen planets");
+        float accuracy = correct / (float)testSet.Count;
+        Check(accuracy >= 0.95f, $"each type reads by its form: a nearest-centroid classifier on form alone names the type of {accuracy:P0} of {testSet.Count} unseen worlds");
+
+        // Colour's check is variety: the land's colour differs between worlds of one type.
+        foreach (var (a, colours) in landColours.OrderBy(k => k.Key))
+        {
+            var gaps = new List<float>();
+            for (int i = 0; i < colours.Count; i++)
+                for (int j = i + 1; j < colours.Count; j++)
+                    gaps.Add(MathF.Sqrt(MathF.Pow(colours[i].L - colours[j].L, 2f) + MathF.Pow(colours[i].A - colours[j].A, 2f) + MathF.Pow(colours[i].B - colours[j].B, 2f)));
+            gaps.Sort();
+            Check(gaps[gaps.Count / 2] >= 0.05f, $"{Archetypes.Names[(int)a]} worlds' land colours vary: median Oklab gap between two of them {gaps[gaps.Count / 2]:F3} (at least 0.05)");
+        }
     }
 
-    static float[] Features(WorldMap map)
+    /// <summary>
+    /// What a world's form shows, measured: the share of its globe burning bright (lava), the share white with snow and ice,
+    /// how covered its land is by what grows (<see cref="WorldPalette.Cover"/>), its land fraction, mean slope, relief, and the
+    /// share of its land in crystal and fungus. <paramref name="land"/> is its land's own mean colour for variety, unshaded and
+    /// without its snow (white on any world, and grey where the relief shades it); none where all its land is snow.
+    /// </summary>
+    static float[] Form(WorldMap map, out Oklab? land)
     {
         var look = ArchetypeLook.For(map.Spec);
         var colors = ColorMap.Build(map, look, 192);
-        double lr = 0, lg = 0, lb = 0, wr = 0, wg = 0, wb = 0, luma2 = 0, luma = 0;
-        int land = 0, liquid = 0;
-        for (int p = 0; p < colors.Width * colors.Height; p++)
+        Rgb[] own = ColorMap.CellColors(map, look, out _);
+        int pixels = colors.Width * colors.Height, glowing = 0, white = 0, landCells = 0;
+        float lr = 0f, lg = 0f, lb = 0f;
+        for (int p = 0; p < pixels; p++)
         {
             float r = colors.Albedo[p * 4] / 255f, g = colors.Albedo[p * 4 + 1] / 255f, b = colors.Albedo[p * 4 + 2] / 255f;
-            if (colors.Albedo[p * 4 + 3] > 0) { wr += r; wg += g; wb += b; liquid++; }
-            else
-            {
-                lr += r; lg += g; lb += b; land++;
-                float l = 0.3f * r + 0.59f * g + 0.11f * b;
-                luma += l;
-                luma2 += l * l;
-            }
+            // Fire, not a luminous night's faint glow over everything (GlowingNights) or alien seas' shimmer.
+            if (0.3f * colors.Glow[p * 3] + 0.59f * colors.Glow[p * 3 + 1] + 0.11f * colors.Glow[p * 3 + 2] > 0.2f * 255f) glowing++;
+            Oklab o = Oklab.Of(new Rgb(r, g, b));
+            // Snow, or ice pale and blue (today's look paints sea ice so).
+            float hue = (o.Hue * 180f / MathF.PI + 360f) % 360f;
+            bool snow = o.L > 0.85f && o.Chroma < 0.06f || o.L > 0.8f && o.Chroma < 0.06f && hue is > 220f and < 260f;
+            if (snow) white++;
         }
-        land = Math.Max(land, 1);
-        liquid = Math.Max(liquid, 1);
-        double lumaMean = luma / land;
 
-        double slope = 0, elev = 0, elev2 = 0;
-        int cells = 0;
+        double slope = 0, elev = 0, elev2 = 0, cover = 0;
+        int cells = 0, dry = 0, strange = 0;
         for (int k = 0; k < map.Count; k++)
         {
+            var biome = (Biome)map.Biome[k];
+            if (biome is not (Biome.DeepSea or Biome.ShallowSea or Biome.FrozenSea))
+            {
+                dry++;
+                cover += WorldPalette.Cover(biome);
+                if (biome is Biome.CrystalPlain or Biome.CrystalSpires or Biome.FungalForest or Biome.SporeMarsh or Biome.Mycelium or Biome.GlowMoss) strange++;
+                if (biome is not (Biome.Snow or Biome.Snowfield or Biome.Glacier)) (lr, lg, lb, landCells) = (lr + own[k].R, lg + own[k].G, lb + own[k].B, landCells + 1);
+            }
             if (map.Flags[k] != 0 && !map.Has(k, CellFlags.Riparian) && !map.Has(k, CellFlags.Coast)) continue;
             slope += map.Slope[k];
             elev += map.Elevation[k];
             elev2 += map.Elevation[k] * map.Elevation[k];
             cells++;
         }
+        land = landCells > 0 ? Oklab.Of(new Rgb(lr / landCells, lg / landCells, lb / landCells)) : null;
         cells = Math.Max(cells, 1);
+        dry = Math.Max(dry, 1);
         double elevMean = elev / cells;
         return new[]
         {
-            (float)(lr / land), (float)(lg / land), (float)(lb / land),
-            (float)(wr / liquid), (float)(wg / liquid), (float)(wb / liquid),
-            map.LandFraction,
-            (float)(slope / cells),
-            (float)Math.Sqrt(Math.Max(0, elev2 / cells - elevMean * elevMean)) / 100f,
-            (float)Math.Sqrt(Math.Max(0, luma2 / land - lumaMean * lumaMean)),
+            glowing / (float)pixels, white / (float)pixels, (float)(cover / dry), map.LandFraction, (float)(slope / cells),
+            (float)Math.Sqrt(Math.Max(0, elev2 / cells - elevMean * elevMean)) / 100f, strange / (float)dry,
         };
     }
 

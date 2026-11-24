@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,17 +21,22 @@ public static class Sites
         public Rarity Rarity;
         public Rng Rng = null!;
         public SiteDef Site = null!;
+        /// <summary>The age its world built it in (null off a world): what stands abandoned in its yards.</summary>
+        public TechLevel? Tech;
         public int Yard = -1;
         public int VaultModule = -1, DeepestModule = -1;
         public List<int> Landmarks = new();
-        /// <summary>Painted road cells and the plain surface under each: paint stops short of anything standing on the road.</summary>
-        public List<(Int3 Cell, Rgb Plain, bool AlongX)> Paint = new();
+        /// <summary>For the roads, planned once everything stands (<see cref="SiteRoads"/>): what vehicles use, the runways, the doors onto the yard.</summary>
+        public readonly List<SiteRoads.Want> Wants = new();
+        public readonly List<SiteRoads.Runway> Runways = new();
+        public readonly List<RoadDoor> Doors = new();
     }
 
     public static void Compose(PoiLibrary lib, Canvas c, SiteDef site, FamilyDef fam, Rarity rarity, Rng rng, LayoutHints? hints = null)
     {
         if (site.Parts.Count > 0 && site.Parts[0].Kind == "plain") { Homes.Compose(c, site, fam, rng, hints); return; }
-        var x = new Ctx { C = c, Lib = lib, Fam = fam, Rarity = rarity, Rng = rng, Site = site };
+        if (site.Parts.Count > 0 && site.Parts[0].Kind == "grand") { Grand.Compose(c, lib, site, rng, hints, fam, rarity); return; }
+        var x = new Ctx { C = c, Lib = lib, Fam = fam, Rarity = rarity, Rng = rng, Site = site, Tech = hints?.Tech };
         c.X.InSpace = site.Space;
         // The approach: a patch of open ground at the site's way in.
         var approach = new List<Int3>();
@@ -44,14 +49,17 @@ public static class Sites
         c.EntranceFacing = site.EntranceFacing;
         c.ExitCells = new List<Int3>();
 
-        int vaultCandidates = site.Parts.Count(p => p.Kind == "building" && p.Arg("vault") == "yes");
-        foreach (var part in site.Parts)
+        int vaultCandidates = site.Parts.Count(p => p.Kind is "building" or "below" && p.Arg("vault") == "yes");
+        for (int pi = 0; pi < site.Parts.Count; pi++)
         {
+            // Ranges in the plan ("count 3..6") rolled by this spawn's seed.
+            var part = site.Parts[pi].Rolled(x.Rng.Fork("roll" + pi));
+            c.Begin(); // (each part its own object: a building with all its wings, a fence; yard items each their own below)
             switch (part.Kind)
             {
                 case "building": BuildingPart(x, part, vaultCandidates == 0); break;
-                case "runway": Strip(x, part, runway: true); break;
-                case "road": Strip(x, part, runway: false); break;
+                case "below": BelowPart(x, part, vaultCandidates == 0, hints); break;
+                case "runway": x.Runways.Add(new SiteRoads.Runway(part.X, part.Z, part.Int("len", 100), part.Int("width", 14), part.Arg("axis", "x") == "x", part.Arg("lights") != "no")); break;
                 case "pad": Pad(x, part); break;
                 case "tanks": Tanks(x, part); break;
                 case "aircraft": Aircraft(x, part); break;
@@ -59,6 +67,7 @@ public static class Sites
                 case "fence": Fence(x, part); break;
                 case "tower": LatticeTower(x, part); break;
                 case "crater": Crater(x, part); break;
+                case "warning": Warning(x, part); break;
                 case "rocket": Rocket(x, part); break;
                 case "poles": Poles(x, part); break;
                 case "trench": Trench(x, part); break;
@@ -86,7 +95,9 @@ public static class Sites
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
-        StopPaint(x);
+        c.Blocks.Object = 0; // (the roads are the place's own)
+        if (!site.Space && SiteRoads.Enabled)
+            using (Prof.Time("site roads")) SiteRoads.Plan(c, fam, x.Tech ?? (fam.Techs.Count > 0 ? WorldProfile.Parse(fam.Techs[0]) : TechLevel.Mid), e, site.EntranceFacing, x.Runways, x.Wants, x.Doors);
         c.VaultModule = x.VaultModule >= 0 ? x.VaultModule : x.DeepestModule >= 0 ? x.DeepestModule : x.Yard;
         // Levels for the whole site: the union of every building's storeys.
         c.X.Levels = c.X.Levels.GroupBy(l => l.Storey).Select(g => g.First()).OrderBy(l => l.Storey).ToList();
@@ -113,6 +124,7 @@ public static class Sites
         x.C.Link(x.Yard, b.EntranceModule);
         if (spec.HoldsVault && b.VaultModule >= 0 && x.VaultModule < 0) x.VaultModule = b.VaultModule;
         if (b.DeepestModule >= 0 && (x.DeepestModule < 0 || x.C.Modules[b.DeepestModule].Min.Y < x.C.Modules[x.DeepestModule].Min.Y)) x.DeepestModule = b.DeepestModule;
+        if (b.ExitCells.Any(c => c.Y == 0)) x.Doors.Add(new RoadDoor(b.ExitCells.Where(c => c.Y == 0).ToList(), b.EntranceFacing, Forecourt: true));
         // The front step: open ground in front of the door, carved if the yard is paved.
         foreach (Int3 cell in b.ExitCells.Where(c => c.Y == 0))
             for (int d = 1; d <= 3; d++)
@@ -124,64 +136,24 @@ public static class Sites
             }
     }
 
+    /// <summary>A place below ground (<see cref="Depths"/>): its head stands at the part's cell, its door on the yard.</summary>
+    static void BelowPart(Ctx x, SitePart part, bool anyMayHoldVault, LayoutHints? hints)
+    {
+        bool holds = part.Arg("vault") == "yes" || anyMayHoldVault && x.VaultModule < 0;
+        var (vault, deepest) = Depths.InSite(x.C, x.Lib, part, x.Fam, x.Rarity, x.Rng.Fork("below" + part.X + "," + part.Z), x.Yard, holds, hints);
+        if (holds && vault >= 0 && x.VaultModule < 0) x.VaultModule = vault;
+        if (deepest >= 0 && (x.DeepestModule < 0 || x.C.Modules[deepest].Min.Y < x.C.Modules[x.DeepestModule].Min.Y)) x.DeepestModule = deepest;
+    }
+
     // ---- ground works -------------------------------------------------------------------------
 
-    static readonly Rgb Concrete = new(0x8a, 0x88, 0x82), Paint = new(0xe8, 0xe4, 0xd8), Hazard = new(0xe0, 0xa8, 0x00), Tar = new(0x3a, 0x3a, 0x3c);
-
-    /// <summary>A strip of pavement in the ground: a cracked runway with markings, or a road.</summary>
-    static void Strip(Ctx x, SitePart p, bool runway)
-    {
-        int len = p.Int("len", 100), width = p.Int("width", runway ? 14 : 6);
-        bool alongX = p.Arg("axis", "x") == "x";
-        float cracks = p.Num("cracks", 0.12f);
-        for (int i = 0; i < len; i++)
-            for (int j = 0; j < width; j++)
-            {
-                Int3 c = alongX ? new Int3(p.X + i, -1, p.Z + j) : new Int3(p.X + j, -1, p.Z + i);
-                if (x.C.Blocks.ContainsKey(c)) continue;
-                uint h = Hash.Cell(c, 44);
-                bool crack = (h % 1000) / 1000f < cracks;
-                if (crack)
-                {
-                    // Broken up: weeds growing through on bare ground.
-                    if (h % 3 == 0) x.C.Blocks[c + Int3.Up] = new Block(BlockType.Plant, Material.Plant, new Rgb(0x5a, 0x6a, 0x30), Role.Debris);
-                    continue;
-                }
-                Rgb col = (runway ? Concrete : Tar).Scale(0.9f + (h % 100) / 1000f);
-                bool centre = j == width / 2 && i % 8 < 4;
-                bool threshold = runway && (i < 4 || i >= len - 4) && j % 3 == 1;
-                bool edge = runway && (j == 0 || j == width - 1);
-                Rgb plain = col;
-                if (centre || threshold || edge) col = (centre || edge) && !runway ? Hazard : Paint;
-                if (col != plain) x.Paint.Add((c, plain, alongX));
-                x.C.Set(c, new Block(BlockType.Cube, Material.Concrete, col, Role.Floor));
-            }
-        if (runway && p.Arg("lights") != "no")
-            for (int i = 2; i < len; i += 10)
-            {
-                Int3 l = alongX ? new Int3(p.X + i, 0, p.Z - 1) : new Int3(p.X - 1, 0, p.Z + i);
-                x.C.Blocks[l] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x50, 0x50), Role.Decor);
-            }
-    }
-
-    /// <summary>A road's or a runway's painted line ends clear of whatever stands on it: no marking runs on to a wall.</summary>
-    static void StopPaint(Ctx x)
-    {
-        const int Clear = 4;
-        foreach (var (c, plain, alongX) in x.Paint)
-        {
-            Int3 run = alongX ? new Int3(1, 0, 0) : new Int3(0, 0, 1);
-            bool near = false;
-            for (int k = -Clear; k <= Clear && !near; k++)
-                near = x.C.Get(c + Int3.Up + run * k) is { IsAir: false } b && BlockInfo.Collides(b.Type);
-            if (near) { var b = x.C.Get(c); b.Color = plain; x.C.Blocks[c] = b; }
-        }
-    }
+    static readonly Rgb Concrete = new(0x8a, 0x88, 0x82), Hazard = new(0xe0, 0xa8, 0x00), Tar = new(0x3a, 0x3a, 0x3c);
 
     /// <summary>A concrete pad in the ground with a painted ring: landing and launch pads.</summary>
     static void Pad(Ctx x, SitePart p)
     {
         int r = p.Int("r", 10);
+        var pad = new List<Int3>();
         for (int dz = -r; dz <= r; dz++)
             for (int dx = -r; dx <= r; dx++)
             {
@@ -190,28 +162,33 @@ public static class Sites
                 Int3 c = new(p.X + dx, -1, p.Z + dz);
                 Rgb col = d > r - 1.2f || (d > r * 0.5f - 0.6f && d < r * 0.5f + 0.6f) ? Hazard : Concrete.Scale(0.85f + (Hash.Cell(c, 3) % 100) / 700f);
                 x.C.Set(c, new Block(BlockType.Cube, Material.Concrete, col, Role.Floor));
+                pad.Add(c);
             }
         x.C.X.Markers.Add(new Marker("landing-pad", new Int3(p.X, 0, p.Z)));
+        x.Wants.Add(new SiteRoads.Want("pad", pad, new()));
+    }
+
+    /// <summary>The ground cells (y -1) of a rectangle, corners inclusive.</summary>
+    static List<Int3> Area(int x0, int z0, int x1, int z1)
+    {
+        var cells = new List<Int3>();
+        for (int z = z0; z <= z1; z++)
+            for (int x = x0; x <= x1; x++) cells.Add(new Int3(x, -1, z));
+        return cells;
     }
 
     // ---- structures in the yard ---------------------------------------------------------------
 
-    /// <summary>A cylinder of blocks standing on the ground (tanks, stacks, silos).</summary>
-    static void Cylinder(Ctx x, int cx, int cz, float r, int y0, int h, Block b, bool hollow = false)
+    /// <summary>A round standing on the ground, its middle at a cell's middle, solid (tanks, stacks): courses shaded alternately every four metres.</summary>
+    static RoundBody Cylinder(Ctx x, int cx, int cz, int y0, int y1, Func<double, double> r, Block b) =>
+        Round.Lay(x.C, cx + 0.5, cz + 0.5, y0, y1, y => (r(y), 0), y => b with { Color = b.Color.Scale(0.94f + 0.1f * ((y >> 2) & 1)) });
+
+    /// <summary>A rail that follows a round's outline (<see cref="Shapes.RimRail"/>), over the cell its solid side is in.</summary>
+    static Block RimRail(Round.Run run, Rgb c)
     {
-        int ri = (int)MathF.Ceiling(r);
-        for (int y = y0; y < y0 + h; y++)
-            for (int dz = -ri; dz <= ri; dz++)
-                for (int dx = -ri; dx <= ri; dx++)
-                {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    if (d > r) continue;
-                    if (hollow && d < r - 1f && y > y0 && y < y0 + h - 1) continue;
-                    Int3 c = new(cx + dx, y, cz + dz);
-                    var bb = b;
-                    bb.Color = b.Color.Scale(0.94f + 0.1f * ((y >> 2) & 1)); // courses round the tank
-                    x.C.Set(c, bb);
-                }
+        Dir along = run.Z0 == run.Z1 && run.Z0 == run.CellZ ? Dir.North : run.Z0 == run.Z1 && run.Z0 == run.CellZ + 1 ? Dir.South
+            : run.X0 == run.X1 && run.X0 == run.CellX ? Dir.West : Dir.East;
+        return new Block(BlockType.Rail, Material.Steel, c, Role.Decor, along, Shapes.RimRailVariant);
     }
 
     /// <summary>Tank farm: round tanks with a ladder up each and rails round the top.</summary>
@@ -220,37 +197,41 @@ public static class Sites
         int n = p.Int("count", 3), r = p.Int("r", 4), h = p.Int("h", 8), gap = p.Int("gap", 4);
         bool alongX = p.Arg("axis", "x") == "x";
         var steel = new Rgb(0xa8, 0xaa, 0xa4);
+        var rails = new List<Int3>();
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
             var shell = new Block(BlockType.Cube, Material.Steel, i % 2 == 0 ? steel : steel.Lerp(new Rgb(0x8a, 0x5a, 0x3a), 0.4f), Role.Wall);
-            Cylinder(x, cx, cz, r + 0.4f, 0, h, shell);
-            // A hazard band.
-            for (int dz = -r - 1; dz <= r + 1; dz++)
-                for (int dx = -r - 1; dx <= r + 1; dx++)
-                {
-                    Int3 c = new(cx + dx, h / 2, cz + dz);
-                    if (x.C.Get(c).Material == Material.Steel && MathF.Sqrt(dx * dx + dz * dz) > r - 0.6f)
-                        x.C.Set(c, new Block(BlockType.Cube, Material.Steel, Hazard.Scale(0.85f), Role.Decor));
-                }
-            // Ladder up the south side, from the ground to the top.
-            int lz = cz + r + 1;
+            // (Its radius eased till the outline runs flat across the ladder's side.)
+            double flat = Round.Fit(cx + 0.5, cz + 0.5, r + 0.4, pts => Round.Flat(pts, cx, cz));
+            double R = Cylinder(x, cx, cz, 0, h - 1, _ => flat, shell).Outer[0];
+            var course = Round.Ring(cx + 0.5, cz + 0.5, R);
+            // A hazard band, round the outside course.
+            foreach (Round.Piece q in course.Solid)
+            {
+                Int3 c = new(q.X, h / 2, q.Z);
+                if (Math.Sqrt((q.X - cx) * (q.X - cx) + (q.Z - cz) * (q.Z - cz)) > R - 1.1)
+                    x.C.Set(c, x.C.Get(c) with { Color = Hazard.Scale(0.85f), Role = Role.Decor });
+            }
+            // Ladder up the south side, from the ground to the top, against the flat there.
+            int lz = Round.Past(cx, cz, R, Dir.South).Z;
             for (int y = 0; y < h; y++)
                 x.C.Blocks[new Int3(cx, y, lz)] = new Block(BlockType.Ladder, Material.Steel, new Rgb(0x70, 0x70, 0x70), Role.Traverse, Dir.South);
-            // Rails round the rim, open where the ladder arrives.
-            for (int dz = -r; dz <= r; dz++)
-                for (int dx = -r; dx <= r; dx++)
-                {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    if (d > r + 0.4f || d < r - 0.6f) continue;
-                    Int3 c = new(cx + dx, h, cz + dz);
-                    if (Math.Abs(dx) <= 1 && dz > 0) continue;
-                    x.C.Blocks[c] = new Block(BlockType.Rail, Material.Steel, new Rgb(0xd0, 0xa0, 0x20), Role.Decor);
-                }
+            // Rails round the rim, along its outline, open where the ladder arrives.
+            foreach (Round.Run run in course.Rim)
+            {
+                if (Math.Abs(run.CellX - cx) <= 1 && run.CellZ > cz) continue;
+                rails.Add(new Int3(run.CellX, h, run.CellZ));
+                x.C.Blocks[new Int3(run.CellX, h, run.CellZ)] = RimRail(run, new Rgb(0xd0, 0xa0, 0x20));
+            }
             var top = new List<Int3> { new(cx, h, cz), new(cx, h + 1, cz) };
             int m = x.C.AddModule(ModuleKind.Outdoor, "tank top", 0, top);
             x.C.Link(x.Yard, m);
         }
+        // (Where two tanks stand flank to flank, no rail along the face one shares with the other: it is no edge.)
+        foreach (Int3 c in rails)
+            if (x.C.Get(c) is { Type: BlockType.Rail } rail && BlockInfo.IsFullCube(x.C.Get(c + Int3.Down).Type) && x.C.Solid(c + Int3.Down + rail.Facing.Vec())) x.C.Remove(c);
         x.C.X.Hazards.Add(new Hazard { Kind = "drop", Center = new Int3(p.X, h, p.Z), Radius = r, Strength = h, Warning = "No rails on the ladder side: a long drop." });
     }
 
@@ -324,17 +305,19 @@ public static class Sites
                 int high = x.Rng.Chance(0.45f) ? 2 : 1;
                 for (int layer = 0; layer < high; layer++)
                 {
+                    x.C.Begin(); // (each one its own object: its shape is its own)
                     var col = colours[(int)(Hash.Cell(new Int3(ox, layer, oz), 5) % colours.Length)];
                     bool open = layer == 0 && x.Rng.Chance(0.3f);
                     var inside = new List<Int3>();
                     for (int i = 0; i < 7; i++)
                         for (int j = 0; j < 4; j++)
-                            for (int y = 0; y < 3; y++)
+                            for (int y = 0; y < 4; y++)
                             {
-                                Int3 cell = new(ox + i, layer * 3 + y, oz + j);
-                                bool shell = i == 0 || i == 6 || j == 0 || j == 3 || y == 2 || (y == 0 && layer > 0);
+                                // A box on the 1 m grid, 3 m clear inside like any room, with its end doors 2 by 2.
+                                Int3 cell = new(ox + i, layer * 4 + y, oz + j);
+                                bool shell = i == 0 || i == 6 || j == 0 || j == 3 || y == 3 || (y == 0 && layer > 0);
                                 if (open && i == 0 && j is 1 or 2 && y < 2) shell = false;
-                                if (!shell && layer == 0 && y < 2) { if (open) inside.Add(cell); else x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
+                                if (!shell && layer == 0 && y < 3) { if (open) inside.Add(cell); else x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
                                 if (!shell) { x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
                                 x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.85f + 0.15f * (i % 2)), Role.Wall)); // corrugated
                             }
@@ -347,32 +330,28 @@ public static class Sites
                     }
                 }
             }
+        x.Wants.Add(new SiteRoads.Want("yard", Area(p.X - 5, p.Z - 5, p.X + (cols - 1) * 9 + 11, p.Z + (rows - 1) * 6 + 8), new(), Turn: true));
     }
 
-    /// <summary>A fence line of mesh panels on posts, with gaps (gates and breaches).</summary>
+    /// <summary>A fence line with its gate: a concrete wall, or the perimeter fence (<see cref="Fences"/>), breached here and there by its decay.</summary>
     static void Fence(Ctx x, SitePart p)
     {
         int len = p.Int("len", 40), h = p.Int("h", 2);
         bool alongX = p.Arg("axis", "x") == "x";
         int gapAt = p.Int("gate", len / 2);
-        float breaches = p.Num("breaches", 0.08f);
-        bool wall = p.Arg("type", "mesh") == "wall";
+        Int3 At(int i, int y, int inward) => alongX ? new Int3(p.X + i, y, p.Z + inward) : new Int3(p.X + inward, y, p.Z + i);
+        // The way through, for roads that will come to it.
+        x.C.X.Markers.Add(new Marker("gate", At(gapAt, 0, 0), alongX ? "z" : "x"));
+        x.Wants.Add(new SiteRoads.Want("gate", new List<Int3> { At(gapAt, -1, 0) }, new(), Clear: 2));
+        if (p.Arg("type", "mesh") != "wall")
+        {
+            Fences.Line((i, y, inward, b) => x.C.Blocks.TryAdd(At(i, y, inward), b), len, alongX ? Dir.North : Dir.West, false, new Rgb(0x6a, 0x6e, 0x70), new[] { gapAt }, 2);
+            return;
+        }
         for (int i = 0; i < len; i++)
         {
-            if (i == gapAt)   // the way through, for roads that will come to it
-                x.C.X.Markers.Add(new Marker("gate", alongX ? new Int3(p.X + i, 0, p.Z) : new Int3(p.X, 0, p.Z + i), alongX ? "z" : "x"));
-            if (Math.Abs(i - gapAt) <= 2) continue;
-            Int3 b = alongX ? new Int3(p.X + i, 0, p.Z) : new Int3(p.X, 0, p.Z + i);
-            if ((Hash.Cell(b, 61) % 1000) / 1000f < breaches) continue;
-            for (int y = 0; y < h; y++)
-            {
-                Int3 c = b + Int3.Up * y;
-                if (x.C.Blocks.ContainsKey(c)) continue;
-                x.C.Blocks[c] = wall
-                    ? new Block(BlockType.Cube, Material.Concrete, Concrete.Scale(0.8f + 0.1f * (y % 2)), Role.Wall)
-                    : i % 4 == 0 ? new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x52, 0x54), Role.Wall)
-                    : new Block(BlockType.Lattice, Material.Steel, new Rgb(0x6a, 0x6e, 0x70), Role.Wall);
-            }
+            if (Math.Abs(i - gapAt) <= 2 || (Hash.Cell(At(i, 0, 0), 61) % 1000) / 1000f < p.Num("breaches", 0.08f)) continue;
+            for (int y = 0; y < h; y++) x.C.Blocks.TryAdd(At(i, y, 0), new Block(BlockType.Cube, Material.Concrete, Concrete.Scale(0.8f + 0.1f * (y % 2)), Role.Wall));
         }
     }
 
@@ -475,6 +454,22 @@ public static class Sites
     /// A blast crater: a bowl punched into the ground, lined with fused glass, a raised rim of
     /// thrown rubble, and a radiation pocket at the bottom, warned by signs on the rim.
     /// </summary>
+    /// <summary>
+    /// A warning post on its own: a steel post with a hazard sign on it, facing the way you come (the site's
+    /// north, turned with the layout), the hazard it warns of (radiation by default) held in the extras.
+    /// What stands at the edge of a blast's hot ground.
+    /// </summary>
+    static void Warning(Ctx x, SitePart p)
+    {
+        Int3 post = new(p.X, 0, p.Z);
+        x.C.Blocks[post] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x50, 0x50), Role.Hazard);
+        x.C.Blocks[post + Int3.Up] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x50, 0x50), Role.Hazard);
+        x.C.Blocks[post + Int3.Up * 2] = new Block(BlockType.Sign, Material.Steel, Hazard, Role.Hazard, Dir.North, 1);
+        var hz = new Hazard { Kind = p.Arg("kind") is { Length: > 0 } k ? k : "radiation", Center = post, Radius = 0f };
+        hz.Signs.Add(post + Int3.Up * 2);
+        x.C.X.Hazards.Add(hz);
+    }
+
     static void Crater(Ctx x, SitePart p)
     {
         // Gaps in the thrown rim along the four axes: where the ramped paths come up out of the bowl.
@@ -568,89 +563,69 @@ public static class Sites
     }
 
     /// <summary>
-    /// A derelict rocket still standing on its launch pad: a hull of decks joined by a ladder
-    /// through every hatch, a hatch at the foot, fins and engine bells, and the service gantry
-    /// beside it with a ladder and a walkway to an upper hatch.
+    /// A derelict rocket still standing on its launch pad (<see cref="Rockets"/>): a hull of decks joined by a ladder through
+    /// every hatch, a hatch at the foot cut through its wall, three fins it stands on and engine bells under it, and the
+    /// service gantry beside it, its top level with the flight deck.
     /// </summary>
     static void Rocket(Ctx x, SitePart p)
     {
         int decks = p.Int("decks", 6), r = p.Int("r", 4);
-        int h = decks * 4 + 1;
         var hull = new Rgb(0xd8, 0xd6, 0xcc);
         var band = new Rgb(0x2a, 0x4a, 0x6a);
         var bell = new Rgb(0x3a, 0x34, 0x30);
-        int baseY = 2; // the hull stands on its engine skirt
-        // Engine skirt and bells: a ring of legs, open beneath so you can walk under the engines.
-        for (int y = 0; y < baseY; y++)
-            for (int a = 0; a < 8; a++)
-            {
-                float t = a / 8f * MathF.Tau;
-                Int3 c = new(p.X + (int)MathF.Round(MathF.Cos(t) * (r - 0.5f)), y, p.Z + (int)MathF.Round(MathF.Sin(t) * (r - 0.5f)));
-                x.C.Set(c, new Block(BlockType.Cube, Material.Steel, bell, Role.Wall));
-            }
-        // Hull: decks every four metres, a ladder through the middle.
-        var deckCells = new List<List<Int3>>();
-        for (int d = 0; d < decks; d++)
+        int baseY = 2; // the hull stands on its fins, the engine bells under it
+        // Hull: decks every four metres, a ladder through the middle; round outside, a metre thick, flat across each fin and the hatch.
+        var deckCells = Enumerable.Range(0, decks).Select(_ => new List<Int3>()).ToList();
+        int top = baseY + decks * 4;
+        double R = Rockets.Fit(p.X, p.Z, r + 0.3);
+        Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, baseY, top, y => ((y - baseY) % 4 == 0 ? (R, 0) : (R, R - 1)), y =>
         {
-            int y0 = baseY + d * 4; // the deck's floor slab
-            var cells = new List<Int3>();
-            for (int y = y0; y <= y0 + 4; y++)
-                for (int dz = -r; dz <= r; dz++)
-                    for (int dx = -r; dx <= r; dx++)
-                    {
-                        float dist = MathF.Sqrt(dx * dx + dz * dz);
-                        if (dist > r + 0.3f) continue;
-                        Int3 c = new(p.X + dx, y, p.Z + dz);
-                        bool wall = dist > r - 0.7f;
-                        bool slab = y == y0 || y == y0 + 4;
-                        if (wall || slab)
-                        {
-                            bool window = wall && y == y0 + 2 && (dx == 0 || dz == 0) && d >= decks - 2;
-                            Rgb col = (d % 3 == 1 && wall) ? band : hull.Scale(0.92f + 0.08f * (d & 1));
-                            x.C.Set(c, window ? new Block(BlockType.Cube, Material.Alloy, new Rgb(0x30, 0x40, 0x48), Role.Window) : new Block(BlockType.Cube, Material.Alloy, col, slab ? Role.Floor : Role.Wall));
-                        }
-                        else if (y > y0 && y < y0 + 4)
-                        {
-                            x.C.Clear(c);
-                            if (y <= y0 + 3) cells.Add(c);
-                        }
-                    }
-            deckCells.Add(cells);
-        }
-        // The nose cone.
-        for (int k = 0; k < r + 2; k++)
-        {
-            float rr = r * (1f - k / (float)(r + 2));
-            Cylinder(x, p.X, p.Z, rr, baseY + decks * 4 + 1 + k, 1, new Block(BlockType.Cube, Material.Alloy, hull, Role.Roof));
-        }
-        // Fins at the foot.
+            int d = Math.Min(decks - 1, (y - baseY) / 4);
+            bool slab = (y - baseY) % 4 == 0;
+            return new Block(BlockType.Cube, Material.Alloy, !slab && d % 3 == 1 ? band : hull.Scale(0.92f + 0.08f * (d & 1)), slab ? Role.Floor : Role.Wall);
+        }, inside: c => { x.C.Clear(c); deckCells[(c.Y - baseY) / 4].Add(c); });
+        // Windows on the top two decks, where the hull runs flat across the axes.
+        for (int d = decks - 2; d < decks; d++)
+            foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                for (int k = r + 1; k >= 1; k--)
+                {
+                    Int3 c = new(p.X + dx * k, baseY + d * 4 + 2, p.Z + dz * k);
+                    Block w = x.C.Get(c);
+                    if (w.IsAir) continue;
+                    if (w.Type == BlockType.Cube) x.C.Set(c, new Block(BlockType.Cube, Material.Alloy, new Rgb(0x30, 0x40, 0x48), Role.Window));
+                    break;
+                }
+        Rockets.Nose(x.C, p.X, p.Z, R, top + 1, new Block(BlockType.Cube, Material.Alloy, hull, Role.Roof));
+        Rockets.Bells(x.C, p.X, p.Z, R, 0, baseY, new Block(BlockType.Cube, Material.Steel, bell, Role.Wall));
         // Three fins; the fourth was torn off when the access stair went up on the hatch side.
-        foreach (var (fx, fz) in new[] { (1, 0), (0, 1), (0, -1) })
-            for (int y = 0; y < 7; y++)
-                for (int k = 1; k <= 3 - y / 3; k++)
-                    x.C.Set(new Int3(p.X + fx * (r + k), y, p.Z + fz * (r + k)), new Block(BlockType.Cube, Material.Alloy, band, Role.Wall));
+        var fin = new Block(BlockType.Cube, Material.Alloy, band, Role.Wall);
+        Int3 tip = Rockets.Fin(x.C, p.X, p.Z, R, Dir.East, 0, fin);
+        Rockets.Fin(x.C, p.X, p.Z, R, Dir.South, 0, fin);
+        Rockets.Fin(x.C, p.X, p.Z, R, Dir.North, 0, fin);
         // The ladder up the middle, through every deck's hatch.
         for (int y = baseY + 1; y < baseY + (decks - 1) * 4 + 1; y++)
         {
             Int3 c = new(p.X, y, p.Z);
             x.C.Set(c, new Block(BlockType.Ladder, Material.Steel, new Rgb(0x60, 0x60, 0x60), Role.Traverse, Dir.North));
         }
-        // The way in: a hatch at the foot of the lowest deck, reached up a short stair of the pad.
-        int doorY = baseY + 1;
-        Int3 door = new(p.X - r, doorY, p.Z);
+        // The way in: a hatch at the foot of the lowest deck in the hull's outermost column on the west, cut cleanly through its
+        // wall (the rim's cut pieces behind it go too, into the deck), reached up a short stair off the pad.
+        int doorY = baseY + 1, hx = Round.Past(p.X, p.Z, R, Dir.West).X + 1;
+        Int3 door = new(hx, doorY, p.Z);
         var doorCells = new List<Int3>();
-        for (int k = 0; k < 3; k++)
-            for (int dz = 0; dz <= 1; dz++) doorCells.Add(new Int3(p.X - r, doorY + k, p.Z + dz));
+        for (int k = 0; k < DoorSize.Tall; k++)
+            for (int dz = 0; dz <= 1; dz++) doorCells.Add(new Int3(hx, doorY + k, p.Z + dz));
         foreach (Int3 dc in doorCells) x.C.Clear(dc);
+        foreach (Int3 q in Round.Through(x.C, doorCells, Dir.East)) if (q.X > hx) deckCells[(q.Y - baseY) / 4].Add(q);
         // Steps up to the hatch from the pad: two stair blocks and their fill.
         for (int dz = 0; dz <= 1; dz++)
         {
             // Three steps up from the pad to a landing at the hatch sill (walk level 3), solid under each.
-            for (int k = 0; k < 3; k++) x.C.Set(new Int3(p.X - r - 1, k, p.Z + dz), new Block(BlockType.Cube, Material.Steel, bell, Role.Floor));
-            for (int k = 3; k <= 5; k++) x.C.Remove(new Int3(p.X - r - 1, k, p.Z + dz));
+            for (int k = 0; k < 3; k++) x.C.Set(new Int3(hx - 1, k, p.Z + dz), new Block(BlockType.Cube, Material.Steel, bell, Role.Floor));
+            for (int k = 3; k <= 5; k++) x.C.Remove(new Int3(hx - 1, k, p.Z + dz));
             for (int i = 0; i < 3; i++)
             {
-                int sx = p.X - r - 4 + i;
+                int sx = hx - 4 + i;
                 for (int k = 0; k < i; k++) x.C.Set(new Int3(sx, k, p.Z + dz), new Block(BlockType.Cube, Material.Steel, bell, Role.Floor));
                 x.C.Set(new Int3(sx, i, p.Z + dz), new Block(BlockType.Stair, Material.Steel, bell.Scale(1.2f), Role.Traverse, Dir.East));
                 for (int k = 1; k <= 3; k++) x.C.Remove(new Int3(sx, i + k, p.Z + dz));
@@ -667,7 +642,7 @@ public static class Sites
             else
             {
                 x.C.Link(x.Yard, m);
-                x.C.Doorways.Add(new Doorway { Cells = doorCells, Facing = Dir.East, ModuleA = x.Yard, ModuleB = m });
+                x.C.Doorways.Add(new Doorway { Cells = doorCells, Facing = Dir.East, ModuleA = x.Yard, ModuleB = m, Hazard = true }); // the lander's airlock
             }
             prev = m;
             var floor = cells.Where(c => c.Y == baseY + d * 4 + 1 && Math.Abs(c.X - p.X) + Math.Abs(c.Z - p.Z) >= 2).OrderBy(c => Hash.Cell(c, (uint)d)).ToList();
@@ -679,8 +654,8 @@ public static class Sites
             x.C.X.Lights.Add(new LightSpot { Cell = new Int3(p.X + 1, baseY + d * 4 + 3, p.Z + 1), Color = new Rgb(0xe6, 0xf2, 0xff), Mode = LightMode.Steady, Energy = 1f, Range = 7f, Module = m });
             if (d == decks - 1 && x.VaultModule < 0) x.VaultModule = m;
         }
-        // The gantry: a lattice tower beside the hull, its top level with the flight deck's hatch.
-        int gx = p.X + r + 4, gz = p.Z - 2;
+        // The gantry: a lattice tower beside the hull past its east fin, its top level with the flight deck's hatch.
+        int gx = tip.X + 1, gz = p.Z - 2;
         int gh = baseY + (decks - 1) * 4 + 1;
         var gantry = new SitePart { Kind = "tower", X = gx, Z = gz, Args = { ["h"] = (gh).ToString(), ["size"] = "5", ["every"] = "4", ["crown"] = "lamp" } };
         LatticeTower(x, gantry);
@@ -695,6 +670,7 @@ public static class Sites
         bool alongX = p.Arg("axis", "x") == "x";
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             Int3 b = alongX ? new Int3(p.X + i * gap, 0, p.Z) : new Int3(p.X, 0, p.Z + i * gap);
             for (int y = 0; y < h; y++) x.C.Blocks[b + Int3.Up * y] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x58, 0x5a, 0x5c), Role.Decor);
             bool lit = x.Rng.Chance(0.35f);
@@ -746,10 +722,37 @@ public static class Sites
     {
         int n = p.Int("count", 3), gap = p.Int("gap", 8);
         bool alongX = p.Arg("axis", "x") == "x";
+        // What its age left standing in the yard (data/eras.txt): carts and wagons, motors, or grav sleds.
+        string kind = x.Tech is TechLevel t && EraBook.Current.Of(t) is { } era ? era.Vehicles : "motors";
+        // Parked: on hard standing a road comes to.
+        int x1 = p.X + (alongX ? (n - 1) * gap + 2 : 5), z1 = p.Z + (alongX ? 5 : (n - 1) * gap + 2);
+        x.Wants.Add(new SiteRoads.Want("parking", Area(p.X - 4, p.Z - 4, x1 + 4, z1 + 4), Area(p.X - 3, p.Z - 3, x1 + 3, z1 + 3)));
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int ox = p.X + (alongX ? i * gap : 0), oz = p.Z + (alongX ? 0 : i * gap);
-            var col = new[] { new Rgb(0x6a, 0x5a, 0x3a), new Rgb(0x4a, 0x5a, 0x4a), new Rgb(0x7a, 0x3a, 0x2a) }[i % 3].Lerp(new Rgb(0x5a, 0x40, 0x30), 0.3f);
+            Int3 At(int a, int b, int y) => alongX ? new Int3(ox + b, y, oz + a) : new Int3(ox + a, y, oz + b);
+            if (kind == "carts")
+            {
+                // A cart or a covered wagon: a plank bed on four wheels, a shaft out front, the odd canvas hood on hoops.
+                var wood = new[] { new Rgb(0x6a, 0x52, 0x3c), new Rgb(0x5a, 0x46, 0x34), new Rgb(0x74, 0x5c, 0x44) }[i % 3];
+                bool hood = x.Rng.Chance(0.55f);
+                int clen = hood ? 5 : 4;
+                foreach (int a in new[] { 0, clen - 1 })
+                    foreach (int b in new[] { 0, 2 })
+                        x.C.Set(At(a, b, 0), new Block(BlockType.Pillar, Material.Timber, wood.Scale(0.6f), Role.Debris));
+                for (int a = 0; a < clen; a++)
+                    for (int b = 0; b < 3; b++)
+                    {
+                        x.C.Set(At(a, b, 1), new Block(BlockType.Cube, Material.Timber, wood.Scale(0.9f + 0.1f * (a % 2)), Role.Debris));
+                        if (hood && a > 0) x.C.Set(At(a, b, 2), new Block(b == 1 ? BlockType.Cube : BlockType.Ramp, Material.Cloth, new Rgb(0xc8, 0xbe, 0xa2).Scale(0.85f + 0.1f * (a % 2)), Role.Debris, alongX ? (b == 0 ? Dir.East : Dir.West) : (b == 0 ? Dir.South : Dir.North)));
+                    }
+                x.C.Set(At(clen, 1, 1), new Block(BlockType.Rail, Material.Timber, wood.Scale(0.8f), Role.Debris));
+                continue;
+            }
+            bool grav = kind == "grav";
+            var col = grav ? new[] { new Rgb(0x9a, 0xa4, 0xac), new Rgb(0x5a, 0x6a, 0x7a), new Rgb(0xc4, 0xc8, 0xcc) }[i % 3]
+                : new[] { new Rgb(0x6a, 0x5a, 0x3a), new Rgb(0x4a, 0x5a, 0x4a), new Rgb(0x7a, 0x3a, 0x2a) }[i % 3].Lerp(new Rgb(0x5a, 0x40, 0x30), 0.3f);
             bool big = x.Rng.Chance(0.4f);
             int len = big ? 6 : 4, wid = 3, hgt = big ? 3 : 2;
             for (int a = 0; a < len; a++)
@@ -760,7 +763,10 @@ public static class Sites
                         if (!cab && y == hgt - 1 && big && b == 1) continue;
                         if (y == hgt - 1 && cab && !big) continue;
                         Int3 c = alongX ? new Int3(ox + b, y, oz + a) : new Int3(ox + a, y, oz + b);
-                        x.C.Set(c, new Block(BlockType.Cube, Material.Rust, col.Scale(0.8f + 0.2f * ((a + y) % 2)), Role.Debris));
+                        // A grav sled's nose is swept back where a motor's is square.
+                        bool nose = grav && a == len - 1 && y == hgt - 1 - (big ? 0 : 1);
+                        x.C.Set(c, nose ? new Block(BlockType.Ramp, Material.Alloy, col, Role.Debris, alongX ? Dir.North : Dir.West)
+                            : new Block(BlockType.Cube, grav ? Material.Alloy : Material.Rust, col.Scale(0.8f + 0.2f * ((a + y) % 2)), Role.Debris));
                     }
         }
     }
@@ -790,7 +796,7 @@ public static class Sites
     }
 
     /// <summary>
-    /// A hangar: a tall shed with a stepped gable roof and its great door rolled half open on the
+    /// A hangar: a tall shed under a gable of slopes and its great door rolled half open on the
     /// apron side, a mezzanine along the back wall up a ladder with the foreman's office on it, and
     /// whatever was being worked on when everyone left still on the floor.
     /// </summary>
@@ -825,24 +831,38 @@ public static class Sites
                     }
                 }
             }
-        // The stepped gable along the hangar's length: each course steps in from both long sides.
-        for (int k = 0; k <= d / 2; k++)
+        // The gable along the hangar's length: slopes up from both long sides to the ridge, a deck under them.
+        for (int k = 0; k <= (d - 1) / 2; k++)
             for (int i = 0; i < w; i++)
             {
                 int y = h + k;
+                // At the gable ends the slope and the course under it are the wall's: one clean line up the verge.
+                bool verge = i == 0 || i == w - 1;
+                Material skin = verge ? Material.Steel : Material.Rust;
+                Rgb face = verge ? wall : roof;
                 foreach (int j in new[] { k, d - 1 - k })
-                    x.C.Set(W(i, y, j), new Block(BlockType.Cube, Material.Rust, roof.Scale(0.85f + 0.15f * (k % 2)), Role.Roof));
+                {
+                    bool ridge = k == d - 1 - k;
+                    x.C.Set(W(i, y, j), ridge ? new Block(BlockType.Cube, skin, face, Role.Roof)
+                        : new Block(BlockType.Ramp, skin, face, Role.Roof, j == k ? Dir.South : Dir.North));
+                }
                 for (int j = k + 1; j < d - 1 - k; j++)
                 {
                     if (i == 0 || i == w - 1) x.C.Set(W(i, y, j), new Block(BlockType.Cube, Material.Steel, wall, Role.Wall));
                     else x.C.Clear(W(i, y, j));
                 }
+                if (k > 0)
+                    foreach (int j in new[] { k, d - 1 - k })
+                        x.C.Set(W(i, y - 1, j), new Block(BlockType.Cube, skin, verge ? wall : roof.Scale(0.8f), Role.Roof));
             }
         // The great door: one leaf rolled half open, hanging above the gap.
         for (int i = doorLo; i <= doorHi; i++)
             for (int y = doorH; y < h; y++) x.C.Set(W(i, y, 0), new Block(BlockType.Cube, Material.Steel, new Rgb(0x7a, 0x6a, 0x3a), Role.Wall));
         int floorModule = x.C.AddModule(ModuleKind.Hall, "hangar floor", 0, hall);
         x.C.Link(x.Yard, floorModule);
+        // The apron in front of the great door, which a road comes to.
+        var apron = Area(p.X + doorLo, p.Z - 9, p.X + doorHi, p.Z - 1);
+        x.Wants.Add(new SiteRoads.Want("vehicle door", apron, apron));
         // The mezzanine along the back wall, up a ladder, with the office on it.
         int mz = d - 4, my = 3;
         var mezz = new List<Int3>();
@@ -855,14 +875,14 @@ public static class Sites
             }
         // The ladder up the front of the mezzanine: its top rung at the walkway's floor, you step on at the gap in the rail.
         for (int y = 0; y <= my; y++) x.C.Blocks[W(2, y, mz - 1)] = new Block(BlockType.Ladder, Material.Steel, new Rgb(0x70, 0x70, 0x70), Role.Traverse, Dir.North);
-        // The office: a box on the mezzanine's far end with a window over the floor.
+        // The office: a box on the mezzanine's far end with a window over the floor, 3 m clear under its roof.
         var office = new List<Int3>();
-        int o0 = w - 9;
+        int o0 = w - 9, top = Math.Min(my + 4, h - 1);
         for (int i = o0; i < w - 1; i++)
             for (int j = mz; j < d - 1; j++)
-                for (int y = my + 1; y <= my + 3; y++)
+                for (int y = my + 1; y <= top; y++)
                 {
-                    bool shell = i == o0 || j == mz || y == my + 3;
+                    bool shell = i == o0 || j == mz || y == top;
                     bool door = i == o0 && (j == mz + 1 || j == mz + 2) && y <= my + 2;
                     bool glass = j == mz && y == my + 2 && i > o0 && i < w - 2;
                     Int3 c = W(i, y, j);
@@ -870,7 +890,7 @@ public static class Sites
                     if (glass) { x.C.Set(c, new Block(BlockType.Pane, Material.Glass, new Rgb(0x8a, 0xa4, 0xa8), Role.Window)); continue; }
                     if (shell) { x.C.Set(c, new Block(BlockType.Cube, Material.Steel, wall.Scale(0.9f), Role.Wall)); continue; }
                     x.C.Clear(c);
-                    if (y <= my + 2) office.Add(c);
+                    if (y < top) office.Add(c);
                 }
         int mezzModule = x.C.AddModule(ModuleKind.Outdoor, "mezzanine", 0, mezz.Where(c => !x.C.Blocks.ContainsKey(c)).ToList());
         int officeModule = x.C.AddModule(ModuleKind.Room, "foreman's office", 0, office);
@@ -1018,6 +1038,7 @@ public static class Sites
         var olive = new Rgb(0x4a, 0x52, 0x3a);
         for (int k = 0; k < n; k++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             Int3 c = new(p.X + k * gap, 0, p.Z);
             // The emplacement: a low wall round three sides, open at the back.
             for (int dz = -2; dz <= 2; dz++)
@@ -1075,6 +1096,7 @@ public static class Sites
         int at = 0;
         for (int k = 0; k < n; k++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int w = 5 + (int)(Hash.Cell(new Int3(p.X, k, p.Z), 161) % 2), d = 5;
             Int3 W(int i, int y, int j) => new(p.X + at + i, y, p.Z + j);
             var inside = new List<Int3>();
@@ -1091,14 +1113,15 @@ public static class Sites
                         // One sheet to a wall, a plinth of darker stuff, and a window each side of the door.
                         bool sheet = Hash.Cell(new Int3(k + p.X, j == 0 || j == d - 1 ? j : -1, i == 0 || i == w - 1 ? i : -1), 163) % 3 == 0;
                         if (y == 1 && j == 0 && !door && (i == 1 || i == w - 2)) x.C.Set(c, new Block(BlockType.Pane, Material.Glass, new Rgb(0x7a, 0x70, 0x60), Role.Window));
-                        else if (edge && !door) x.C.Set(c, new Block(BlockType.Cube, Material.Scrap, y == 0 ? col.Scale(0.62f) : col.Scale(sheet ? 1.08f : 0.9f), Role.Wall));
+                        else if (edge && !(door && y < DoorSize.Tall)) x.C.Set(c, new Block(BlockType.Cube, Material.Scrap, y == 0 ? col.Scale(0.62f) : col.Scale(sheet ? 1.08f : 0.9f), Role.Wall));
                         else { x.C.Clear(c); if (!edge) inside.Add(c); }
                     }
                     x.C.Set(W(i, 3, j), new Block(BlockType.Cube, Material.Rust, new Rgb(0x6a, 0x4a, 0x34), Role.Roof));
                 }
             int m = x.C.AddModule(ModuleKind.Room, "shack", 0, inside);
             x.C.Link(x.Yard, m);
-            x.C.Doorways.Add(new Doorway { Cells = new List<Int3> { W(w / 2 - 1, 0, 0), W(w / 2, 0, 0), W(w / 2 - 1, 1, 0), W(w / 2, 1, 0), W(w / 2 - 1, 2, 0), W(w / 2, 2, 0) }, Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
+            x.C.Doorways.Add(new Doorway { Cells = Enumerable.Range(0, DoorSize.Tall).SelectMany(y => new[] { W(w / 2 - 1, y, 0), W(w / 2, y, 0) }).ToList(), Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
+            x.Doors.Add(new RoadDoor(new List<Int3> { W(w / 2 - 1, 0, 0), W(w / 2, 0, 0) }, Dir.North));
             x.C.X.Markers.Add(new Marker("home", W(1, 0, d - 2)));
             x.C.X.Lights.Add(new LightSpot { Cell = W(w / 2, 2, d / 2), Color = new Rgb(0xff, 0xc0, 0x70), Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Module = m });
             at += w + gap;
@@ -1112,6 +1135,7 @@ public static class Sites
         var cloth = new[] { new Rgb(0xa0, 0x4a, 0x3a), new Rgb(0x3a, 0x6a, 0x8a), new Rgb(0xb0, 0x90, 0x40) };
         for (int k = 0; k < n; k++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             Int3 c = new(p.X + k * gap, 0, p.Z);
             x.C.Set(c, new Block(BlockType.Table, Material.Timber, new Rgb(0x6a, 0x50, 0x38), Role.Prop));
             x.C.Set(c + new Int3(1, 0, 0), new Block(BlockType.Crate, Material.Scrap, new Rgb(0x7a, 0x6a, 0x4a), Role.Prop));
@@ -1123,6 +1147,8 @@ public static class Sites
                     x.C.Set(c + new Int3(i, 3, j), new Block(BlockType.Cube, Material.Cloth, cloth[k % cloth.Length], Role.Roof));
             x.C.X.Markers.Add(new Marker("stall", c + new Int3(0, 0, 1), "a vendor's place behind the counter"));
         }
+        // Goods came by cart: a road to the market, ending in a turning place before the counters.
+        x.Wants.Add(new SiteRoads.Want("yard", Area(p.X - 6, p.Z - 6, p.X + (n - 1) * gap + 7, p.Z + 7), new(), Turn: true));
     }
 
     /// <summary>
@@ -1185,28 +1211,15 @@ public static class Sites
     {
         int n = p.Int("count", 3), r = p.Int("r", 7), h = p.Int("h", 2), gap = p.Int("gap", 4);
         bool alongX = p.Arg("axis", "x") == "x";
-        bool foul = p.Arg("water", "clean") == "foul";
-        var water = foul ? new Rgb(0x4a, 0x48, 0x2a) : new Rgb(0x3a, 0x5a, 0x62);
         var rim = new Rgb(0x8a, 0x88, 0x82);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
-            for (int dz = -r; dz <= r; dz++)
-                for (int dx = -r; dx <= r; dx++)
-                {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    if (d > r + 0.4f) continue;
-                    Int3 floor = new(cx + dx, -1, cz + dz);
-                    x.C.Set(floor, new Block(BlockType.Cube, Material.Concrete, rim.Scale(0.7f), Role.Floor));
-                    if (d > r - 0.6f)
-                        for (int y = 0; y < h; y++) x.C.Set(floor + Int3.Up * (y + 1), new Block(BlockType.Cube, Material.Concrete, rim.Scale(y == h - 1 ? 1f : 0.9f), Role.Wall));
-                    else
-                    {
-                        // Standing water, and on a foul one a crust of scum in patches.
-                        uint hsh = Hash.Cell(floor, 91);
-                        x.C.Set(floor + Int3.Up, new Block(BlockType.Puddle, Material.Water, foul && hsh % 5 == 0 ? water.Scale(1.25f) : water, Role.Decor));
-                    }
-                }
+            // The floor in the ground, and the rim wall two metres thick, round.
+            Round.Lay(x.C, cx + 0.5, cz + 0.5, -1, h - 1, y => y < 0 ? (r + 0.4, 0) : (r + 0.4, r - 1.6),
+                y => new Block(BlockType.Cube, Material.Concrete, y < 0 ? rim.Scale(0.7f) : rim.Scale(y == h - 1 ? 1f : 0.9f), y < 0 ? Role.Floor : Role.Wall),
+                inside: c => { if (c.Y == 0) x.C.Wet(c); }); // standing water
             // The clarifier's walkway bridge across the middle, rails both sides, a gearbox at its centre.
             for (int t = -r; t <= r; t++)
             {
@@ -1230,6 +1243,7 @@ public static class Sites
         var coal = p.Arg("type", "coal") == "coal" ? new Rgb(0x2a, 0x28, 0x2a) : new Rgb(0x6a, 0x5a, 0x4a);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
             for (int dz = -r; dz <= r; dz++)
                 for (int dx = -r; dx <= r; dx++)
@@ -1296,18 +1310,19 @@ public static class Sites
             }
             return false;
         }
-        // The shell is measured from the sphere's centre, so it stays one thickness all the way over.
+        // The shell is measured from the sphere's centre, so it stays one thickness (two metres) all the way over; each course round.
+        const double Shell = 2;
+        double Across(double rad, double y) => y < wall ? rad : rad * rad > (y - wall) * (y - wall) ? Math.Sqrt(rad * rad - (y - wall) * (y - wall)) : 0;
+        RoundBody shell = Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, 0, wall + r - 1, y => (Across(r, y), Across(r - Shell, y)),
+            y => new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 5 == 4 ? 0.8f : 0.95f), Role.Wall));
+        // The wedges fallen in, and the door: an opening through the ring wall on the west side; every cell of the shell there,
+        // down to the least its inside comes to over the course (a sloped course's sliver of a piece reaches in that far).
         for (int y = 0; y < wall + r; y++)
-            for (int dz = -r; dz <= r; dz++)
-                for (int dx = -r; dx <= r; dx++)
+            for (int dz = -r - 1; dz <= r + 1; dz++)
+                for (int dx = -r - 1; dx <= r + 1; dx++)
                 {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    float from = y < wall ? d : MathF.Sqrt(d * d + (y - wall) * (y - wall));
-                    if (from > r || from <= r - 1.8f) continue;
-                    if (Breached(dx, dz, y)) continue;
-                    // The door: an opening through the ring wall on the west side.
-                    if (dx < 0 && Math.Abs(dz) <= 2 && y < 4) continue;
-                    x.C.Set(new Int3(p.X + dx, y, p.Z + dz), new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 5 == 4 ? 0.8f : 0.95f), Role.Wall));
+                    double d = Math.Sqrt(dx * dx + dz * dz);
+                    if (d > Round.Span(shell, y).InnerLo - 0.75 && (Breached(dx, dz, y) || dx < 0 && Math.Abs(dz) <= 2 && y < 4)) x.C.Remove(new Int3(p.X + dx, y, p.Z + dz));
                 }
         // A floor of rubble under each wedge that fell in.
         foreach (float w in wedges)
@@ -1329,6 +1344,7 @@ public static class Sites
         var white = new Rgb(0xc8, 0xc8, 0xc2);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * gap : 0), cz = p.Z + (alongX ? 0 : i * gap);
             bool down = x.Rng.Chance(0.25f);
             int standing = down ? 5 : h;
@@ -1375,6 +1391,7 @@ public static class Sites
         var steel = new Rgb(0x6a, 0x6c, 0x6e);
         for (int r = 0; r < rows; r++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int z = p.Z + r * (2 + gap);
             for (int t = 0; t < len; t++)
             {
@@ -1473,7 +1490,7 @@ public static class Sites
                 for (int y = 0; y < h; y++)
                 {
                     Int3 c = W(i, y, j);
-                    if (edge && !(door && y < 3))
+                    if (edge && !(door && y < DoorSize.Tall))
                         x.C.Set(c, y == 0 || (i % 4 == 0 && (j == 0 || j == d - 1)) || hydro && y < 2
                             ? new Block(BlockType.Cube, hydro ? Material.Alloy : Material.Concrete, hydro ? new Rgb(0xb8, 0xbc, 0xc0) : new Rgb(0x8a, 0x86, 0x7e), Role.Wall)
                             : new Block(BlockType.Pane, Material.Glass, new Rgb(0x9a, 0xc8, 0xb0), Role.Window));
@@ -1494,7 +1511,7 @@ public static class Sites
             }
         int m = x.C.AddModule(ModuleKind.Room, hydro ? "hydroponic shed" : "greenhouse", 0, inside);
         x.C.Link(x.Yard, m);
-        x.C.Doorways.Add(new Doorway { Cells = new List<Int3> { W(w / 2 - 1, 0, 0), W(w / 2, 0, 0), W(w / 2 - 1, 1, 0), W(w / 2, 1, 0), W(w / 2 - 1, 2, 0), W(w / 2, 2, 0) }, Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
+        x.C.Doorways.Add(new Doorway { Cells = Enumerable.Range(0, DoorSize.Tall).SelectMany(y => new[] { W(w / 2 - 1, y, 0), W(w / 2, y, 0) }).ToList(), Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
         var floor = inside.Where(c => c.Y == 0 && !x.C.Blocks.ContainsKey(c)).OrderBy(c => Hash.Cell(c, 79)).ToList();
         if (floor.Count > 1) x.C.AddSlot(SlotKind.Loot, floor[0], m);
     }
@@ -1507,13 +1524,13 @@ public static class Sites
         var col = cooling ? new Rgb(0xb8, 0xb4, 0xa8) : new Rgb(0x6a, 0x64, 0x5e);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + i * (2 * r + gap), cz = p.Z;
-            for (int y = 0; y < h; y++)
+            Round.Lay(x.C, cx + 0.5, cz + 0.5, 0, h - 1, y =>
             {
-                float t = y / (float)h;
-                float rr = cooling ? r * (1f - 0.35f * MathF.Sin(t * MathF.PI)) + 0.3f : r * (1f - 0.25f * t);
-                Cylinder(x, cx, cz, rr, y, 1, new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 6 == 5 ? 0.75f : 0.95f), Role.Wall), hollow: true);
-            }
+                double t = y / (double)h;
+                return (cooling ? r * (1 - 0.35 * Math.Sin(t * Math.PI)) + 0.3 : r * (1 - 0.25 * t), 0);
+            }, y => new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 6 == 5 ? 0.75f : 0.95f), Role.Wall));
             // A lamp at the lip that once warned aircraft.
             Int3 lamp = new(cx + r - 1, h, cz);
             x.C.Set(lamp, new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x40, 0x30), Role.Light));
@@ -1527,6 +1544,7 @@ public static class Sites
         int n = p.Int("count", 5), h = p.Int("h", 14), spread = p.Int("spread", 30);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             float t = i / (float)n * MathF.Tau + x.Rng.Float(0f, 0.6f);
             float d = spread * (0.4f + 0.6f * x.Rng.Float());
             int ox = p.X + (int)(MathF.Cos(t) * d), oz = p.Z + (int)(MathF.Sin(t) * d);

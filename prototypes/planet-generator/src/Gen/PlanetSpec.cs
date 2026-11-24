@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Planets.Gen;
 
-public enum Archetype { Temperate, Arid, Ice, Lava, Alien }
+/// <summary>A world's kind. Barren: a body with no air at all (regolith, icy or metal, <see cref="Archetypes.BarrenVariant"/>), every airless moon and small world.</summary>
+public enum Archetype { Temperate, Arid, Ice, Lava, Alien, Barren }
 
 /// <summary>
 /// Planet modifiers. The first five change the terrain; the last three only change the look
@@ -41,31 +43,106 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
 
     public bool Has(Modifier modifier) => (Modifiers & modifier) != 0;
 
-    /// <summary>A planet of the given archetype with 1-2 modifiers rolled from the seed.</summary>
-    public static PlanetSpec Roll(ulong seed, Archetype archetype, int variant, int widthKm = 16) =>
-        new(seed, archetype, variant, RollModifiers(seed, 0), widthKm);
+    /// <summary>The width every start world has, km: gravity is measured against it.</summary>
+    public const int StartWidthKm = 16;
+
+    /// <summary>
+    /// Surface gravity in g by size class, beside <see cref="Widths"/> (owner, 22 Nov: from size alone; the start
+    /// size 1 g, the largest 5 g, moons as low as 0.2 g). The one table every fall and thrust reads.
+    /// </summary>
+    public static readonly float[] Gravities = { 0.2f, 1.0f, 2.2f, 5.0f };
+
+    /// <summary>The chance a world of each size class has no air (owner, 22 Nov: the smallest about 95%, too light to hold it; the largest never).</summary>
+    public static readonly float[] VacuumChances = { 0.95f, 0.6f, 0.25f, 0f };
+
+    /// <summary>
+    /// How thick a world's air is by size class, against a start world's (owner, 22 Nov: air density grows with size,
+    /// thin on the smallest that keep any, always dense on the largest).
+    /// </summary>
+    public static readonly float[] AirThicknesses = { 0.5f, 1.0f, 1.4f, 2.0f };
+
+    /// <summary>
+    /// This world's air thickness, from its size alone: 0 in vacuum, then thin up to dense (<see cref="AirThicknesses"/>).
+    /// The one value its sky and its globe's air shell read, beside its air kind (<c>SkySystem.Air</c>, <c>SkySystem.Thickness</c>).
+    /// </summary>
+    public float AirThickness => Airless ? 0f : AirThicknesses[SizeClass];
+
+    /// <summary>A width's size class: its place in <see cref="Widths"/> and the tables beside it.</summary>
+    public static int ClassOf(int widthKm) => Math.Max(0, Array.FindLastIndex(Widths, w => w <= widthKm));
+
+    public int SizeClass => ClassOf(WidthKm);
+
+    /// <summary>The gravity from which a world is dangerous (Empyrion's high-gravity worlds pull 25 or more against its usual 5 to 12): 32 km worlds and up.</summary>
+    public const float DangerousGravity = 1.8f;
+
+    /// <summary>Surface gravity against a start world's (1 g), from <see cref="Gravities"/>.</summary>
+    public float GravityScale => Gravities[SizeClass];
+
+    /// <summary>Whether a world of this width is a dangerous high-gravity one: they hold fold fuel and fold drive materials.</summary>
+    public static bool Heavy(int widthKm) => Gravities[ClassOf(widthKm)] >= DangerousGravity;
+
+    public bool HighGravity => Heavy(WidthKm);
+
+    /// <summary>
+    /// Whether natural impact craters stay on a kind of world: one with no air or water to wear them away.
+    /// A barren body always keeps them; an ice or lava world only when it lost its air (a tidally heated moon,
+    /// <see cref="Modifier.Cratered"/>). A desert is never airless (owner, 22 Nov: an airless moon is a grey
+    /// cratered moonscape, never dunes), nor is a living world: air, weather and seas erode and fill old impacts.
+    /// A war's blast craters are something else: they go on the war's targets (the POI generator's strikes).
+    /// </summary>
+    public static bool Craters(Archetype archetype) => archetype is Archetype.Barren or Archetype.Ice or Archetype.Lava;
+
+    /// <summary>
+    /// No air to speak of: a barren body, or an ice or lava world that kept its craters for want of air.
+    /// The one rule the flora, the creatures and the slice all read, so they can't disagree.
+    /// </summary>
+    public bool Airless => Has(Modifier.Cratered) && Craters(Archetype);
+
+    /// <summary>
+    /// A planet of the given archetype with 1-2 modifiers rolled from the seed (craters only where the archetype keeps them).
+    /// <paramref name="airless"/>: whether it has air, when its place already decided (a system's body); else as rolled.
+    /// </summary>
+    public static PlanetSpec Roll(ulong seed, Archetype archetype, int variant, int widthKm = 16, bool? airless = null) =>
+        new(seed, archetype, variant, RollModifiers(seed, 0, archetype, airless), widthKm);
 
     /// <summary>
     /// A world's width in km, rolled from its seed on Empyrion's planet classes 2-5 (5/40/50/5%):
-    /// 8x4 km 5%, 16x8 km 40%, 32x16 km 50%, 64x32 km 5%. Moons take the two small classes at the
-    /// same odds as each other (1 in 9, 8 in 9). A start world is always 16x8 km. Separate from
-    /// <see cref="Roll"/>'s width, so a caller that names a size keeps it.
+    /// 8x4 km 5%, 16x8 km 40%, 32x16 km 50%, 64x32 km 5%. A moon rolls the same odds among the sizes
+    /// smaller than what it orbits (owner, 22 Nov), its parent's width given (a giant's moons, any size):
+    /// a 32 km world's are 8 km 1 in 9 and 16 km 8 in 9, and an 8 km world has none. A start world is
+    /// always 16x8 km. Separate from <see cref="Roll"/>'s width, so a caller that names a size keeps it.
     /// </summary>
-    public static int RollWidthKm(ulong seed, WorldKind kind = WorldKind.Planet)
+    public static int RollWidthKm(ulong seed, WorldKind kind = WorldKind.Planet, int parentWidthKm = int.MaxValue)
     {
-        if (kind == WorldKind.Start) return 16;
-        float roll = new Rng(Hash.Of(seed, 0x53495A45)).NextFloat();
-        if (kind == WorldKind.Moon) return roll < 5f / 45f ? 8 : 16;
-        return roll < 0.05f ? 8 : roll < 0.45f ? 16 : roll < 0.95f ? 32 : 64;
+        if (kind == WorldKind.Start) return StartWidthKm;
+        int last = kind == WorldKind.Moon ? Array.FindLastIndex(Widths, w => w < parentWidthKm) : Widths.Length - 1;
+        if (last < 0) throw new ArgumentException($"no world is small enough to be a moon of a {parentWidthKm} km one");
+        float roll = new Rng(Hash.Of(seed, 0x53495A45)).NextFloat() * SizeOdds.Take(last + 1).Sum();
+        for (int i = 0; i < last; i++)
+            if ((roll -= SizeOdds[i]) < 0f) return Widths[i];
+        return Widths[last];
     }
+
+    static readonly float[] SizeOdds = { 0.05f, 0.4f, 0.5f, 0.05f };
+
+    /// <summary>Whether a world of this width can have moons: something smaller than it must exist.</summary>
+    public static bool HoldsMoons(int widthKm) => widthKm > Widths[0];
 
     /// <summary>A planet with its modifiers and its size both rolled from the seed.</summary>
     public static PlanetSpec RollSized(ulong seed, Archetype archetype, int variant, WorldKind kind = WorldKind.Planet) =>
         Roll(seed, archetype, variant, RollWidthKm(seed, kind));
 
-    /// <summary>1-2 distinct modifiers. Different rerolls of the same seed give different sets.</summary>
-    public static Modifier RollModifiers(ulong seed, int reroll)
+    /// <summary>
+    /// 1-2 distinct modifiers. Different rerolls of the same seed give different sets. The one air rule goes through here
+    /// (docs/solar-systems.md 8): where craters stay (<see cref="Craters"/>), <see cref="Modifier.Cratered"/> is the mark of a
+    /// world with no air (<see cref="Airless"/>), on as <paramref name="airless"/> says when that is known, else as rolled; and a
+    /// world with no air has no weather, so no perpetual storm. A barren body is its craters alone. What one of those rules
+    /// takes off is replaced by the next of the rest, so every other world rolls as it always did.
+    /// </summary>
+    public static Modifier RollModifiers(ulong seed, int reroll, Archetype? archetype = null, bool? airless = null)
     {
+        // A barren body is its craters: no mesas, canyons or seas (there was never weather or water to make them), no storm in its black sky.
+        if (archetype == Archetype.Barren) return Modifier.Cratered;
         var rng = new Rng(Hash.Of(seed, 0x6D6F64, reroll));
         var all = (Modifier[])Enum.GetValues(typeof(Modifier));
         var pool = new List<Modifier>();
@@ -79,7 +156,14 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
             result |= pool[pick];
             pool.RemoveAt(pick);
         }
-        return result;
+        bool none = (archetype is not Archetype a || Craters(a)) && (airless ?? (result & Modifier.Cratered) != 0);
+        Modifier off = none ? Modifier.PerpetualStorm : Modifier.Cratered;
+        if ((result & off) != 0)
+        {
+            result &= ~off;
+            result |= pool[rng.Next(pool.Count)];
+        }
+        return none ? result | Modifier.Cratered : result;
     }
 
     public override string ToString()

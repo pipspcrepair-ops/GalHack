@@ -14,38 +14,92 @@ namespace Slice.Tests;
 public partial class Screenshot : Node
 {
     const double TimeoutSeconds = 1200;
+    /// <summary>How long, wall-clock seconds, a shot may wait for the window to draw its frames.</summary>
+    const double DrawSeconds = 60;
 
     Game.Game _game;
     string _out = "screenshot.png", _view = "pod";
     readonly Dictionary<string, string> _args = new();
     IEnumerator<int> _script;
     double _elapsed;
-    bool _capturing;
+    bool _capturing, _quitting;
+    ulong _captureSince;
     Staging _staging;
     string _pending;
 
-    /// <summary>A fresh world with rings: the next one rolled that has them.</summary>
-    static WorldChoice RingedWorld()
+    /// <summary>
+    /// A fresh world of the kind asked for (--type and the rest), rolled again until it has what a shot needs:
+    /// rings (--ringed=1), or its star's class (--star=yellow, a sunlike star's white light). Printed, for an A/B on the same seed.
+    /// </summary>
+    static WorldChoice Rolled(string[] args, Func<WorldChoice, bool> fits, string what)
     {
         for (int i = 0; i < 4096; i++)
         {
-            WorldChoice w = WorldChoice.Fresh("random");
-            if (w.Spec().Has(Planets.Gen.Modifier.RingedSky)) return w;
+            WorldChoice w = WorldChoice.FromArgs(args, WorldChoice.Fresh("random"));
+            if (!fits(w)) continue;
+            GD.Print($"screenshot: rolled {w} for {what}");
+            return w;
         }
-        throw new InvalidOperationException("no ringed world in 4,096 rolls");
+        throw new InvalidOperationException($"no world with {what} in 4,096 rolls");
     }
 
     public override void _Ready()
     {
+        // A backstop after that one: should Exit wait on a busy main thread, the process ends itself regardless.
+        new System.Threading.Thread(() => { System.Threading.Thread.Sleep(TimeSpan.FromSeconds(TimeoutSeconds + 360)); Console.Error.WriteLine("screenshot: wall-clock backstop"); System.Diagnostics.Process.GetCurrentProcess().Kill(); }) { IsBackground = true }.Start();
+        // A wall-clock limit as well: a hung run quits itself, even with the game's clock stopped.
+        var watchdog = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromSeconds(TimeoutSeconds + 300));
+            Console.Error.WriteLine($"screenshot '{_view}' took over {(TimeoutSeconds + 300) / 60:0} minutes of wall-clock time: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true };
+        watchdog.Start();
         ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
+        ProcessMode = ProcessModeEnum.Always; // a view runs on while the escape menu stops the world
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
         if (_args.TryGetValue("out", out string o)) _out = o;
+        if (_args.GetValueOrDefault("rounded", "1") == "0") PoiGenerator.Gen.Underground.Rounded = false; // the old look, for a shot against it
         if (_args.TryGetValue("view", out string v)) _view = v;
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
+        // A shot waits for drawn frames, and a headless run draws none: it would sit there until the watchdog.
+        if (DisplayServer.GetName() == "headless")
+        {
+            GD.PrintErr($"screenshot '{_view}': a headless run draws no frames to save; run it in a window (no --headless)");
+            Quit(1);
+            return;
+        }
+        if (_view == "city" || _view == "facades" && _args.ContainsKey("city")) PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
+        if (_view == "craters" && _args.GetValueOrDefault("pick", "gz") == "gz") { PlanetSurface.Infra.CityPlan.Force = true; PoiGenerator.Gen.StrikePlan.Force = "capital"; } // a city for the war to hit, and its first strike on it
+        if (_view == "corescan") CoreScanStage.ForceCoreFamily(); // a place that keeps a core, near the start
+        if (_view == "hulk") HulkTest.Force(_args.TryGetValue("variant", out string hv) ? int.Parse(hv) : null); // a crashed freighter down near the start
+        if (_view == "zfight") { PlanetSurface.Infra.CityPlan.Force = true; HulkTest.Force(); } // a city and a hulk among the stops
+        if (_view == "placesurf")
+        {
+            // The place surfaces proof: a city to frame, and an alien place set down near the start.
+            PlanetSurface.Infra.CityPlan.Force = true;
+            PlanetSurface.Poi.PoiSiting.ForceFamily = _args.GetValueOrDefault("force", "alien_cathedral");
+        }
+        // A place of a family near the landing, and who is in it (--force-family or --force, --force-occupant=Keepers).
+        if (_args.TryGetValue("force-family", out string ff) || _args.TryGetValue("force", out ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
+        if (_args.TryGetValue("force-occupant", out string fo) && Enum.TryParse(fo, true, out PoiGenerator.Gen.Occupant who))
+        {
+            PlanetSurface.Poi.PoiSiting.ForceOccupancy = new PoiGenerator.Gen.OccupancyRoll(who);
+            PlanetSurface.Poi.PoiSiting.ForceState = PoiGenerator.Gen.PoiState.Abandoned;
+        }
+        // The forced place in a state of its own (--force-state=active: still powered, its lamps lit).
+        if (_args.TryGetValue("force-state", out string fs) && Enum.TryParse(fs, true, out PoiGenerator.Gen.PoiState forcedState)) PlanetSurface.Poi.PoiSiting.ForceState = forcedState;
+        string[] cmd = OS.GetCmdlineUserArgs();
+        WorldChoice world = WorldChoice.FromArgs(cmd, WorldChoice.Tested);
+        if (Array.IndexOf(cmd, "--ringed=1") >= 0) world = Rolled(cmd, w => w.Spec().Has(Planets.Gen.Modifier.RingedSky), "rings");
+        // The same world under another star (--force-star=Orange), as planet-surface's shots take it.
+        if (_args.TryGetValue("force-star", out string forced)) PlanetSurface.Skies.SkySystem.ForceStar = Enum.Parse<PlanetSurface.Skies.StarClass>(forced, true);
+        if (_args.TryGetValue("star", out string star))
+            world = Rolled(cmd, w => PlanetSurface.Skies.SkySystem.For(w.Spec()).Star.ToString().Equals(star, StringComparison.OrdinalIgnoreCase), $"a {star} star");
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };
         _script = _staging.Run(_view).GetEnumerator();
@@ -53,7 +107,17 @@ public partial class Screenshot : Node
 
     public override void _PhysicsProcess(double delta)
     {
-        if (_capturing) return;
+        if (_quitting || _script == null) return;
+        if (_capturing)
+        {
+            // The game clock's limit is not counted while a shot waits on the window: this one is.
+            if (Time.GetTicksMsec() - _captureSince > DrawSeconds * 1000)
+            {
+                GD.PrintErr($"screenshot '{_view}': the window drew no frame in {DrawSeconds:0} s, so the shot could not be taken");
+                Quit(1);
+            }
+            return;
+        }
         if (_pending != null)
         {
             Middle(_pending);
@@ -62,7 +126,7 @@ public partial class Screenshot : Node
         if ((_elapsed += delta) > TimeoutSeconds)
         {
             GD.PrintErr($"screenshot '{_view}' timed out");
-            Wildlife.Shutdown.Quit(this, 1);
+            Quit(1);
             return;
         }
         bool more;
@@ -70,16 +134,30 @@ public partial class Screenshot : Node
         catch (Exception e)
         {
             GD.PrintErr($"screenshot '{_view}' failed: {e}");
-            Wildlife.Shutdown.Quit(this, 1);
+            Quit(1);
             return;
         }
         if (!more) Capture();
     }
 
+    void Quit(int code)
+    {
+        _quitting = true;
+        Wildlife.Shutdown.Quit(this, code);
+    }
+
+    /// <summary>A shot starts: a minimised window draws nothing, so it is brought back first.</summary>
+    void BeginShot()
+    {
+        _capturing = true;
+        _captureSince = Time.GetTicksMsec();
+        if (DisplayServer.WindowGetMode() == DisplayServer.WindowMode.Minimized) DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+    }
+
     /// <summary>A shot part way through a view: saved, and the view goes on.</summary>
     async void Middle(string file)
     {
-        _capturing = true;
+        BeginShot();
         _pending = null;
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -91,13 +169,13 @@ public partial class Screenshot : Node
 
     async void Capture()
     {
-        _capturing = true;
+        BeginShot();
         // Two drawn frames, so the last placement and every screen redraw are in the image.
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         Image image = GetViewport().GetTexture().GetImage();
         Error err = image.SavePng(_out);
         GD.Print(err == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {err}");
-        Wildlife.Shutdown.Quit(this, err == Error.Ok ? 0 : 1);
+        Quit(err == Error.Ok && _staging.Faults == 0 ? 0 : 1);
     }
 }

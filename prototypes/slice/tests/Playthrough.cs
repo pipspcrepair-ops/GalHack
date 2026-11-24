@@ -27,12 +27,16 @@ public sealed class Playthrough
 {
     public readonly Game.Game Game;
     public readonly Driver Drive;
-    public Action<string> Log = s => GD.Print("  " + s);
+    public Action<string> Log;
+
+    /// <summary>The last line logged (a watchdog says where a run stopped).</summary>
+    public volatile string LastLog;
 
     public Playthrough(Game.Game game)
     {
         Game = game;
         Drive = new Driver(game);
+        Log = s => { LastLog = s; GD.Print("  " + s); };
     }
 
     Controls Controls => Game.Controls;
@@ -85,20 +89,20 @@ public sealed class Playthrough
         }
     }
 
-    /// <summary>The first thing anyone does: Tab, the suit fabricator's free survival tool, dragged onto toolbar slot 1 and in hand.</summary>
+    /// <summary>The first thing anyone does: Tab, the suit fabricator's free Sleeper tool, dragged onto toolbar slot 1 and in hand.</summary>
     public IEnumerable<int> MakeTool()
     {
         foreach (int x in OpenMenu(MenuTab.You)) yield return x;
-        foreach (int x in Order("fab", "survival-tool", 1)) yield return x;
-        foreach (int x in WaitFor(() => Pack["survival-tool"] > 0, 15)) yield return x;
-        foreach (int x in ToToolbar("survival-tool", 0)) yield return x;
+        foreach (int x in Order("fab", "sleeper-tool", 1)) yield return x;
+        foreach (int x in WaitFor(() => Pack["sleeper-tool"] > 0, 15)) yield return x;
+        foreach (int x in ToToolbar("sleeper-tool", 0)) yield return x;
         foreach (int x in CloseMenu()) yield return x;
         foreach (int x in Select(0)) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
     }
 
     /// <summary>
-    /// The start, as a player plays it: wake empty-handed in the cryopod, make the survival tool
+    /// The start, as a player plays it: wake empty-handed in the cryopod, make the Sleeper tool
     /// (free, Tab, YOU), F opens the pod, step out, E on the locker and TAKE ALL, (a shot at the
     /// wall, which wears it, and the tool on the floor,) up the stairwell to the surface, 50 m away, back
     /// down into the bunker, and out again.
@@ -112,12 +116,12 @@ public sealed class Playthrough
             $"{label}wakes in the cryopod, its lid shut, {under:F1} m under the ground");
         check(Pack.Storage.IsEmpty && Pack.Hand == HandKind.Empty && Game.ToolHint != null, $"{label}empty-handed, the visor saying: {Game.ToolHint}");
         foreach (int x in MakeTool()) yield return x;
-        check(Pack.Grid[0].Item == "survival-tool" && Pack.Hand == HandKind.Tool && Game.ToolHint == null, $"{label}Tab: the suit fabricator makes the survival tool, free; dragged to the toolbar, it is in hand and the hint is gone");
+        check(Pack.Grid[0].Item == "sleeper-tool" && Pack.Hand == HandKind.Tool && Game.ToolHint == null, $"{label}Tab: the suit fabricator makes the Sleeper tool, free; dragged to the toolbar, it is in hand and the hint is gone");
         foreach (int x in Drive.Tap(Key.F)) yield return x;
         foreach (int x in Drive.Wait(40)) yield return x;
         check(b.Mine.Open, $"{label}F opens the cryopod");
         foreach (int x in Drive.WalkTo(b.CryoFront, 0.3f, 10f)) yield return x;
-        check(Game.Survivor.WorldFeet.DistanceTo(b.CryoStand) > 0.7f && Game.Survivor.Body.OnFloor, $"{label}and the castaway steps out into the chamber");
+        check(Game.Survivor.WorldFeet.DistanceTo(b.CryoStand) > 0.7f && Game.Survivor.Body.OnFloor, $"{label}and the sleeper steps out into the chamber");
 
         foreach (int x in Drive.WalkTo(b.LockerFront, 0.4f, 15f)) yield return x;
         foreach (int x in Drive.LookAt(b.Locker, 8)) yield return x;
@@ -132,18 +136,20 @@ public sealed class Playthrough
 
         if (shoot)
         {
-            int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.Bolts, impacts = Game.Shots.Impacts;
-            float health = b.Ruin.Structure.Blocks().Sum(x => x.block.Hp);
+            // The bunker is the sleeper's: a blast at its wall takes the block it meets back to the bag, whole.
+            int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.LightningBolts, whole = Game.Tool.TakenWhole;
             Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.75f)); // past the lockers on the side wall
+            var bag = Pack.Storage.Contents.ToDictionary(kv => kv.Key, kv => kv.Value);
             foreach (int x in ShootAt(() => wall)) yield return x;
             foreach (int x in Drive.Wait(20)) yield return x;
-            check(Game.Shots.Bolts > bolts && Game.Shots.Impacts > impacts && Game.Shots.LastImpact.Kind == Slice.Player.ImpactKind.Block
-                  && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Structure.Blocks().Sum(x => x.block.Hp) < health,
-                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim ({Game.Shots.LastImpact.Kind}), and the block it hit loses hit points ({health - b.Ruin.Structure.Blocks().Sum(x => x.block.Hp):F0} lost, {b.Ruin.Hits.HitsTaken} hits taken, {blocks - b.Ruin.Structure.Count} blocks gone)");
-            int removed = Game.Zone.Planet.Terrain.Store.RemovedCount;
+            var back = Pack.Storage.Contents.Where(kv => kv.Value > bag.GetValueOrDefault(kv.Key)).Select(kv => kv.Key).ToList();
+            check(Game.Shots.LightningBolts > bolts && Game.Tool.TakenWhole == whole + 1 && b.Ruin.Structure.Count < blocks && back.Count == 1,
+                $"{label}a blast inside the bunker: lightning at its wall, and the block it met back in the bag whole ({string.Join(", ", back)}; {blocks - b.Ruin.Structure.Count} blocks gone)");
+            foreach (string id in back) Pack.Remove(id, Pack[id] - bag.GetValueOrDefault(id)); // (what follows counts the kit and what's crafted alone)
+            // On the floor the tool is on the bunker's block, not the ground under it (a blast would take the block, as at the wall).
             foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
-            foreach (int x in Drive.HoldPrimary(b.At(new Vector3(0f, 0.25f, -1.5f)), 30)) yield return x;
-            check(Game.Zone.Planet.Terrain.Store.RemovedCount == removed && Game.Tool.OnBlock, $"{label}the tool inside digs nothing through its floor");
+            foreach (int x in Drive.LookAt(b.At(new Vector3(0f, 0.25f, -1.5f)), 8)) yield return x;
+            check(Game.Tool.OnBlock && Game.Tool.OnStructure, $"{label}the tool inside is on its floor's block, not the ground under it ({Game.Tool.TargetLabel})");
         }
 
         double start = Game.Stats.Seconds;
@@ -374,6 +380,20 @@ public sealed class Playthrough
         return -1;
     }
 
+    /// <summary>SETUP SHORTCUT (printed): generator fuel put straight into a structure's storage, enough for a long flight.</summary>
+    public static void Fuel(Vessel v, int cells = 100)
+    {
+        int n = v.Storage.Add("energy-cell", cells);
+        GD.Print($"  (setup: {n} energy cells into the {v.Name}'s storage for its generator)");
+    }
+
+    /// <summary>A stack from the bag into a structure's core storage, as a double-click on it does with that storage open (fuel for its generators).</summary>
+    public int StoreInto(Vessel v, string itemId)
+    {
+        int slot = BagSlotOf(itemId);
+        return slot < 0 ? 0 : ItemGrid.QuickMove(Pack.Grid, slot, v.StorageGrid);
+    }
+
     /// <summary>Drags an item from the bag onto a toolbar slot (YOU tab).</summary>
     public IEnumerable<int> ToToolbar(string itemId, int slot)
     {
@@ -383,13 +403,16 @@ public sealed class Playthrough
         foreach (int x in Drive.DragWidget($"bag:{from}", $"bar:{slot}")) yield return x;
     }
 
-    /// <summary>The block family item of a block on a grid.</summary>
-    public string BlockItem(string blockId, bool small) => Game.Zone.Data.Items.BlockItem(blockId, small).Id;
+    /// <summary>The block a block id (any it has had) is carried and priced as: a door family's head.</summary>
+    public string BlockOf(string blockId) => GalHack.Items.Bridge.BuildingBridge.ItemBlockOf(Game.Zone.Data.Catalogue.Type(blockId));
+
+    /// <summary>The item of a block, by any id it has had.</summary>
+    public string BlockItem(string blockId) => Game.Zone.Data.Items.BlockItem(BlockOf(blockId)).Id;
 
     /// <summary>Drags a stack of a block's item from the bag onto a toolbar slot (blocks are items, carried in stacks).</summary>
-    public IEnumerable<int> BlockToToolbar(string blockId, bool small, int slot)
+    public IEnumerable<int> BlockToToolbar(string blockId, int slot)
     {
-        string item = BlockItem(blockId, small);
+        string item = BlockItem(blockId);
         if (Game.Mode != GalHack.Items.GameMode.Creative)
         {
             foreach (int x in ToToolbar(item, slot)) yield return x;
@@ -469,19 +492,27 @@ public sealed class Playthrough
         foreach (int x in Drive.Wait(1)) yield return x;
     }
 
-    /// <summary>The survival tool in hand, in a mode (Q switches).</summary>
+    /// <summary>The Sleeper tool in hand, in a mode (Q switches).</summary>
     public IEnumerable<int> Tool(Slice.Player.ToolMode mode)
     {
-        int slot = Enumerable.Range(0, PlayerInventory.ToolbarSlots).First(i => Pack.Grid[i].Item == "survival-tool");
+        int slot = Enumerable.Range(0, PlayerInventory.ToolbarSlots).First(i => Pack.Grid[i].Item == "sleeper-tool");
         foreach (int x in Select(slot)) yield return x;
         for (int i = 0; i < 3 && Game.Tool.Mode != mode; i++) foreach (int x in Drive.Tap(Key.Q)) yield return x;
         foreach (int x in Drive.Wait(1)) yield return x;
     }
 
-    /// <summary>Fires the tool at a point: look, click, let the bolt fly.</summary>
+    /// <summary>The plating gun in hand (made free in the suit fabricator if there's none): onto a toolbar slot and selected.</summary>
+    public IEnumerable<int> PlatingGun()
+    {
+        if (!Pack.Has(PlayerInventory.PlatingGun)) Pack.Add(PlayerInventory.PlatingGun, 1);
+        foreach (int x in CoreScanStage.Hold(this, PlayerInventory.PlatingGun, _ => { })) yield return x;
+        foreach (int x in Drive.Wait(1)) yield return x;
+    }
+
+    /// <summary>Fires the tool at a point: look, click, let the blast go.</summary>
     public IEnumerable<int> ShootAt(Func<Vector3> at, int shots = 1)
     {
-        foreach (int x in Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+        foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
         for (int s = 0; s < shots; s++)
         {
             foreach (int x in Drive.LookAt(at(), 4)) yield return x;
@@ -510,16 +541,29 @@ public sealed class Playthrough
             if (d.Kind != kind) continue;
             zone.Planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
-            // Dry, and near enough the surface for the survival tool (it can't cut deep rock).
-            if ((!retry && _triedDeposits.Contains(((int)at.X, (int)at.Z))) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
+            // Dry, and near enough the surface for the Sleeper tool (it can't cut deep rock): what the scanner shows.
+            if ((!retry && _triedDeposits.Contains(((int)at.X, (int)at.Z))) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > Slice.Surface.DepositFinder.MaxDepth) continue;
             if (retry && NearestOre(at, at, kind) == null) continue; // dug out
             // Not in or beside a place (its rooms are dug into the ground under it).
-            if (zone.Planet.Pois.Any(poi => new Vector2(poi.Origin.X - at.X, poi.Origin.Z - at.Z).Length() < 60f)) continue;
+            // A big place (a crashed capital ship) reaches far from its origin cell: clear of its whole footprint too.
+            if (zone.Planet.Pois.Any(poi => new Vector2(poi.Origin.X - at.X, poi.Origin.Z - at.Z).Length() < 60f || OffFootprint(poi, at) < 25f)) continue;
+            // Dry: not under a lake or a river either (the sea is below 0.5 m).
+            if (zone.Water.LiquidAt(at.X, at.Z, out _)) continue;
             if (Game.Bunker != null && Game.Bunker.WayOut.Append(Game.Bunker.RoomCentre).Any(w => w.DistanceTo(at) < 10f)) continue; // dug through by the bunker
             float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
             if (dist < bestD) { bestD = dist; best = at; }
         }
         return best;
+    }
+
+    /// <summary>How far a point lies outside a place's footprint, across the ground (0 inside it).</summary>
+    float OffFootprint(PlanetSurface.Poi.PoiSite poi, Vector3 at)
+    {
+        var box = poi.Footprint;
+        Vector3 mid = Game.Zone.Planet.NearestCopy(new Vector3((box.Min.X + box.Max.X) * 0.5f, 0f, (box.Min.Z + box.Max.Z) * 0.5f), at);
+        float dx = MathF.Max(0f, MathF.Abs(at.X - mid.X) - (box.Max.X - box.Min.X) * 0.5f);
+        float dz = MathF.Max(0f, MathF.Abs(at.Z - mid.Z) - (box.Max.Z - box.Min.Z) * 0.5f);
+        return MathF.Sqrt(dx * dx + dz * dz);
     }
 
     /// <summary>Digs ore of a kind out of the nearest deposits until the bag holds enough.</summary>
@@ -529,22 +573,42 @@ public sealed class Playthrough
         foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
         for (int deposit = 0; deposit < 8 && Pack[ore.Id] < enough; deposit++)
         {
+            if (Game.Suit.Dead)
+            {
+                Log($"(dead while gathering {kind}: {Game.Suit.Sim.Player.DeathCause} at {Game.Survivor.WorldFeet})");
+                yield break;
+            }
             if (NextDeposit(kind, within, retry) is not Vector3 at)
             {
-                Log($"no more {kind} deposits within 700 m");
+                Log($"no more {kind} deposits within {within:F0} m");
                 yield break;
             }
             _triedDeposits.Add(((int)at.X, (int)at.Z));
-            foreach (int x in Drive.WalkTo(at, 3.5f, 90f)) yield return x;
+            // The uncommon ores lie a kilometre apart and more: as long as a walk there takes.
+            float far = new Vector2(at.X - Game.Survivor.WorldFeet.X, at.Z - Game.Survivor.WorldFeet.Z).Length();
+            foreach (int x in Drive.WalkTo(at, 3.5f, MathF.Max(90f, 30f + far / 3f))) yield return x;
             int idle = 0, got0 = Pack[ore.Id];
+            bool surfaced = false;
+            Vector3 reached = Game.Survivor.WorldFeet;
+            float under = Drive.Below();
             var store = Game.Zone.Planet.Terrain.Store;
-            for (int pulse = 0; pulse < 240 && idle < 12 && Pack[ore.Id] < enough; pulse++)
+            for (int pulse = 0; pulse < 240 && idle < 12 && Pack[ore.Id] < enough && !Game.Suit.Dead; pulse++)
             {
                 Vector3 eye = Game.Survivor.WorldEye();
                 Vector3? target = NearestOre(at, eye, kind);
                 if (target is not Vector3 t) break;
                 // Digging down through soil and rock to a buried bed is progress too.
                 int before = Pack[ore.Id] + store.RemovedCount;
+                // Ore overhead out of reach from under the ground (come at from a cave under it): up onto the surface over it,
+                // to dig down to it from there, once; still under it after that, on to the next deposit.
+                if (t.Y - eye.Y > 2f && eye.DistanceTo(t) > Game.Zone.Data.Rules.Tool.Reach - 1f && new Vector2(t.X - eye.X, t.Z - eye.Z).Length() <= 4f && Drive.Below() > 2.5f)
+                {
+                    if (surfaced) break;
+                    surfaced = true;
+                    foreach (int x in Drive.Surface(t)) yield return x;
+                    Log($"(ore {t.Y - eye.Y:F0} m over the eye from under the ground: up to {Game.Survivor.WorldFeet}, {Drive.Below():F1} m under)");
+                    continue;
+                }
                 // Walk over a deposit; one buried under the feet is dug down to, a ball at a time.
                 if (new Vector2(t.X - eye.X, t.Z - eye.Z).Length() > 4f && eye.DistanceTo(t) > 6.5f)
                     foreach (int x in Drive.WalkTo(t, 1.2f, 5f)) yield return x;
@@ -555,9 +619,9 @@ public sealed class Playthrough
                 }
                 idle = Pack[ore.Id] + store.RemovedCount > before ? 0 : idle + 1;
                 if (idle == 3)
-                    Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead}, menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
+                    Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead} ({Game.Suit.Sim.Player.DeathCause}), menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
             }
-            Log($"({kind} deposit {deposit + 1}: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
+            Log($"({kind} deposit {deposit + 1} at {at}, ground {Game.Zone.GroundAt(at.X, at.Z).Y:F1}; walked to {reached}, {under:F1} m under: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
         }
     }
     /// <summary>The nearest cell of a kind of ore still in the ground round a deposit's centre.</summary>
@@ -578,6 +642,17 @@ public sealed class Playthrough
             if (d < bestD) { bestD = d; best = p; }
         }
         return best;
+    }
+
+    /// <summary>
+    /// Whether this world has no life: an airless one (<see cref="Planets.Gen.PlanetSpec.Airless"/>, the rule its flora and
+    /// creatures read) grows no plants and keeps no creatures. If so, prints that a check of <paramref name="what"/> is skipped.
+    /// </summary>
+    public bool Lifeless(string what)
+    {
+        if (!Game.Zone.Planet.Spec.Airless) return false;
+        GD.Print($"SKIP  {what}: an airless world grows no plants and keeps no creatures");
+        return true;
     }
 
     /// <summary>Walks to the nearest plant and cuts it.</summary>
@@ -633,7 +708,7 @@ public sealed class Playthrough
 
     /// <summary>
     /// Places the block on a toolbar slot against one face of a structure's block, by looking at
-    /// that face and clicking, from where the castaway stands. True if a block went down there.
+    /// that face and clicking, from where the sleeper stands. True if a block went down there.
     /// </summary>
     public IEnumerable<int> PlaceBlock(int slot, Vessel v, Int3 on, Dir face, Action<bool> placed = null)
     {
@@ -643,10 +718,15 @@ public sealed class Playthrough
         N.Vector3 centre = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
         int before = v.Structure.Count;
         // Standing where the block would go: step back out of it, as a player would.
-        if (face.Vec().Y == 0 && InCell(v, target))
+        if (InCell(v, target))
         {
-            Log($"(stepping out of {target} on {v.Name}: feet {v.Body.ToLocal(Game.Survivor.Body.WorldPosition)} in its frame)");
-            foreach (int x in Drive.WalkTo(v.ToWorld(centre + face.Vec().ToVector3() * (cell * 1.5f + 2f)), 0.6f, 8f)) yield return x;
+            // Out along the face for a side, aside across the ground for one above or under the block (a leg).
+            N.Vector3 feetHere = v.Body.ToLocal(Game.Survivor.Body.WorldPosition);
+            N.Vector3 aside = new(feetHere.X - centre.X, 0f, feetHere.Z - centre.Z);
+            aside = aside.LengthSquared() > 1e-4f ? N.Vector3.Normalize(aside) : N.Vector3.UnitX;
+            N.Vector3 outward = face.Vec().Y == 0 ? face.Vec().ToVector3() : aside;
+            Log($"(stepping out of {target} on {v.Name}: feet {feetHere} in its frame)");
+            foreach (int x in Drive.WalkTo(v.ToWorld(centre + outward * (cell * 1.5f + 2f)), 0.6f, 8f)) yield return x;
         }
         // Where the ground stands against the face, aim at what shows of it, as a player would.
         var aims = new List<N.Vector3> { centre };
@@ -710,28 +790,36 @@ public sealed class Playthrough
     }
 
     /// <summary>
-    /// The small vessel the real-player test and the screenshots build on a core: a deck of a
-    /// generator, struts and a gyro round the core, a main engine at the back, a seat on top
-    /// (reached with a hop on the jetpack), and under the outer blocks two lift jets, a fuel tank
-    /// and three legs, all reachable from outside the vessel's footprint. Each
-    /// block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom, a
-    /// thruster not by its nozzle, a leg by its top).
+    /// The small vessel the real-player test and the screenshots build on a core set down on the
+    /// ground: a column up from the core to a deck above head height, a generator, struts and a
+    /// gyro round it, a main engine at the back, the seat and a container for its fuel on top (reached
+    /// with a hop on the jetpack), and under the deck two lift jets and three legs, looked up at from
+    /// beside. Each block goes on a face its mounting allows (a seat by its base, a thruster not by its
+    /// nozzle, a leg by its top).
     /// </summary>
-    public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout =
+    public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout = DeckLayout();
+
+    static (string block, Int3 on, Dir face, Dir? push)[] DeckLayout()
     {
-        // The deck round the core, from its sides.
-        ("generator", Int3.Zero, Dir.PosX, null), ("steel", Int3.Zero, Dir.NegX, null), ("steel", Int3.Zero, Dir.NegZ, null),
-        ("steel", new Int3(0, 0, -1), Dir.NegZ, null), ("gyro", Int3.Zero, Dir.PosZ, null), ("thruster", new Int3(0, 0, 1), Dir.PosZ, Dir.NegZ),
-        ("steel", new Int3(0, 0, 1), Dir.PosX, null), ("steel", new Int3(0, 0, 1), Dir.NegX, null),
-        // A retro at the nose, to brake.
-        ("thruster", new Int3(0, 0, -2), Dir.NegZ, Dir.PosZ),
-        // On top, from hops: the seat, and a jet pushing down, to come down under control.
-        ("chair", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
-        // Under the outer blocks, from outside: lift jets, the fuel tank, three legs.
-        ("thruster", new Int3(1, 0, 0), Dir.NegY, Dir.PosY), ("thruster", new Int3(-1, 0, 0), Dir.NegY, Dir.PosY),
-        ("fueltank", new Int3(-1, 0, 1), Dir.NegY, null), ("gear", new Int3(1, 0, 1), Dir.NegY, null),
-        ("gear", new Int3(0, 0, -2), Dir.NegY, null), ("gear", new Int3(-1, -1, 1), Dir.NegY, null),
-    };
+        Int3 deck = new(0, 2, 0);
+        Int3 at(int x, int z) => deck + new Int3(x, 0, z);
+        return new (string, Int3, Dir, Dir?)[]
+        {
+            // The column, from hops: the deck's underside clears the sleeper's eyes, so legs can go under it.
+            ("steel", Int3.Zero, Dir.PosY, null), ("steel", new Int3(0, 1, 0), Dir.PosY, null),
+            // The deck round the column's top, from its sides.
+            ("generator", deck, Dir.PosX, null), ("steel", deck, Dir.NegX, null), ("steel", deck, Dir.NegZ, null),
+            ("steel", at(0, -1), Dir.NegZ, null), ("gyro", deck, Dir.PosZ, null), ("thruster", at(0, 1), Dir.PosZ, Dir.NegZ),
+            ("steel", at(0, 1), Dir.PosX, null), ("steel", at(0, 1), Dir.NegX, null),
+            // A retro at the nose, to brake.
+            ("thruster", at(0, -2), Dir.NegZ, Dir.PosZ),
+            // On top, from hops: the seat, a container (its core storage, for its fuel), and a jet pushing down, to come down under control.
+            ("chair", deck, Dir.PosY, null), ("container", at(-1, 1), Dir.PosY, null), ("thruster", at(1, 0), Dir.PosY, Dir.NegY),
+            // Under the deck, from beside: lift jets and three legs.
+            ("thruster", at(1, 0), Dir.NegY, Dir.PosY), ("thruster", at(-1, 0), Dir.NegY, Dir.PosY),
+            ("gear", at(1, 1), Dir.NegY, null), ("gear", at(0, -2), Dir.NegY, null), ("gear", at(-1, 1), Dir.NegY, null),
+        };
+    }
 
     /// <summary>Builds <see cref="VesselLayout"/> on a vessel's core, from toolbar slots by block, walking round it to see each face. Counts what went down.</summary>
     public IEnumerable<int> BuildVessel(Vessel v, IReadOnlyDictionary<string, int> slots, Action<int> placed)
@@ -752,7 +840,8 @@ public sealed class Playthrough
             bool done = false;
             // Where to stand: tried nearer and further until the crosshair is on that very face,
             // as a player shuffles until the ghost sits where they want it.
-            float[] distances = face == Dir.NegY ? new[] { 0.1f, 0.75f, 1.1f } : face == Dir.PosY ? new[] { 1.6f, 1.2f, 2.2f } : new[] { 2.4f, 1.8f, 3.2f };
+            // Under the deck, further out last: a block spanning two cells (a landing pad) hangs where you'd stand.
+            float[] distances = face == Dir.NegY ? new[] { 0.1f, 0.75f, 1.1f, 1.7f, 2.3f } : face == Dir.PosY ? new[] { 1.6f, 1.2f, 2.2f } : new[] { 2.4f, 1.8f, 3.2f };
             foreach (float d in distances)
             {
                 if (done) break;
@@ -838,7 +927,7 @@ public sealed class Playthrough
         foreach (int x in Drive.WalkTo(stand, 0.8f, 40f)) yield return x;
     }
 
-/// <summary>A flat, dry spot about this far from a point, clear of structures and devices (for a base or a vessel). Flatter first, then less flat.</summary>
+    /// <summary>A flat, dry spot about this far from a point, clear of structures and devices and not down in a hollow (for a base or a vessel). Flatter first, then less flat.</summary>
     public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f, float within = float.MaxValue, float span = 5f)
     {
         SurfaceZone zone = Game.Zone;
@@ -847,13 +936,16 @@ public sealed class Playthrough
             {
                 float a = startAngle + i * 0.61f, r = distance + (i / 16) * 6f;
                 var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
-                float h0 = zone.GroundAt(p.X, p.Z).Y, worst = 0f;
+                float h0 = zone.GroundAt(p.X, p.Z).Y, worst = 0f, rise = 0f;
                 for (int k = 0; k < 8; k++)
                 {
                     float b = k * MathF.Tau / 8f;
                     for (float r2 = span; r2 >= 5f; r2 /= 2f)
                         worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * r2, p.Z + MathF.Sin(b) * r2).Y - h0));
+                    // Not the floor of a hollow (a crater's): ground rising round it past its span would bury what is built at its edge.
+                    rise = MathF.Max(rise, zone.GroundAt(p.X + MathF.Cos(b) * span * 1.6f, p.Z + MathF.Sin(b) * span * 1.6f).Y - h0);
                 }
+                worst = MathF.Max(worst, rise - 1f);
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
                              && (Game.Bunker == null || !Game.Bunker.Over(g, 8f)) && !RuinAt(g, span);
@@ -862,8 +954,50 @@ public sealed class Playthrough
         return zone.GroundAt(near.X + distance, near.Z);
     }
 
+    /// <summary>
+    /// Creative's PLACE for a whole blueprint, from the edge of level ground big enough for it and facing across it (PLACE
+    /// searches ahead of the sleeper): up to five flat spots out from where the sleeper stands, each farther, rougher and
+    /// turned on from the last. Reports the vessel, its shapes made, or null and the last refusal.
+    /// </summary>
+    public IEnumerable<int> PlaceWhole(GalHack.Structures.Structure plan, Action<Vessel, string> placed)
+    {
+        var (lo, hi) = plan.Bounds();
+        float radius = 0.5f * new Vector2(hi.X - lo.X + 1, hi.Z - lo.Z + 1).Length();
+        Vessel v = null;
+        string why = null;
+        for (int attempt = 0; attempt < 5 && v == null; attempt++)
+        {
+            Vector3 spot = FlatSpot(Game.Survivor.WorldFeet, 60f + 40f * attempt, attempt * 1.3f, 0.5f + attempt * 0.5f, span: MathF.Max(14f, radius));
+            Vector3 stand = spot - Vector3.Forward * (radius + 4f);
+            Game.Survivor.PlaceOutside((Game.Zone.GroundAt(stand.X, stand.Z) + Vector3.Up * 0.2f).ToNumerics());
+            foreach (int x in Drive.UntilSettled(20)) yield return x;
+            Game.Survivor.Yaw = 0f;
+            Game.Survivor.Pitch = 0f;
+            foreach (int x in Drive.Wait(30)) yield return x;
+            Slice.Construction.WholePlacement job = Game.Builder.PlaceWhole(plan);
+            for (int t = 0; t < 600 && !job.Done; t++) yield return 0;
+            v = job.Vessel;
+            why = job.Why ?? (job.Done ? why : "still placing after 10 s");
+            for (int t = 0; t < 300 && v != null && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
+        }
+        placed(v, why);
+    }
+
+    /// <summary>Takes a test's vessel out of the world, as one whose last block is gone goes: nothing it leaves falls on what comes next.</summary>
+    /// <summary>
+    /// A clearing: every tree and boulder rooted within this reach of a point is felled for good. Vessels collide with trunks
+    /// and crowns, so a craft tested among them is held by them. Returns how many went.
+    /// </summary>
+    public static int Clearing(SurfaceZone zone, Vector3 at, float reach)
+    {
+        int n = 0;
+        foreach (var (solid, offset) in zone.Streamer.SolidsNear(at, reach, canopies: true).ToList())
+            if (zone.Fell(solid.Id, solid.Center + offset)) n++;
+        return n;
+    }
+
     /// <summary>A ruin, a road's works or a building within a span of this point: they stand on the flat ground, and the ground's height doesn't show them.</summary>
-    bool RuinAt(Vector3 ground, float span)
+    public bool RuinAt(Vector3 ground, float span)
     {
         var query = new PhysicsShapeQueryParameters3D
         {

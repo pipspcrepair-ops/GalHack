@@ -169,7 +169,7 @@ public static class DecoOreTells
         // Emit: rock, then veins that wrap its surface, then glints, cracks, crust and plants.
         var mesh = new DecoMeshData();
         float veinGlow = Math.Clamp(glow, 0, 1);
-        DecoRgb veinCol = ore.Lerp(stone, 0.6f);
+        DecoRgb veinCol = ore; // the ore's own colour on every world, never the rock's (owner, 23 Nov)
         foreach (DecoPart p in b.Model.Parts.Where(p => !crust.Contains(p)))
             DecoEmit.Part(mesh, p, (at, n, _) => (crust.Contains(p) ? tinted : stone).Scale(0.82f + 0.3f * DecoHash.At(at, seed) + (n.Y > 0.6f ? 0.08f : 0)).Lerp(ore, 0.03f), _ => DecoSurface.Matte, v => v.Y < 0 ? v with { Y = 0 } : v);
         var tris = mesh.AllTriangles().ToList();

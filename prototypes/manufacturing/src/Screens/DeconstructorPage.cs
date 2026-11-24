@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
+using GalHack.Items.Bridge;
 using GalHack.Items.Production;
 using Godot;
 using Manufacturing.Game;
@@ -169,7 +170,7 @@ public partial class DeconstructorPage : MachinePage
         var bill = new Bill();
         if (_w.Wreck == null) return bill;
         foreach (var (_, b) in _w.Wreck.Blocks())
-            if (_w.Items.Blocks.TryGet(_w.Wreck.TypeOf(b).Id, out BlockBill bb)) bill.Add(bb.For(_w.Wreck.Grid.Size == GalHack.Structures.GridSize.Small));
+            if (BuildingBridge.Priced(_w.Items, _w.Wreck, b)) bill.Add(BuildingBridge.BillOf(_w.Items, _w.Wreck, b));
         return bill;
     }
 }

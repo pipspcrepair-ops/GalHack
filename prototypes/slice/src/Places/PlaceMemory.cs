@@ -9,7 +9,7 @@ namespace Slice.Places;
 
 /// <summary>
 /// Everything a place remembers for the whole game, whether or not it stands near you right now:
-/// its caches (their contents), the keycards taken, which doors are open, the walls broken and the
+/// its caches (their contents), which doors are open, the walls broken and the
 /// blocks and pieces salvaged, its creatures and its people. The place's own block grid
 /// (<see cref="PoiInstance.Blocks"/>) carries every block change, so a place built again later is
 /// built as it was left. Nothing here is a scene of its own: a place stands in the surface world
@@ -28,7 +28,6 @@ public sealed class PlaceMemory
 
     /// <summary>Each cache as a container in the zone (made the first time the place stands).</summary>
     public readonly Dictionary<LootCache, Lootable> Caches = new();
-    public readonly HashSet<KeyCard> KeysTaken = new();
     /// <summary>Doors left open, by doorway index (-1 is the way in).</summary>
     public readonly Dictionary<int, bool> DoorsOpen = new();
     public readonly Dictionary<SecretRoom, float> WallDamage = new();
@@ -38,6 +37,8 @@ public sealed class PlaceMemory
     /// <summary>Deco pieces salvaged, by room (module) and placement index; and damage on the ones being worked.</summary>
     public readonly Dictionary<int, HashSet<int>> DecoTaken = new();
     public readonly Dictionary<(int Room, int Piece), float> DecoDamage = new();
+    /// <summary>Hit points worn off each doorway's door (by doorway index), by the Sleeper tool's blasts.</summary>
+    public readonly Dictionary<int, float> DoorDamage = new();
     /// <summary>Where each lift's car stands (walk height).</summary>
     public float[] LiftY;
 
@@ -51,9 +52,20 @@ public sealed class PlaceMemory
     public bool Entered;
     /// <summary>A settlement's temper now (a peaceful one turns hostile if you shoot in it).</summary>
     public Mood Mood;
+    /// <summary>A settlement's standing with you, -100 to 100: what you've done there moves it, and it sets how they treat you (<see cref="Town"/>).</summary>
+    public float Standing;
 
     /// <summary>Fractions of salvage yields not yet a whole item.</summary>
     public readonly Dictionary<string, double> SalvageCarry = new();
+
+    /// <summary>What in it fills only part of its cell, as it collides (<see cref="PlaceParts"/>): made once, kept as blocks and pieces go.</summary>
+    public Wildlife.PartSet Parts;
+    /// <summary>The same without its doors' leaves: what the people's walking grid is worked out on (they open the doors on their way).</summary>
+    public Wildlife.PartSet Fixed;
+    /// <summary>Its doors as bodies meet them (<see cref="DoorWays"/>).</summary>
+    public List<DoorWay> DoorWays;
+    /// <summary>Who is about in it (local feet, radius, height): its people, its creatures, you. A door never shuts on any of them.</summary>
+    public readonly List<System.Func<IEnumerable<(Godot.Vector3 Feet, float Radius, float Height)>>> Bodies = new();
 
     /// <summary>Its creatures (a sim of their own, kept while you are away) and its people.</summary>
     public PlaceFauna Fauna;
@@ -66,10 +78,16 @@ public sealed class PlaceRoom
     public int Module;
     /// <summary>The room's floor corner (the lowest x and z cell, walk level) in place cells.</summary>
     public Int3 Corner;
+    /// <summary>The floor's height in the corner cell's level: 0 on a bare floor, a plate's top where the room is laid with them.</summary>
+    public float Floor;
     public DecoRoom Room;
     public DecoPlan Plan;
     /// <summary>Placements that block walking (collide), by index; the rest are scenery.</summary>
     public readonly HashSet<int> Solid = new();
-    /// <summary>The cells a blocking piece stands in (for walking routes).</summary>
+    /// <summary>The cells a blocking piece stands in (for walking routes): all of <see cref="Blocking"/>.</summary>
     public readonly HashSet<Int3> Cells = new();
+    /// <summary>Each blocking piece's cells: those it stands in, and those whose middle a person can't reach for it.</summary>
+    public readonly Dictionary<int, HashSet<Int3>> Blocking = new();
+    /// <summary>Its wires' mesh, every cable of its plan, made on the place's worker (null: no cables).</summary>
+    public GalHack.Deco.DecoMeshData Wires;
 }

@@ -7,52 +7,41 @@ using NVector3 = System.Numerics.Vector3;
 namespace GalHack.Deco.Engine;
 
 /// <summary>
-/// The six deco materials. Colour lives in the vertices, so every piece in a place shares them.
-/// Glow is unshaded and pushed past 1 so the environment's glow catches it; a per-instance
-/// <c>energy</c> lets one screen flicker while the others hold. Leaf is double-sided for vines.
+/// The six deco materials. Colour lives in the vertices, so every piece in a place shares them;
+/// what each part is made of rides in the vertices too, and matte and metal draw it (grain, weave,
+/// seams, glaze, brushing, wear: <see cref="DecoShaders"/>). Glow is unshaded and pushed past 1 so
+/// the environment's glow catches it; a per-instance <c>energy</c> lets one screen flicker while
+/// the others hold. Leaf is double-sided for vines.
 /// </summary>
 public sealed class DecoMaterials
 {
     public readonly Material[] BySurface;
 
-    const string GlowShader = @"
-shader_type spatial;
-render_mode unshaded, cull_back;
-instance uniform float energy = 1.0;
-uniform float base_energy = 2.0;
-void fragment() {
-    vec3 c = COLOR.rgb;
-    c = c * c;
-    ALBEDO = c * base_energy * energy;
-}";
-
-    const string FleshShader = @"
-shader_type spatial;
-render_mode cull_back;
-void fragment() {
-    vec3 c = COLOR.rgb * COLOR.rgb;
-    ALBEDO = c;
-    EMISSION = c * 0.35;
-    ROUGHNESS = 0.35;
-    SPECULAR = 0.7;
-}";
+    static Shader _surface, _glow, _glass, _flesh;
 
     static DecoMaterials _shared;
     public static DecoMaterials Shared => _shared ??= new DecoMaterials();
 
     public DecoMaterials(float glowEnergy = 2.0f)
     {
-        var matte = new StandardMaterial3D { VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true, Roughness = 0.9f };
-        var metal = new StandardMaterial3D { VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true, Roughness = 0.5f, Metallic = 0.45f };
-        var glow = new ShaderMaterial { Shader = new Shader { Code = GlowShader } };
-        glow.SetShaderParameter("base_energy", glowEnergy);
-        var glass = new StandardMaterial3D
+        _surface ??= new Shader { Code = DecoShaders.Surface };
+        _glow ??= new Shader { Code = DecoShaders.Glow };
+        _glass ??= new Shader { Code = DecoShaders.Glass };
+        _flesh ??= new Shader { Code = DecoShaders.Flesh };
+        ShaderMaterial Surface(float metalScale, float flatRough, float flatMetal)
         {
-            VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha, Roughness = 0.08f, Metallic = 0.2f,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-        };
-        var flesh = new ShaderMaterial { Shader = new Shader { Code = FleshShader } };
+            var m = new ShaderMaterial { Shader = _surface };
+            m.SetShaderParameter("metal_scale", metalScale);
+            m.SetShaderParameter("flat_rough", flatRough);
+            m.SetShaderParameter("flat_metal", flatMetal);
+            return m;
+        }
+        var matte = Surface(0.3f, 0.9f, 0f);
+        var metal = Surface(1f, 0.5f, 0.45f);
+        var glow = new ShaderMaterial { Shader = _glow };
+        glow.SetShaderParameter("base_energy", glowEnergy);
+        var glass = new ShaderMaterial { Shader = _glass };
+        var flesh = new ShaderMaterial { Shader = _flesh };
         var leaf = new StandardMaterial3D { VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true, Roughness = 0.85f, CullMode = BaseMaterial3D.CullModeEnum.Disabled };
         BySurface = new Material[] { matte, metal, glow, glass, flesh, leaf };
     }
@@ -65,10 +54,14 @@ public static class DecoGodot
     public static Color C(DecoRgb c) => new(c.R, c.G, c.B);
 
     /// <summary>An ArrayMesh with one surface per deco surface that has triangles.</summary>
-    public static ArrayMesh ToMesh(DecoMeshData data, DecoMaterials materials = null)
+    public static ArrayMesh ToMesh(DecoMeshData data, DecoMaterials materials = null) => ToMesh(Arrays(data), materials);
+
+    /// <summary>A deco surface as the engine takes it (worker-safe: plain arrays); null where it has no triangles.</summary>
+    public sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, Vector2[] Uvs, Vector2[] Extents);
+
+    public static Surface[] Arrays(DecoMeshData data)
     {
-        materials ??= DecoMaterials.Shared;
-        var mesh = new ArrayMesh();
+        var surfaces = new Surface[data.Surfaces.Length];
         for (int s = 0; s < data.Surfaces.Length; s++)
         {
             DecoSurfaceData buf = data.Surfaces[s];
@@ -77,6 +70,9 @@ public static class DecoGodot
             var verts = new Vector3[n];
             var normals = new Vector3[n];
             var colors = new Color[n];
+            // Where each vertex lies on its face (UV) and the face's extent (UV2), for the surface detail.
+            var uvs = new Vector2[n];
+            var extents = new Vector2[n];
             // Godot's front faces are clockwise: swap the second and third vertex of each triangle.
             for (int i = 0; i < n; i += 3)
             {
@@ -87,17 +83,39 @@ public static class DecoGodot
                     normals[i + k] = V(buf.Normals[src]);
                     var c = buf.Colors[src];
                     colors[i + k] = new Color(c.X, c.Y, c.Z, c.W);
+                    var f = buf.FaceAt(src);
+                    uvs[i + k] = new Vector2(f.X, f.Y);
+                    extents[i + k] = new Vector2(f.Z, f.W);
                 }
             }
+            surfaces[s] = new Surface(verts, normals, colors, uvs, extents);
+        }
+        return surfaces;
+    }
+
+    public static ArrayMesh ToMesh(Surface[] surfaces, DecoMaterials materials)
+    {
+        var mesh = new ArrayMesh();
+        for (int s = 0; s < surfaces.Length; s++) AddSurface(mesh, surfaces, s, materials);
+        return mesh;
+    }
+
+    /// <summary>One of the surfaces onto a mesh (none: nothing), with its material.</summary>
+    public static void AddSurface(ArrayMesh mesh, Surface[] surfaces, int s, DecoMaterials materials)
+    {
+        materials ??= DecoMaterials.Shared;
+        {
+            if (surfaces[s] is not { } sf) return;
             var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = verts;
-            arrays[(int)Mesh.ArrayType.Normal] = normals;
-            arrays[(int)Mesh.ArrayType.Color] = colors;
+            arrays[(int)Mesh.ArrayType.Vertex] = sf.Vertices;
+            arrays[(int)Mesh.ArrayType.Normal] = sf.Normals;
+            arrays[(int)Mesh.ArrayType.Color] = sf.Colors;
+            arrays[(int)Mesh.ArrayType.TexUV] = sf.Uvs;
+            arrays[(int)Mesh.ArrayType.TexUV2] = sf.Extents;
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, materials.BySurface[s]);
         }
-        return mesh;
     }
 
     /// <summary>The piece's collision boxes as shapes with their transforms (in the piece's frame).</summary>
@@ -131,21 +149,68 @@ public sealed class DecoMeshCache
 
     public int Count => _meshes.Count;
 
+    /// <summary>Looks a worker has worked out ahead (<see cref="Prepare"/>): their data, and their arrays until the mesh is made.</summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<DecoLook, (DecoMeshData Data, DecoGodot.Surface[] Arrays)> _ready = new();
+
+    /// <summary>
+    /// A look's mesh and its arrays worked out now (worker-safe), so its first use on the main thread only hands them to the
+    /// engine: a big piece's arrays made there held a place's dressing step for 38 ms.
+    /// </summary>
+    public void Prepare(DecoLook look)
+    {
+        if (_ready.ContainsKey(look)) return;
+        DecoMeshData data = Forge.Mesh(look);
+        _ready.TryAdd(look, (data, DecoGodot.Arrays(data)));
+    }
+
+    /// <summary>A look's mesh data: as prepared, or from the forge.</summary>
+    public DecoMeshData Data(DecoLook look) => _ready.TryGetValue(look, out var ready) ? ready.Data : Forge.Mesh(look);
+
+    /// <summary>Partly handed over: a look's mesh and the next of its surfaces to go on it (<see cref="Warm"/>).</summary>
+    readonly Dictionary<DecoLook, (ArrayMesh Mesh, int Next)> _warming = new();
+
+    /// <summary>
+    /// A look's mesh handed to the engine a surface a call (main thread), so a big piece's first use is several short steps, not
+    /// one long one: true once it is whole and <see cref="Mesh"/> is immediate.
+    /// </summary>
+    public bool Warm(DecoLook look)
+    {
+        if (_meshes.ContainsKey(look)) return true;
+        DecoGodot.Surface[] arrays = _ready.TryGetValue(look, out var ready) && ready.Arrays != null ? ready.Arrays : null;
+        if (arrays == null) { Mesh(look); return true; } // not prepared ahead: made whole, as before
+        var (mesh, next) = _warming.TryGetValue(look, out var w) ? w : (new ArrayMesh(), 0);
+        DecoGodot.AddSurface(mesh, arrays, next, Materials);
+        if (++next < arrays.Length)
+        {
+            _warming[look] = (mesh, next);
+            return false;
+        }
+        _warming.Remove(look);
+        _ready[look] = (ready.Data, null);
+        _meshes[look] = mesh;
+        return true;
+    }
+
     public ArrayMesh Mesh(DecoLook look)
     {
-        if (!_meshes.TryGetValue(look, out ArrayMesh m)) _meshes[look] = m = DecoGodot.ToMesh(Forge.Mesh(look), Materials);
+        if (_meshes.TryGetValue(look, out ArrayMesh m)) return m;
+        DecoGodot.Surface[] arrays = _ready.TryGetValue(look, out var ready) && ready.Arrays != null ? ready.Arrays : DecoGodot.Arrays(Data(look));
+        if (ready.Data != null) _ready[look] = (ready.Data, null); // handed over: only the data is kept
+        _meshes[look] = m = DecoGodot.ToMesh(arrays, Materials);
         return m;
     }
 
     public List<(BoxShape3D Shape, Transform3D At)> Shapes(DecoLook look)
     {
-        if (!_shapes.TryGetValue(look, out var s)) _shapes[look] = s = DecoGodot.ToShapes(Forge.Mesh(look));
+        if (!_shapes.TryGetValue(look, out var s)) _shapes[look] = s = DecoGodot.ToShapes(Data(look));
         return s;
     }
 
     public void Clear()
     {
         _meshes.Clear();
+        _warming.Clear();
         _shapes.Clear();
+        _ready.Clear();
     }
 }

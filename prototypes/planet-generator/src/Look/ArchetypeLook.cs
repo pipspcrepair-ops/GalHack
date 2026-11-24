@@ -3,9 +3,11 @@ using Planets.Gen;
 namespace Planets.Look;
 
 /// <summary>
-/// Everything about how an archetype variant looks that isn't a biome: its liquid, its sky from the
-/// ground, its atmosphere and clouds from orbit, and the space behind it. Visual-only modifiers
-/// (ringed sky, perpetual storm, glowing nights) are applied here and nowhere else.
+/// Everything about how a world looks that isn't a biome: its liquid, its sky from the ground, its
+/// atmosphere and clouds from orbit, and the space behind it. Natural colours (seas, sky, sunlight, air,
+/// clouds) are the world's palette's (<see cref="WorldPalette"/>); lava, glow, moons and the space behind
+/// are the type's own, and a world in today's look keeps all the type's hand colours below. Visual-only
+/// modifiers (ringed sky, perpetual storm, glowing nights) are applied here and nowhere else.
 /// </summary>
 public sealed record ArchetypeLook
 {
@@ -39,6 +41,14 @@ public sealed record ArchetypeLook
     public static ArchetypeLook For(PlanetSpec spec)
     {
         ArchetypeLook look = Base(spec.Archetype, spec.Variant);
+        WorldPalette p = WorldPalette.Of(spec);
+        if (!p.Today)
+            look = look with
+            {
+                SkyTop = p.Zenith, SkyHorizon = p.Horizon, SunColor = p.Star, Atmosphere = p.Limb, CloudColor = p.CloudTint, FrozenSea = p.Ice,
+                // Lava seas are the type's own fire; water is the palette's.
+                DeepSea = look.LiquidGlow > 0f ? look.DeepSea : p.Deep, ShallowSea = look.LiquidGlow > 0f ? look.ShallowSea : p.Shallow,
+            };
         if (spec.Has(Modifier.RingedSky)) look = look with { Ring = true };
         if (spec.Has(Modifier.PerpetualStorm))
         {
@@ -69,7 +79,7 @@ public sealed record ArchetypeLook
         ? FrozenSea
         : Rgb.Lerp(ShallowSea, DeepSea, Mathx.Smooth(2f, 90f, depth));
 
-    static ArchetypeLook Base(Archetype archetype, int variant) => (archetype, variant) switch
+    internal static ArchetypeLook Base(Archetype archetype, int variant) => (archetype, variant) switch
     {
         (Archetype.Temperate, 0) => new()
         {
@@ -146,6 +156,15 @@ public sealed record ArchetypeLook
             RingColor = Rgb.Hex("ffb0e0"),
             Atmosphere = Rgb.Hex("50ffd0"), CloudColor = Rgb.Hex("e0c0ff"), CloudCover = 0.3f,
             Nebula = Rgb.Hex("3a0a5a"), Moon = Rgb.Hex("ff9a4a"), MoonSize = 0.16f,
+        },
+        (Archetype.Barren, _) => new()
+        {
+            // No air: a black sky full of stars by day, no haze, no cloud, no air shell from orbit, shadows lit only by what the ground throws back.
+            DeepSea = Rgb.Hex("303032"), ShallowSea = Rgb.Hex("505052"),
+            SkyTop = Rgb.Hex("010102"), SkyHorizon = Rgb.Hex("020203"), SunColor = Rgb.Hex("ffffff"),
+            SunEnergy = 1.45f, SunElevation = 30f, Ambient = 0.1f, FogDensity = 0f, Stars = 1f,
+            Atmosphere = Rgb.Hex("000000"), CloudCover = 0f, Nebula = Rgb.Hex("1a1a2e"),
+            Moon = Rgb.Hex("c8c4bc"), MoonSize = 0.06f,
         },
         _ => new()
         {

@@ -36,7 +36,8 @@ public sealed class DecoDisorder
         _rng = new DecoRng(DecoHash.Combine(_room.Seed, 0xD150DE7UL));
         DecoDisorderRules rules = _arr.Disorder.TryGetValue(_room.State, out var r) ? r : _arr.Disorder["abandoned"];
         DecoAge age = _room.AgeOrDefault;
-        _aprons = _room.Doors.Select(d => _room.Apron(d, 1.0f, 0.1f)).ToList();
+        // Nothing is pushed, dropped or left out onto a doorway's apron or a patch of floor that can't take it.
+        _aprons = _room.Doors.Select(d => _room.Apron(d, 1.0f, 0.1f)).Concat(_room.Blocked).Concat(_room.Kept).ToList();
         _raster = new DecoRaster(_room.Width, _room.Depth, DecoPlanner.Cell);
         foreach (DecoPlacement pl in _plan.Placements.Where(p => DecoLayout.Blocks(_forge, p))) _raster.Add(DecoLayout.Footprint(_forge, pl), 1);
 
@@ -67,9 +68,11 @@ public sealed class DecoDisorder
         for (int i = 0, tries = 0; i < touches && tries < 12; tries++)
             if (moments[_rng.Int(moments.Count)]()) i++;
 
-        // Gone: carried off or destroyed.
+        // Gone: carried off or destroyed. What the room is arranged round, and anything too big to carry off, stays where it
+        // stood however bad the years: a ruined bedroom still has its bed, a ward its beds, so the room still reads as what it was.
+        bool Stays(DecoPlacement pl) => pl.Group == _plan.FocalGroup && _plan.FocalGroup >= 0 || _forge.Catalogue.Piece(pl.Piece) is var p && p.Width * p.Depth >= 1.5f;
         for (int i = _plan.Placements.Count - 1; i >= 0; i--)
-            if (_plan.Placements[i].Support < 0 && _rng.Chance(rules.Missing)) Remove(i, "gone");
+            if (_plan.Placements[i].Support < 0 && !Stays(_plan.Placements[i]) && _rng.Chance(rules.Missing)) Remove(i, "gone");
 
         // Fire spreads from one or two points; growth creeps in from one side.
         var fires = Enumerable.Range(0, rules.Burn > 0 ? 1 + _rng.Int(2) : 0).Select(_ => new Vector2(_rng.Range(0, _room.Width), _rng.Range(0, _room.Depth))).ToList();
@@ -81,7 +84,9 @@ public sealed class DecoDisorder
             DecoPlacement pl = _plan.Placements[i];
             DecoPiece p = _forge.Catalogue.Piece(pl.Piece);
             if (pl.Support >= 0) continue;
-            if (p.Has(DecoState.Knocked) && p.Falls.Count > 0 && _rng.Chance(rules.Knock)) Knock(i);
+            // A wall piece is fixed there: it comes down a fifth as often as a thing standing loose. What the room is arranged round stands.
+            bool focal = pl.Group == _plan.FocalGroup && _plan.FocalGroup >= 0;
+            if (!focal && p.Has(DecoState.Knocked) && p.Falls.Count > 0 && _rng.Chance(rules.Knock * (p.Mount == DecoMount.Wall ? 0.2f : 1f))) Knock(i);
             else if (!p.Fixed && p.Width * p.Depth < 1.3f && pl.Fall == DecoFall.None && _rng.Chance(rules.Scatter)) Scatter(i);
 
             var pos = new Vector2(pl.X, pl.Z);

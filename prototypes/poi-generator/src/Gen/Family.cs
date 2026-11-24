@@ -95,6 +95,8 @@ public sealed class FamilyDef
     // ---- added with the architect ---------------------------------------------------------
     public string? Program;                    // building program (data/programs.txt)
     public string? Site;                       // site plan (data/sites.txt)
+    /// <summary>Kinds of place it is planned as (data/place-types.txt), the first whose tech fits its world: sited from a sketch, each part a place of its own.</summary>
+    public List<string> Types = new();
     public CoreRule Core = CoreRule.Owned;
     bool _coreSet;
     /// <summary>"faction", "gang" (always hostile, no faction standing) or "none".</summary>
@@ -110,6 +112,8 @@ public sealed class FamilyDef
     /// <summary>A space POI: placed in orbit zones, never on a planet's surface.</summary>
     public bool Space;
     /// <summary>One line for the catalogue and the discovery card.</summary>
+    /// <summary>What it is made of, in the words of the world layers' rules: <c>open</c> stands under open sky, so it needs the air people built under to be breathable.</summary>
+    public List<string> Is = new();
     public string Pitch = "";
     /// <summary>
     /// The ground it wants on a planet: peak, ridge, hillside, valley, flat, open or any (planet
@@ -132,8 +136,12 @@ public sealed class FamilyDef
     public string? Ground;
     /// <summary>The tech levels it belongs to (low, mid, high; data: tech before any variant). Empty: any level.</summary>
     public List<string> Techs = new();
+    /// <summary>What stands in its place on a world whose age it does not fit (data: instead), first that fits: the era's own equivalent, so a fall or a theme that brings it still has its place.</summary>
+    public List<string> Instead = new();
+    /// <summary>A port's lesser ports, where they are another kind of place (data: lesser): a launch site's airports.</summary>
+    public string? Lesser;
 
-    public Generator Generator => Site != null ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
+    public Generator Generator => Site != null || Types.Count > 0 ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
 
     /// <summary>The rosters.txt section its defenders come from; the faction id unless set.</summary>
     public string Roster
@@ -219,6 +227,8 @@ public static class FamilyParser
                 case "ominous": F().Ominous = Num(p[1]); break;
                 case "wrong": F().Wrong = Num(p[1]); break;
                 case "tags": F().Tags = p.Skip(1).ToList(); break;
+                case "types": F().Types.AddRange(p.Skip(1)); break;
+                case "is": F().Is = p.Skip(1).ToList(); break;
                 case "landmark": F().Landmark = true; break;
                 case "space": F().Space = true; break;
                 case "reveal":
@@ -250,6 +260,8 @@ public static class FamilyParser
                     break;
                 }
                 case "grow": V().Grow = p.Skip(1).Select(k => ParseKind(k, Error)).ToList(); break;
+                case "instead": F().Instead = p.Skip(1).ToList(); break;
+                case "lesser": F().Lesser = p[1]; break;
                 default: throw Error($"unknown keyword '{p[0]}'");
             }
         }

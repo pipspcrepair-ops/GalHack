@@ -1,0 +1,114 @@
+# Era kits: what each age built with, and how its buildings stand against the sky. Every place the old
+# world built reads its world's pre-collapse era from here; whatever the living built after the fall
+# (settlements, shanty towns, camps, scrap forts) reads the post-collapse era. Nothing in the code names
+# an era's material, colour or shape: tune this table from reference material.
+#
+#   era <low|mid|high>
+#     name <words>
+#     stuff <part> <material> <rgb>[|<rgb>...]   the large places' plain materials (the 2 m works, city lots):
+#                                                wall panel plinth floor roof steel rust pipe pipehot accent grating
+#     paint <name> <rgb>                         hazard black glass lamp emergency (the large places' paints)
+#     swap <material> <material>[.<finish>]:<w> ...
+#                                                what the made materials of a place built from a style kit become in
+#                                                this era: one pick per place, so a place is all of a piece
+#     roofing <material>.<finish>:<w> ...        what its roofs are covered in (pitched ones and flat)
+#     tone <material> <rgb>|<rgb>...             the colours a swapped material takes (one per place, shaded as built)
+#     keep <block types>                         what is left as built (machines, tanks and pumps: the diesel-age bits)
+#     windows <share>                            the share of a place's window columns kept; the rest are walled in
+#     ribbon <share>                             the chance a window widens along its wall into a band of glass
+#     gable <metres>                             flat roofs up to this span take a pitched roof (0: none)
+#     chamfer <yes|no>                           its buildings' outer corners cut back on the diagonal
+#     edge <square|round>                        a flat roof's edge: square, or rounded off along the wall top
+#     strips <rgb>|none                          a light strip along each floor line and the top of its outer walls
+#     lamp <rgb>                                 what its lamps glow
+#     vehicles <carts|motors|grav>               what stands abandoned in its yards
+
+era low
+  name timber, stone, thatch and shingle, a few diesel-age bits
+  stuff wall rock 7a5a4a|6e5c50|846a54|8a8072
+  stuff panel timber 6a5846
+  stuff plinth rock 5e5a54
+  stuff floor rock 66605a
+  stuff roof timber 4a3c32
+  stuff steel timber 5a4838
+  stuff rust rust 6e4634
+  stuff pipe rust 724c38
+  stuff pipehot rust 5c483e
+  stuff accent timber 7a3c2c
+  stuff grating timber 604e3e
+  paint lamp ffc070
+  swap concrete rock.stone:4 rock.rubble:2 timber.weatherboard:2 ceramic.brick:2 timber.logs:1
+  swap steel timber.planks:3 rock.stone:1
+  swap alloy timber.planks
+  swap resin timber.planks:2 rock.stone:1
+  swap armour rock.stone
+  swap rust timber.planks
+  swap scrap timber.planks
+  swap glass glass
+  roofing timber.thatch:3 timber.shingle:3 rock.slate:2
+  tone rock 8a8072|7e7466|948a7a|86786a
+  tone timber 6e5640|5e4834|7a6248|655040
+  tone ceramic 9a5a44|8e5240|a0624a
+  keep machine tank pump pipe
+  windows 0.45
+  ribbon 0
+  gable 18
+  chamfer no
+  edge square
+  strips none
+  lamp ffb860
+  vehicles carts
+
+era mid
+  name brick, poured concrete and steel: the present day
+  stuff wall concrete 8c8880|84827c|928c80
+  stuff panel concrete 706e6a
+  stuff plinth concrete 5c5a56
+  stuff floor concrete 6a6864
+  stuff roof concrete 565450
+  stuff steel steel 5c6062
+  stuff rust rust 7a4830
+  stuff pipe steel 747876
+  stuff pipehot rust 7e5038
+  stuff accent steel 2a4e62
+  stuff grating steel 565a5c
+  windows 1
+  ribbon 0
+  gable 0
+  chamfer no
+  edge square
+  strips none
+  vehicles motors
+
+era high
+  name alloy, glass and light: the stellar age
+  stuff wall resin b4babc|a6aeb4|bcb8ae
+  stuff panel alloy 8c98a2
+  stuff plinth concrete 5e646a
+  stuff floor concrete 72787c
+  stuff roof alloy 56606a
+  stuff steel alloy 6e7a84
+  stuff rust alloy 4e5862
+  stuff pipe alloy 9aa6b0
+  stuff pipehot alloy 366a7e
+  stuff accent alloy 1e6a84
+  stuff grating alloy 58646e
+  paint lamp c8e8ff
+  paint hazard e89614
+  swap concrete resin.precast:3 alloy.hull:2
+  swap steel alloy.hull
+  swap rust alloy.hull
+  swap scrap alloy.hull
+  swap ceramic resin.precast
+  swap timber alloy.hull:1 resin.precast:1
+  roofing alloy.seam:2 alloy.deck:1
+  tone resin c4cacc|b4babc|bcb8ae|aab2b8
+  tone alloy 8c98a2|7c8894|9aa4ac
+  windows 1
+  ribbon 0.7
+  gable 0
+  chamfer yes
+  edge round
+  strips 58d0ff
+  lamp c8e8ff
+  vehicles grav

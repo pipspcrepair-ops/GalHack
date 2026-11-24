@@ -18,8 +18,8 @@ namespace CapitalBase.World;
 /// The ground this prototype stands on: a fixed square of planet-surface's diggable voxel chunk
 /// columns around the landing site, meshed with planet-surface's own voxel mesher and palette,
 /// drawn with its terrain shader (read where it lives) and given triangle colliders everywhere a
-/// ship can land. Beyond the square, planet-surface's far-ring heightfields out to the horizon,
-/// with a hole where the voxels are.
+/// ship can land. Beyond the square, planet-surface's GPU ground rings (<see cref="ClipGround"/>) out to the
+/// horizon, with a hole where the voxels are, and its far chunks' rivers and lakes.
 ///
 /// It doesn't stream: a capital ship parks, and a base never moves. Edits mark chunks dirty, and
 /// dirty chunks are rebuilt within a per-frame budget (or all at once, for tests and lift-off).
@@ -45,8 +45,8 @@ public partial class TerrainPatch : Node3D
     public int ChunkCount => _pieces.Count;
     public int Rebuilt { get; private set; }
 
-    /// <summary>The far rings are built (screenshots wait for them).</summary>
-    public bool FarReady => _farTask == null || _farTask.IsCompleted && _farApplied;
+    /// <summary>The far rings and water are built (screenshots wait for them).</summary>
+    public bool FarReady => _farTask == null || _farTask.IsCompleted && _farApplied && _clip.Complete;
 
     sealed class Piece
     {
@@ -62,6 +62,7 @@ public partial class TerrainPatch : Node3D
     StandardMaterial3D _water;
     Task<List<FarJob>> _farTask;
     bool _farApplied;
+    ClipGround _clip;
 
     /// <summary>Planet x and z of the patch's corners, m.</summary>
     public Rect2 Area => new(MinCx * S, MinCz * S, Columns * S, Columns * S);
@@ -102,7 +103,13 @@ public partial class TerrainPatch : Node3D
         Parallel.ForEach(jobs, job => VoxelMeshing.Build(job, world.Source, world.Palette, world.Width, world.Height));
         foreach (VoxelJob job in jobs) Apply(job);
 
-        if (Visuals) _farTask = Task.Run(() => BuildFar(centerCx, centerCz));
+        if (!Visuals) return;
+        Rect2 area = Area;
+        _far.SetShaderParameter("hole", new Vector4(area.Position.X + 0.5f, area.Position.Y + 0.5f, area.End.X - 0.5f, area.End.Y - 0.5f));
+        _clip = new ClipGround { Name = "Clip" };
+        AddChild(_clip);
+        _clip.SetWorld(world.Source, world.Palette, world.Pois, world.Terrain.Width, world.Terrain.Height, _far, ClipGround.LevelsFor(DetailReach.Distance));
+        _farTask = Task.Run(() => BuildFar(centerCx, centerCz));
     }
 
     VoxelJob Job(TInt3 key) => new()
@@ -193,7 +200,7 @@ public partial class TerrainPatch : Node3D
         return m;
     }
 
-    /// <summary>Heightfield rings from the same source: 4 m spacing near, 8 m out to about 2 km.</summary>
+    /// <summary>Far chunks from the same source out to about 2 km, for their water: 4 m spacing near, 8 m beyond.</summary>
     List<FarJob> BuildFar(int centerCx, int centerCz)
     {
         const int Rings = 8;
@@ -212,6 +219,7 @@ public partial class TerrainPatch : Node3D
 
     public override void _Process(double delta)
     {
+        _clip?.Step(GetViewport().GetCamera3D()?.GlobalPosition ?? new Vector3(Area.GetCenter().X, 0f, Area.GetCenter().Y));
         if (_farTask == null || _farApplied || !_farTask.IsCompleted) return;
         _farApplied = true;
         if (_farTask.IsFaulted)
@@ -220,29 +228,16 @@ public partial class TerrainPatch : Node3D
             return;
         }
         Rect2 area = Area;
-        _far.SetShaderParameter("hole", new Vector4(area.Position.X + 0.5f, area.Position.Y + 0.5f, area.End.X - 0.5f, area.End.Y - 0.5f));
         foreach (FarJob job in _farTask.Result)
         {
-            if (job.Error != null || job.Vertices == null) continue;
-            var node = new Node3D { Name = $"Far {job.Fx} {job.Fz}", Position = new Vector3(job.Fx * FarBuilder.Size, 0, job.Fz * FarBuilder.Size) };
-            AddChild(node);
-            var arrays = new Godot.Collections.Array();
-            arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = job.Vertices;
-            arrays[(int)Mesh.ArrayType.Normal] = job.Normals;
-            arrays[(int)Mesh.ArrayType.Color] = job.Colors;
-            arrays[(int)Mesh.ArrayType.TexUV] = job.Flags;
-            arrays[(int)Mesh.ArrayType.Index] = job.Indices;
-            var mesh = new ArrayMesh();
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-            node.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = _far });
-            if (job.WaterVertices == null) continue;
+            if (job.Error != null || job.WaterVertices == null) continue;
             int[] wet = InWater(job, area);
             if (wet.Length == 0) continue;
+            var node = new Node3D { Name = $"Far water {job.Fx} {job.Fz}", Position = new Vector3(job.Fx * FarBuilder.Size, 0, job.Fz * FarBuilder.Size) };
+            AddChild(node);
             var water = new Godot.Collections.Array();
             water.Resize((int)Mesh.ArrayType.Max);
             water[(int)Mesh.ArrayType.Vertex] = job.WaterVertices;
-            water[(int)Mesh.ArrayType.Color] = job.WaterColors;
             water[(int)Mesh.ArrayType.Index] = wet;
             var waterMesh = new ArrayMesh();
             waterMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, water);

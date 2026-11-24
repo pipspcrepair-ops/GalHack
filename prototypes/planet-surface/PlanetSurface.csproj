@@ -9,7 +9,11 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Coplanar faces: found (tests) and set apart (meshers), engine-free. -->
+    <Compile Include="..\..\shared\Geometry\**\*.cs" />
     <!-- Shared terrain: the planet as diggable voxels, streaming plans, stamps. -->
+    <!-- The backstop that ends a run which was told to quit and did not. -->
+    <Compile Include="..\..\shared\Testing\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\**\*.cs" />
     <!-- The galaxy: the catalogue its sky is drawn from. -->
     <Compile Include="..\..\shared\Galaxy\**\*.cs" />
@@ -25,13 +29,19 @@
     <Compile Include="..\planet-generator\src\Gen\**\*.cs" />
     <Compile Include="..\planet-generator\src\Look\**\*.cs" />
     <Compile Include="..\planet-generator\src\Surface\FloraMeshes.cs" />
+    <!-- The orbit's sky shader, as plain source: the sky test draws the sun in it as the climb and the ground do. -->
+    <Compile Include="..\planet-generator\src\Shaders.cs" />
     <Compile Include="..\weather\src\Model\**\*.cs" />
     <Compile Include="..\weather\src\Forces\**\*.cs" />
     <Compile Include="..\weather\src\Glue.cs" />
     <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
     <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
+    <!-- Light colour and animation, shared with the player's light blocks: the POI generator's lights read it. -->
+    <Compile Include="..\building\src\Structures\LightSettings.cs" />
     <!-- The decorations library: alien places are dressed from its alien set, as in the POI viewer. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />
+    <!-- Every plant in the game: the flora module. -->
+    <Compile Include="..\..\shared\Flora\**\*.cs" />
   </ItemGroup>
 </Project>

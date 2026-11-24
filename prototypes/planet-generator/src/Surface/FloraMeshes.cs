@@ -15,7 +15,7 @@ static class FloraMeshes
 {
     static readonly Color Bark = new(0.36f, 0.26f, 0.2f, 0f);
     static readonly Color Stalk = new(0.93f, 0.88f, 0.78f, 0f);
-    static readonly Color Tinted = new(1f, 1f, 1f, 1f);
+    static readonly Color Tinted = new(0.8f, 0.8f, 0.8f, 1f); // the shader multiplies by the tint, and 0.8 leaves it as it is
 
     public static Dictionary<Flora, Mesh> BuildAll()
     {

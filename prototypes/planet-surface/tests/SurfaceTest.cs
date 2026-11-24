@@ -16,9 +16,11 @@ using PoiGenerator.Gen;
 using TerrainDigging.Terrain;
 using Weather.Model;
 using Archetype = Planets.Gen.Archetype;
+using Deposit = Planets.Gen.Deposit;
 using TInt3 = TerrainDigging.Terrain.Int3;
 using PInt3 = PoiGenerator.Gen.Int3;
 using PoiSite = PlanetSurface.Poi.PoiSite;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface;
 
@@ -40,6 +42,15 @@ public partial class SurfaceTest : Node
     {
         foreach (string arg in OS.GetCmdlineUserArgs())
             if (arg.StartsWith("--only=")) _only.UnionWith(arg["--only=".Length..].Split(','));
+        // A hung run quits on its own (--limit=SECONDS, 40 minutes by default) rather than wait for someone to kill it.
+        double limit = 2400;
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--limit=")) limit = double.Parse(arg["--limit=".Length..], System.Globalization.CultureInfo.InvariantCulture);
+        _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(limit)).ContinueWith(_ =>
+        {
+            GD.PrintErr($"TIMED OUT after {limit:F0} s: the run quits itself");
+            System.Environment.Exit(2);
+        });
         // Planets save their edits when you leave them: start from untouched planets every run, in a
         // save folder of this run's own. Another run saving the same test planet into a shared
         // folder at the same moment made this run land on its edits ("dug 0 cells": already dug).
@@ -50,6 +61,10 @@ public partial class SurfaceTest : Node
         if (System.IO.Directory.Exists(saves)) System.IO.Directory.Delete(saves, recursive: true);
         try
         {
+            await Run("Shade", ShadeChecks);
+            await Run("Dump", DumpChecks);
+            await Run("Plans", PlanChecks);
+            await Run("Density", DensityChecks);
             await Run("Weather", WeatherChecks);
             await Run("Relief", ReliefChecks);
             await Run("Pois", PoiChecks);
@@ -64,11 +79,22 @@ public partial class SurfaceTest : Node
             await Run("Profile", ProfileChecks);
             await Run("Infra", InfraChecks);
             await Run("StartTown", StartTownChecks);
+            await Run("City", CityChecks);
+            await Run("Eras", EraChecks);
+            await Run("Ground", GroundChecks);
+            await Run("Dungeons", DungeonChecks);
             await Run("Under", UnderChecks);
             await Run("Water", WaterChecks);
+            await Run("Shores", ShoreChecks);
+            await Run("Teeth", TeethChecks);
             await Run("Ports", PortChecks);
             await Run("Stitches", StitchChecks);
             await Run("Blast", BlastChecks);
+            await Run("RoadLines", RoadLineChecks);
+            await Run("Tracks", TrackChecks);
+            await Run("Lazy", LazyChecks);
+            await Run("Airport", () => TypedChecks("airfield", "airport", "airstrip"));
+            await Run("Spaceport", () => TypedChecks("abandoned_spaceport", "port_large", "port_medium", "port_small"));
             if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);
@@ -92,7 +118,7 @@ public partial class SurfaceTest : Node
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         try { System.IO.Directory.Delete(saves, recursive: true); }
         catch (Exception) { } // already gone, or a file still held: it is this run's own folder, nothing else reads it
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     async Task Run(string name, Func<Task> check)
@@ -201,7 +227,7 @@ public partial class SurfaceTest : Node
             // The mesh players walk on: ray down onto the collision within reach of the player.
             if (Math.Abs(x - p.X) < 28 && Math.Abs(z - p.Z) < 28)
             {
-                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(cx + 0.5f, natural + 20f, cz + 0.5f), new Vector3(cx + 0.5f, natural - 20f, cz + 0.5f), Layers.Terrain));
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(cx + 0.5f, natural + 20f, cz + 0.5f), new Vector3(cx + 0.5f, natural - 20f, cz + 0.5f), Layers.World));
                 if (hit.Count > 0)
                 {
                     double m = Math.Abs(((Vector3)hit["position"]).Y - natural);
@@ -265,6 +291,7 @@ public partial class SurfaceTest : Node
         var byKind = new Dictionary<string, int>();
         var families = new HashSet<string>();
         var notes = new List<string>();
+        var floatNotes = new List<string>();
         var blockedWays = new List<string>();
         for (int a = 0; a < 5; a++)
         {
@@ -303,14 +330,17 @@ public partial class SurfaceTest : Node
                 }
                 // Nothing floats: everywhere the POI generator builds on rock (below floor level and
                 // outside the place's own rooms), there is solid ground, all the way down its deepest level.
+                int floatingBefore = floating;
+                string firstFloat = "";
                 for (int y = occ.Min.Y; y < 0; y++)
                 for (int z = 0; z < occ.Size.Z; z++)
                 for (int x = 0; x < occ.Size.X; x++)
                 {
                     var local = new PInt3(occ.Min.X + x, y, occ.Min.Z + z);
                     if (occ[local]) continue;
-                    if (!store.IsSolid(site.World(local))) floating++;
+                    if (!store.IsSolid(site.World(local)) && floating++ == floatingBefore) firstFloat = $"{local} under {inst.Blocks.Get(local + PInt3.Up * (-y)).Type}";
                 }
+                if (floating > floatingBefore && floatNotes.Count < 6) floatNotes.Add($"{site.Family.Id} {site.Siting} {site.Name} at {site.Origin}: {floating - floatingBefore} cells (first {firstFloat}), rooms {occ.Min}..{occ.Min + occ.Size}");
                 // A half-buried ruin keeps every room open however deep the ground rises round it.
                 if (site.HalfBuried)
                     for (int y = 0; y < occ.Min.Y + occ.Size.Y; y++)
@@ -323,17 +353,19 @@ public partial class SurfaceTest : Node
                 foreach (TerrainStamp extraStamp in site.Extra) shapes[extraStamp.Shape] = shapes.TryGetValue(extraStamp.Shape, out int sc) ? sc + 1 : 1;
                 // Made ground: the surface its purpose calls for; never grass on a desert world; eased in, never a hard edge.
                 madeChecked++;
-                if (t.Surface != PoiSiting.GroundFor(site.Family, (Archetype)a)) wrongGround++;
+                // (A typed place's made ground is laid in patches over its one grading; its parts' stamps are the land's own.)
+                if (site.Whole == null && t.Surface != PoiSiting.GroundFor(site.Family, (Archetype)a)) wrongGround++;
                 var (mcx, mcz) = site.Center;
                 Color centre = w.Palette.Made(w.Palette.Natural(mcx, mcz, pad, 1f, out _), t.Surface, 1f, t.Wear, mcx, mcz);
                 if (a == (int)Archetype.Arid && centre.G > centre.R * 1.08f && centre.G > centre.B * 1.08f) grassInDesert++;
-                for (int ray = 0; ray < 8; ray++)
+                for (int ray = 0; ray < 8 && !(site.Whole != null && site.Whole.Anchor != site); ray++)
                 {
                     double ra = ray * Math.PI / 4, first = -1, last = -1;
                     for (double d = 0; d < Math.Max(t.ReachX, t.ReachZ); d += 0.5)
                     {
                         // The place's own pad (a road leaving its gate has edges of its own).
-                        float mw = t.Weight(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d);
+                        // (A typed place's parts stand on its one grading, which its main part holds and which eases out.)
+                        float mw = (site.Whole?.Stamp ?? t).Weight(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d);
                         if (mw < 0.97f && first < 0) first = d;
                         if (mw <= 0.5f) { last = d; break; }
                     }
@@ -411,6 +443,7 @@ public partial class SurfaceTest : Node
             await Frames(1);
         }
         GD.Print("      " + string.Join("; ", notes));
+        foreach (string f in floatNotes) GD.Print($"      no ground under: {f}");
         Check(wrongGround == 0 && grassInDesert == 0 && hardEdges == 0,
             $"made ground: {madeChecked} pads laid in the surface their purpose calls for (tarmac and concrete aprons, gravel and dirt yards, the land's own ground for ruins); no grass on a desert world ({grassInDesert}); every edge eased over metres, never a hard line ({hardEdges})");
         Check(roomsFilled == 0 && shapes.Count >= 2, $"places sit in their land, not on flat pads: {string.Join(", ", shapes.Select(s => $"{s.Value} {s.Key.ToString().ToLowerInvariant()}"))} stamps beyond the pads; half-buried ruins keep their rooms open ({roomsFilled} room cells filled)");
@@ -657,7 +690,7 @@ public partial class SurfaceTest : Node
             Fail("no level open ground within 300 m for the step check");
             return;
         }
-        var slab = new StaticBody3D { Name = "Slab", CollisionLayer = Layers.Solid, CollisionMask = 0 };
+        var slab = new StaticBody3D { Name = "Slab", CollisionLayer = Layers.World, CollisionMask = 0 };
         slab.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(5f, 1.5f, 3f) } });
         _main.AddChild(slab);
 
@@ -1340,9 +1373,25 @@ public partial class SurfaceTest : Node
                 if (f.Origin.Z >= -64f && f.Origin.Z < 0f) beyond++;
                 else if (f.Origin.Z >= 0f && f.Origin.Z < 64f) before++;
             }
-        Check(farGround == farSamples && beyond > 0 && beyond > before / 3,
+        // The strip holds exactly what the chunk cut short at the seam scatters: what the far builder lays out there on its own.
+        PlanetWorld seamWorld = _main.World;
+        int expected = 0, lastRow = FarBuilder.Count(seamWorld.Terrain.Height) - 1, columns = FarBuilder.Count(seamWorld.Terrain.Width);
+        double seamX = Mathx.WrapX(p.X, seamWorld.Width);
+        for (int dfx = -2; dfx <= 2; dfx++)
+        {
+            int fx = ((int)(seamX / FarBuilder.Size) + dfx + columns) % columns;
+            var job = new FarJob { Fx = fx, Fz = lastRow, Lod = 0, SpanX = FarBuilder.Span(fx, seamWorld.Terrain.Width), SpanZ = FarBuilder.Span(lastRow, seamWorld.Terrain.Height) };
+            FarBuilder.Build(job, seamWorld.Source, seamWorld.Palette, new HashSet<long>(), seamWorld.Felled);
+            foreach (FloraBatch b in job.Flora)
+                for (int i = 0; i < b.Count; i++)
+                {
+                    double fxm = fx * (double)FarBuilder.Size + b.Buffer[i * 16 + 3], fzm = lastRow * (double)FarBuilder.Size + b.Buffer[i * 16 + 11] - seamWorld.Height;
+                    if (Math.Abs(Mathx.WrapDelta(fxm - seamX, seamWorld.Width)) <= 120.0 && fzm >= -64.0 && fzm < 0.0) expected++;
+                }
+        }
+        Check(farGround == farSamples && beyond == expected,
             $"the far grid tiles the planet across the north-south seam: far ground under all {farSamples} points of the last 64 m strip before it, " +
-            $"and {beyond} flora there beside {before} in the 64 m just past it");
+            $"and its flora is all there, {beyond} of {expected} scattered, beside {before} in the 64 m just past it");
 
         // An edit straddling the seam shows on both sides, and survives a save and load.
         var centre = new TInt3((int)MathF.Floor(p.X) + 3, (int)MathF.Floor(w.GroundHeight(p.X + 3, 0)) - 1, 0);
@@ -1519,7 +1568,71 @@ public partial class SurfaceTest : Node
         float dawn = Atmosphere.Compute(sky, sim.Current, 0.02f).ValleyFog, noon = Atmosphere.Compute(sky, sim.Current, 0.8f).ValleyFog;
         float dry = Atmosphere.Compute(SkySystem.For(PlanetSpec.Roll(1, Archetype.Arid, 0)), sim.Current, 0.02f).ValleyFog;
         Check(dawn > 0.5f && noon < 0.05f && dry < 0.2f, $"valley fog pools at dawn on a humid world ({dawn:F2}), burns off by noon ({noon:F2}), stays thin in dusty air ({dry:F2})");
+        FrontChecks(data);
         await Frames(1);
+    }
+
+    /// <summary>
+    /// Storms come on a front (fresh seeds every run): it forms upwind in sight before it arrives, advances
+    /// with the storm's wind at its own pace, reaches the observer, and is the same at every copy of a point
+    /// on the wrapping world (no seam), its cells lined up just behind its edge.
+    /// </summary>
+    void FrontChecks(WeatherData data)
+    {
+        var rng = new Random();
+        int formed = 0, reached = 0, seamless = 0, probes = 0, cellsOnEdge = 0, cells = 0;
+        float worstAlign = 1f, worstPace = 0f;
+        double shortestLead = double.MaxValue;
+        for (int run = 0; run < 8; run++)
+        {
+            var sim = new WeatherSim(data, "storm", (ulong)rng.NextInt64(1, long.MaxValue), WeatherKind.Clear);
+            float width = rng.Next(3) switch { 0 => 16000f, 1 => 32000f, _ => 64000f };
+            sim.WorldSize = new Vector2(width, width / 2f);
+            var me = new Vector3(rng.NextSingle() * width, 0f, rng.NextSingle() * width / 2f);
+            Front seen = null;
+            float startAhead = 0f;
+            double startTime = 0;
+            for (int i = 0; i < 4 * 3600; i++)
+            {
+                sim.Step(1f, me);
+                Front f = sim.Front;
+                if (f != null && f != seen)
+                {
+                    seen = f;
+                    formed++;
+                    startAhead = f.Ahead(me);
+                    startTime = sim.Time;
+                    Segment s = sim.SegmentAt(sim.Time + startAhead / f.Speed);
+                    Vector2 wind = s.To.Wind.LengthSquared() > 0.01f ? s.To.Wind.Normalized() : f.Heading;
+                    worstAlign = MathF.Min(worstAlign, f.Heading.Dot(wind));
+                    shortestLead = Math.Min(shortestLead, startAhead / f.Speed);
+                    // The same front at every copy of a point across the wrap.
+                    for (int k = 0; k < 20; k++)
+                    {
+                        var p = new Vector3(rng.NextSingle() * width, 0f, rng.NextSingle() * width / 2f);
+                        var q = p + new Vector3(width * rng.Next(-2, 3), 0f, width / 2f * rng.Next(-2, 3));
+                        probes++;
+                        if (MathF.Abs(f.Ahead(p) - f.Ahead(q)) < 0.5f && MathF.Abs(f.Cover(p) - f.Cover(q)) < 1e-3f) seamless++;
+                    }
+                }
+                if (f != null && f == seen && sim.Time - startTime == 10)
+                    worstPace = MathF.Max(worstPace, MathF.Abs((startAhead - f.Ahead(me)) / 10f - f.Speed) / f.Speed);
+                if (f != null && f.Kind == FrontKind.Storm && f.Strength > 0.9f && i % 60 == 0)
+                    foreach (StormCell c in sim.Cells)
+                    {
+                        if (!c.OnFront || c.Funnel != null || c.Strength < 0.5f) continue;
+                        cells++;
+                        float a = f.Ahead(c.Position);
+                        if (a < 0f && a > -c.Radius * 1.6f) cellsOnEdge++;
+                    }
+                if (f != null && f.Ahead(me) < 0f && f.Strength > 0.5f) { reached++; seen = f; }
+            }
+        }
+        Check(formed >= 3 && shortestLead >= 60.0, $"storms come on fronts that form in sight before they arrive: {formed} fronts in 32 hours of storm-world weather, the shortest lead {shortestLead:F0} s");
+        Check(worstAlign > 0.9f && worstPace < 0.02f, $"a front advances with its storm's wind: heading within {MathF.Acos(MathF.Min(1f, worstAlign)) * 57.3f:F0} degrees of it, its pace off by at most {worstPace * 100f:F1}%");
+        Check(reached > 0, $"a front reaches the observer and passes over ({reached} seconds under its storm)");
+        Check(probes > 0 && seamless == probes, $"a front is the same at every copy of a point across the wrap: {seamless} of {probes} points");
+        Check(cells > 0 && cellsOnEdge == cells, $"a front's cells line up just behind its edge: {cellsOnEdge} of {cells} looks");
     }
 
     // ---- Reporting ---------------------------------------------------------------------------

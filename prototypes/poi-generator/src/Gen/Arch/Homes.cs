@@ -6,7 +6,9 @@ using System.Linq;
 namespace PoiGenerator.Gen;
 
 /// <summary>What a placer asks of a layout it is about to set down: which way its front looks (at the road), and the world's tech level.</summary>
-public sealed record LayoutHints(Dir Front = Dir.North, TechLevel? Tech = null);
+/// <param name="Ruin">How long ago and how hard its world fell: places below ground plan their collapses, caves and squatters by it.</param>
+/// <param name="Culture">Its builders' habit, where the world knows it (a street's culture, a region's): otherwise rolled per place.</param>
+public sealed record LayoutHints(Dir Front = Dir.North, TechLevel? Tech = null, CityLot? Lot = null, HomeHints? Home = null, RuinAge? Ruin = null, int? Culture = null, SiteDef? Site = null);
 
 /// <summary>One plain building of a lot: its box (roof and all), the height of its eaves and the way its front looks.</summary>
 public sealed record PlainBox(Int3 Min, Int3 Max, int Eave, Dir Front);
@@ -20,15 +22,15 @@ public sealed record PlainBox(Int3 Min, Int3 Max, int Eave, Dir Front);
 /// They are built the way a player builds. POI cells are 1 m and the player's large block is 2 m, so
 /// everything keeps to a 2 m lattice in plan and in storeys, in shapes the player has: walls and
 /// slabs are large half blocks (1 m thick on their 2 m module), roofs are 45 degree slopes (a pair of
-/// 1 m ramps and the fill under them is one large slope), floors and paths are thin plates, doors fill
-/// a 2 m cell and windows are panes in a 2 m wide opening, and everything is plain paint on a
+/// 1 m ramps and the fill under them is one large slope), floors and paths are never blocks of their own but a finish painted on the top of the block or the ground under them (<see cref="BlockInfo.IsFinish"/>), doors are
+/// the standard door (one large block, nothing low over the way to it) and windows are panes in a 2 m wide opening, and everything is plain paint on a
 /// plain material. You can read a ruin and rebuild it block for block.
 ///
 /// Everything stands on the ground, so no cell goes below it and the terrain runs flush up to
 /// every wall. A lot is drawn in its own frame (u along the front, v back from it) and turned to face
 /// the road; <see cref="StateTransforms.Weathered"/> breaks it believably afterwards.
 /// </summary>
-public static class Homes
+public static partial class Homes
 {
     /// <summary>A quarter-turned frame: u along the lot's front, v back from it, y up; the lot's front looks along -v.</summary>
     readonly record struct Frame(int Q, int X, int Z)
@@ -71,6 +73,15 @@ public static class Homes
         public string Purpose = "quarters";
         public ModuleKind Kind = ModuleKind.Room;
         public int Storey, U0, V0, U1, V1, Module = -1;
+        /// <summary>A room that isn't a rectangle (a round house's): its cells. U0 to V1 is then the square inside it its furniture keeps to.</summary>
+        public HashSet<(int U, int V)>? Shape;
+        public IEnumerable<(int U, int V)> Cells()
+        {
+            if (Shape != null) { foreach (var c in Shape) yield return c; yield break; }
+            for (int v = V0; v <= V1; v++)
+                for (int u = U0; u <= U1; u++) yield return (u, v);
+        }
+        public bool Holds(int u, int v) => Shape?.Contains((u, v)) ?? u >= U0 && u <= U1 && v >= V0 && v <= V1;
     }
 
     /// <summary>A lot being drawn: the canvas, its turn, what it's made of.</summary>
@@ -81,12 +92,14 @@ public static class Homes
         public Stuff S = null!;
         public Frame F;
         public TechLevel Tech;
+        /// <summary>The culture of the region it stands in, when its world gave one.</summary>
+        public HomeHints? Home;
         public int Loot = -1;
 
         public void Plate(Frame f, int u, int v, Rgb c, Role role = Role.Debris)
         {
             Int3 p = f.At(u, 0, v);
-            if (!C.Blocks.ContainsKey(p)) C.Blocks[p] = new Block(BlockType.Plate, Material.Concrete, c, role);
+            C.Blocks.Pave(p, new Block(BlockType.Plate, Material.Concrete, c, role));
         }
 
         /// <summary>The patch of ground at the way in: every lot's walk begins here.</summary>
@@ -103,10 +116,14 @@ public static class Homes
     }
 
     /// <summary>One building: wings and rooms, then its walls, openings and roof in that order.</summary>
-    sealed class Hut
+    sealed partial class Hut
     {
         readonly Lot _l;
         readonly Frame _f;
+        /// <summary>How far its ground floor stands off the ground: a house on stilts or legs, a room on a tower.</summary>
+        public int Lift;
+        /// <summary>The outer walls' cladding by cell (u, y over the ground floor, v): courses of board, a timber frame, a stone ground floor.</summary>
+        public Func<int, int, int, Block>? Skin;
         public readonly List<Wing> Wings = new();
         public readonly List<Room> Rooms = new();
         public readonly HashSet<(int U, int V)> Foot = new();
@@ -121,7 +138,7 @@ public static class Homes
         public Hut(Lot lot, Frame frame, Stuff? stuff = null) { _l = lot; _f = frame; S = stuff ?? lot.S; }
 
         Canvas C => _l.C;
-        Int3 P(int u, int y, int v) => _f.At(u, y, v);
+        Int3 P(int u, int y, int v) => _f.At(u, y + Lift, v);
         public int Walk(int storey) => storey * (Height + 1);
         public int Ring(int storey) => Walk(storey) + Height;
         int Eave => Ring(Storeys - 1);
@@ -144,22 +161,25 @@ public static class Homes
                     for (int u = w.U0; u <= w.U1; u++) Foot.Add((u, v));
             var inside = new HashSet<(int, int, int)>();
             foreach (Room r in Rooms)
-                for (int v = r.V0; v <= r.V1; v++)
-                    for (int u = r.U0; u <= r.U1; u++)
+                foreach (var (u, v) in r.Cells())
                     {
                         if (!Foot.Contains((u, v)) || Edge(u, v)) throw new InvalidOperationException($"room {r.Purpose} leaves the walls at {u},{v}");
                         inside.Add((u, v, r.Storey));
-                        if (r.Storey == 0) _l.Plate(_f, u, v, S.Floor, Role.Floor);
+                        if (r.Storey == 0 && Lift == 0) _l.Plate(_f, u, v, S.Floor, Role.Floor);
                     }
             foreach (var (u, v) in Foot)
+            {
+                // Off the ground, the ground floor stands on a slab of its own.
+                if (Lift > 0) C.Set(P(u, -1, v), Cube(S.BaseM, S.Floor, Role.Floor));
                 for (int s = 0; s < Storeys; s++)
                 {
                     bool room = inside.Contains((u, v, s));
                     for (int y = Walk(s); y < Ring(s); y++)
-                        if (!room) C.Set(P(u, y, v), y == 0 ? Cube(S.BaseM, S.Base, Role.Wall) : Cube(S.WallM, S.Wall, Role.Wall));
-                    if (Edge(u, v)) C.Set(P(u, Ring(s), v), Cube(S.WallM, S.Wall, Role.Wall));
+                        if (!room) C.Set(P(u, y, v), Skin != null && Edge(u, v) ? Skin(u, y, v) : y == 0 ? Cube(S.BaseM, S.Base, Role.Wall) : Cube(S.WallM, S.Wall, Role.Wall));
+                    if (Edge(u, v)) C.Set(P(u, Ring(s), v), Skin != null ? Skin(u, Ring(s), v) : Cube(S.WallM, S.Wall, Role.Wall));
                     else if (!Open || s + 1 < Storeys || !room) C.Set(P(u, Ring(s), v), Cube(S.BaseM, S.Floor, Role.Floor));
                 }
+            }
         }
 
         /// <summary>The rooms as modules, once the stairs have taken their cells.</summary>
@@ -167,9 +187,9 @@ public static class Homes
         {
             foreach (Room r in Rooms)
             {
+                if (r.Module >= 0) continue;
                 var cells = new List<Int3>();
-                for (int v = r.V0; v <= r.V1; v++)
-                    for (int u = r.U0; u <= r.U1; u++)
+                foreach (var (u, v) in r.Cells())
                         if (!_stair.Contains((u, v, r.Storey)))
                             for (int y = Walk(r.Storey); y < Ring(r.Storey); y++) cells.Add(P(u, y, v));
                 r.Module = C.AddModule(r.Kind, r.Purpose, r.Storey, cells);
@@ -179,23 +199,25 @@ public static class Homes
                     if (a.Module < b.Module && a.Storey == b.Storey && a.U0 <= b.U1 + 2 && b.U0 <= a.U1 + 2 && a.V0 <= b.V1 + 2 && b.V0 <= a.V1 + 2) C.Link(a.Module, b.Module);
         }
 
-        /// <summary>An opening through a wall, one 2 m module wide and tall by default: the size of a player's door.</summary>
-        public void Gap(int u, int v, bool alongU, int storey = 0, int width = 2, int tall = 2)
+        /// <summary>An opening through a wall, the standard door's by default (<see cref="DoorSize"/>): one large block, 2 m wide and tall.</summary>
+        public void Gap(int u, int v, bool alongU, int storey = 0, int width = DoorSize.Wide, int tall = DoorSize.Tall)
         {
             for (int k = 0; k < width; k++)
             {
                 int gu = alongU ? u + k : u, gv = alongU ? v : v + k;
                 _door.Add((gu, gv, storey));
                 for (int y = Walk(storey); y < Walk(storey) + tall; y++) C.Clear(P(gu, y, gv));
+                // The floor's finish runs through the opening: a threshold is never a hole in the tiles.
+                if (storey == 0 && Lift == 0) _l.Plate(_f, gu, gv, S.Floor, Role.Floor);
             }
         }
 
-        /// <summary>The door in an outside wall: a real door in a 2 m opening, from the yard into a room.</summary>
-        public void FrontDoor(int u, int v, Room room)
+        /// <summary>The door in an outside wall: the standard door (<see cref="DoorSize"/>) in its opening, from the yard into a room.</summary>
+        public void FrontDoor(int u, int v, Room room, int tall = DoorSize.Tall)
         {
             var cells = new List<Int3>();
             for (int k = 0; k < 2; k++)
-                for (int y = 0; y < 2; y++) cells.Add(P(u + k, y, v));
+                for (int y = 0; y < tall; y++) cells.Add(P(u + k, y, v));
             C.AddDoorway(cells, _f.Turn(Dir.North), room.Module, C.EntranceModule);
         }
 
@@ -209,6 +231,8 @@ public static class Homes
                 int v = v0 + k;
                 C.Clear(P(u, Ring(fromStorey), v));
                 C.Set(P(u, walk + k, v), new Block(BlockType.Stair, S.BaseM, S.Base, Role.Traverse, _f.Turn(Dir.South)));
+                // Solid under each step, so a flight stands on its own away from a wall.
+                for (int y = walk; y < walk + k; y++) C.Set(P(u, y, v), new Block(BlockType.Cube, S.BaseM, S.Base.Scale(0.9f), Role.Traverse));
                 for (int up = 0; up <= 3; up++)
                     if (walk + k + up < Ring(fromStorey + 1)) cells.Add(P(u, walk + k + up, v));
                 _stair.Add((u, v, fromStorey));
@@ -222,6 +246,7 @@ public static class Homes
         {
             foreach (Room r in Rooms)
             {
+                if (r.Shape != null) continue;
                 void Side(int a0, int a1, Func<int, (int U, int V)> wall, Func<int, (int U, int V)> beyond, bool back)
                 {
                     int len = a1 - a0 + 1, n = len >= 10 ? 2 : len >= 3 ? 1 : 0;
@@ -300,7 +325,8 @@ public static class Homes
             foreach (var (u, v) in Foot)
             {
                 if (!Edge(u, v)) continue;
-                for (int y = 1; y <= (v == v0 ? front : parapet); y++) C.Set(P(u, Eave + y, v), Cube(S.WallM, S.Wall, Role.Wall));
+                // A house's parapet is its own cladding.
+                for (int y = 1; y <= (v == v0 ? front : parapet); y++) C.Set(P(u, Eave + y, v), Skin?.Invoke(u, Eave + y, v) ?? Cube(S.WallM, S.Wall, Role.Wall));
             }
         }
 
@@ -352,8 +378,8 @@ public static class Homes
         {
             int u0 = Foot.Min(c => c.U), u1 = Foot.Max(c => c.U), v0 = Foot.Min(c => c.V), v1 = Foot.Max(c => c.V);
             int top = (_top.Count > 0 ? _top.Values.Max() : Eave) + 2;
-            Int3 a = P(u0 - 2, 0, v0 - 2), b = P(u1 + 2, top, v1 + 2);
-            C.X.Plain.Add(new PlainBox(Int3.Min(a, b), Int3.Max(a, b), Eave, _f.Turn(Dir.North)));
+            Int3 a = P(u0 - 2, -Lift, v0 - 2), b = P(u1 + 2, top, v1 + 2);
+            C.X.Plain.Add(new PlainBox(Int3.Min(a, b), Int3.Max(a, b), Eave + Lift, _f.Turn(Dir.North)));
         }
 
         // ---- furniture: a few pieces against the walls, clear of the doors ------------------------
@@ -368,7 +394,7 @@ public static class Homes
 
         void Piece(Room r, int u, int v, BlockType t, Material m, Rgb c, Dir d = Dir.North)
         {
-            if (Clear(r, u, v)) C.Blocks[P(u, Walk(r.Storey), v)] = new Block(t, m, c, Role.Prop, _f.Turn(d));
+            if (Clear(r, u, v) && r.Holds(u, v)) C.Blocks[P(u, Walk(r.Storey), v)] = new Block(t, m, c, Role.Prop, _f.Turn(d));
         }
 
         public void Furnish()
@@ -378,23 +404,23 @@ public static class Homes
             foreach (Room r in Rooms)
                 switch (r.Purpose)
                 {
-                    case "quarters":
+                    case "quarters" or "bedroom":
                         Piece(r, r.U0, r.V1, BlockType.Bed, Material.Cloth, new Rgb(0x6e, 0x66, 0x5a));
                         Piece(r, r.U0 + 1, r.V1, BlockType.Bed, Material.Cloth, new Rgb(0x6e, 0x66, 0x5a));
                         Piece(r, r.U1, r.V1, BlockType.Locker, Material.Timber, wood);
                         break;
-                    case "farm-kitchen":
+                    case "farm-kitchen" or "kitchen":
                         for (int u = r.U0; u <= Math.Min(r.U1, r.U0 + 2); u++) Piece(r, u, r.V1, BlockType.Bench, Material.Steel, metal);
                         Piece(r, (r.U0 + r.U1) / 2, (r.V0 + r.V1) / 2, BlockType.Table, Material.Timber, wood);
                         break;
-                    case "storage":
+                    case "storage" or "store":
                         for (int v = r.V0 + 1; v <= r.V1; v += 2) Piece(r, r.U1, v, BlockType.Shelf, Material.Steel, metal);
                         break;
-                    case "workshop":
+                    case "workshop" or "garage":
                         for (int v = r.V0 + 1; v <= Math.Min(r.V1, r.V0 + 3); v++) Piece(r, r.U1, v, BlockType.Bench, Material.Steel, metal);
                         Piece(r, r.U0, r.V1, BlockType.Machine, Material.Rust, new Rgb(0x6a, 0x44, 0x34));
                         break;
-                    case "mess":
+                    case "mess" or "living-room":
                         for (int u = r.U0 + 2; u < r.U1 - 1; u += 3)
                             for (int v = r.V0 + 2; v < r.V1 - 1; v += 3) Piece(r, u, v, BlockType.Table, Material.Timber, wood);
                         break;
@@ -402,7 +428,7 @@ public static class Homes
                         for (int u = r.U0 + 2; u < r.U1 - 1; u += 3)
                             for (int v = r.V0 + 2; v < r.V1; v++) Piece(r, u, v, BlockType.Shelf, Material.Steel, metal);
                         break;
-                    case "washroom":
+                    case "washroom" or "bathroom":
                         Piece(r, r.U1, r.V1, BlockType.Tank, Material.Steel, metal);
                         break;
                 }
@@ -414,7 +440,7 @@ public static class Homes
             foreach (var (u, v) in new[] { (r.U0, r.V0), (r.U1, r.V0), (r.U0, r.V1), (r.U1, r.V1), (r.U1, (r.V0 + r.V1) / 2), ((r.U0 + r.U1) / 2, (r.V0 + r.V1) / 2) })
             {
                 Int3 p = P(u, Walk(r.Storey), v);
-                if (C.Solid(p) || !Clear(r, u, v)) continue;
+                if (C.Solid(p) || !Clear(r, u, v) || !r.Holds(u, v) || _stair.Contains((u, v, r.Storey))) continue;
                 C.Blocks.Remove(p);
                 C.AddSlot(SlotKind.Loot, p, r.Module);
                 _l.Loot = r.Module;
@@ -429,20 +455,15 @@ public static class Homes
     public static void Compose(Canvas c, SiteDef site, FamilyDef fam, Rng rng, LayoutHints? hints)
     {
         var tech = hints?.Tech ?? (TechLevel)rng.Range(0, 3);
-        var l = new Lot { C = c, R = rng, Tech = tech, S = Stuff.For(tech, rng), F = new Frame((int)(hints?.Front ?? Dir.North), 0, 0) };
+        var l = new Lot { C = c, R = rng, Tech = tech, S = Stuff.For(tech, rng), F = new Frame((int)(hints?.Front ?? Dir.North), 0, 0), Home = hints?.Home };
         c.ExitCells = new List<Int3>();
         c.X.PlainDoor = l.S.Door;
         c.X.Levels.Add(new LevelInfo { Storey = 0, WalkY = 0, Name = "ground" });
         string what = site.Parts[0].Arg("what");
         switch (what)
         {
-            case "bungalow": case "ell": case "twostorey": case "cottage": case "townhouse": case "prefab":
-            {
-                const int Side = 8, Front = 10;
-                var (w, d, door) = House(l, l.F.Shift(Side, Front), what);
-                Yard(l, l.F, door + Side, w + 2 * Side, d + Front + 8);
-                break;
-            }
+            case "house": HouseLot(l, rng, hints, site.Parts[0].Arg("family", "") is { Length: > 0 } named ? named : null); break;
+            case "terrace": HouseLot(l, rng, hints, "terrace"); break;
             case "homestead": Farm(l, 0); break;
             case "hillfarm": Farm(l, 1); break;
             case "bottomfarm": Farm(l, 2); break;
@@ -462,218 +483,22 @@ public static class Homes
         c.VaultModule = l.Loot;
     }
 
+    /// <summary>A real house set down on a larger place's plan, its rooms and stair its own, walked to from <paramref name="yard"/>.</summary>
+    public static void Farmhouse(Canvas c, Rng rng, TechLevel tech, Int3 at, Dir front, int yard)
+    {
+        var l = new Lot { C = c, R = rng, Tech = tech, S = Stuff.For(tech, rng), F = new Frame((int)front, at.X, at.Z) };
+        int module = c.EntranceModule;
+        Int3 cell = c.EntranceCell, gate = c.X.Gate;
+        Dir facing = c.EntranceFacing;
+        House(l, l.F, tech switch { TechLevel.Low => "cottage", TechLevel.High => "prefab", _ => "twostorey" });
+        c.Link(yard, c.EntranceModule);
+        c.EntranceModule = module;
+        c.EntranceCell = cell;
+        c.EntranceFacing = facing;
+        c.X.Gate = gate;
+    }
+
     static void Upper(Lot l, Hut h) => l.C.X.Levels.Add(new LevelInfo { Storey = 1, WalkY = h.Walk(1), Name = "upper" });
-
-    // ---- houses ------------------------------------------------------------------------------
-
-    /// <summary>Draws a house at a frame's origin, its approach included. Returns its width, its depth and the u of its door.</summary>
-    static (int W, int D, int DoorU) House(Lot l, Frame f, string plan)
-    {
-        Rng r = l.R;
-        var h = new Hut(l, f);
-        int w, d, door, step = -3;
-        Room entry, loot;
-        switch (plan)
-        {
-            case "bungalow":
-            {
-                // Two rooms down one side, a 5 m wide hall and a kitchen down the other.
-                int left = r.Chance(0.5f) ? 6 : 8, rear = r.Chance(0.5f) ? 4 : 6;
-                w = left + 8;
-                d = rear + 8;
-                door = left + 4;
-                h.Wings.Add(new Wing(0, 0, w - 1, d - 1));
-                entry = h.Add("hall", 0, left + 2, 1, left + 6, 5, ModuleKind.Hall);
-                h.Add("quarters", 0, 1, 1, left, 5);
-                Room back = h.Add(r.Chance(0.5f) ? "quarters" : "storage", 0, 1, 7, left, d - 2);
-                loot = h.Add("farm-kitchen", 0, left + 2, 7, left + 6, d - 2);
-                h.Raise();
-                h.Gap(door, 0, true);
-                h.Gap(left + 1, 2, false);
-                h.Gap(left + 2, 6, true);
-                h.Gap(left + 1, 8, false);
-                h.Modules();
-                h.Windows();
-                h.Roof();
-                h.Chimney(r.Chance(0.5f) ? 0 : w - 1, d / 2 - 2, 0, 1);
-                if (r.Chance(0.6f)) h.Verandah(left, w - 2, 0);
-                break;
-            }
-            case "ell":
-            {
-                // A long wing across the back, a gabled wing forward at one end, the door in the angle.
-                int rear = r.Chance(0.5f) ? 10 : 12;
-                w = 16;
-                d = rear + 6;
-                door = 10;
-                step = 3;
-                h.Wings.Add(new Wing(0, 6, w - 1, d - 1));
-                h.Wings.Add(new Wing(0, 0, 7, 7, false));
-                entry = h.Add("hall", 0, 8, 7, 11, d - 2, ModuleKind.Hall);
-                h.Add("quarters", 0, 1, 1, 6, 8);
-                Room k = h.Add("farm-kitchen", 0, 1, 10, 6, d - 2);
-                h.Add("washroom", 0, 13, 7, 14, 10);
-                loot = h.Add("storage", 0, 13, 12, 14, d - 2);
-                h.Raise();
-                h.Gap(door, 6, true);
-                h.Gap(7, 8, false);
-                h.Gap(7, 12, false);
-                h.Gap(12, 8, false);
-                h.Gap(12, 12, false);
-                h.Modules();
-                h.Windows();
-                h.Roof();
-                h.GableVent(3, 0);
-                h.Chimney(w - 1, 8, 0, 1);
-                break;
-            }
-            case "twostorey":
-            {
-                // A hall the depth of the house with the stair along its wall, rooms beside it on both floors.
-                int rear = r.Chance(0.5f) ? 4 : 6;
-                w = 14;
-                d = rear + 8;
-                door = 8;
-                h.Storeys = 2;
-                h.Wings.Add(new Wing(0, 0, w - 1, d - 1));
-                entry = h.Add("hall", 0, 8, 1, 12, d - 2, ModuleKind.Hall);
-                h.Add("quarters", 0, 1, 1, 6, 5);
-                loot = h.Add("farm-kitchen", 0, 1, 7, 6, d - 2);
-                Room upperHall = h.Add("hall", 1, 8, 1, 12, d - 2, ModuleKind.Hall);
-                h.Add("quarters", 1, 1, 1, 6, 5);
-                h.Add(r.Chance(0.5f) ? "quarters" : "storage", 1, 1, 7, 6, d - 2);
-                h.Raise();
-                h.Gap(door, 0, true);
-                foreach (int s in new[] { 0, 1 })
-                {
-                    h.Gap(7, 2, false, s);
-                    h.Gap(7, 8, false, s);
-                }
-                int stair = h.Stair(12, 2);
-                h.Modules();
-                l.C.Link(entry.Module, stair);
-                l.C.Link(stair, upperHall.Module);
-                Upper(l, h);
-                h.Windows();
-                h.Roof();
-                h.Chimney(0, d / 2 - 1, 0, 1);
-                h.Chimney(w - 1, d / 2 - 1, 0, 1);
-                break;
-            }
-            case "cottage":
-            {
-                // Gable to the road: a parlour across the front, a kitchen and a closet behind.
-                int parlour = r.Chance(0.5f) ? 6 : 4;
-                w = r.Chance(0.5f) ? 10 : 12;
-                d = parlour + 8;
-                door = 4;
-                h.Wings.Add(new Wing(0, 0, w - 1, d - 1, false));
-                entry = h.Add("quarters", 0, 1, 1, w - 2, parlour);
-                loot = h.Add("farm-kitchen", 0, 1, parlour + 2, 5, d - 2);
-                h.Add("storage", 0, 7, parlour + 2, w - 2, d - 2);
-                h.Raise();
-                h.Gap(door, 0, true);
-                h.Gap(2, parlour + 1, true);
-                h.Gap(7, parlour + 1, true);
-                h.Modules();
-                h.Windows();
-                h.Roof();
-                h.GableVent(w / 2 - 1, 0);
-                h.Chimney(2, d - 1, 1, 0);
-                h.Porch(door - 1, door + 2, 0);
-                break;
-            }
-            case "prefab":
-            {
-                // Factory panels on a slab: one open room down one side, a hall and a kitchen down the other, a flat roof.
-                int left = r.Chance(0.5f) ? 6 : 8, rear = r.Chance(0.5f) ? 4 : 6;
-                w = left + 8;
-                d = rear + 6;
-                door = left + 4;
-                h.Wings.Add(new Wing(0, 0, w - 1, d - 1, true, RoofKind.Flat));
-                entry = h.Add("hall", 0, left + 2, 1, left + 6, 3, ModuleKind.Hall);
-                h.Add("quarters", 0, 1, 1, left, d - 2);
-                loot = h.Add("farm-kitchen", 0, left + 2, 5, left + 6, d - 2);
-                h.Raise();
-                h.Gap(door, 0, true);
-                h.Gap(left + 1, 2, false);
-                h.Gap(left + 2, 4, true);
-                h.Modules();
-                h.Windows();
-                h.FlatRoof(1, 1);
-                // A row of collectors on the roof, on frames.
-                for (int u = 2; u < w - 2; u += 2)
-                    for (int v = 2; v < d - 2; v += 3) l.C.Set(f.At(u, h.Ring(0) + 1, v), new Block(BlockType.Lattice, Material.Alloy, new Rgb(0x2c, 0x38, 0x48), Role.Decor));
-                break;
-            }
-            default: // townhouse
-            {
-                // Narrow and deep: a 4 m hall down one side, rooms beside it, gable to the street.
-                int rear = r.Chance(0.5f) ? 5 : 7;
-                w = 12;
-                d = rear + 9;
-                door = 2;
-                h.Storeys = 2;
-                h.Wings.Add(new Wing(0, 0, w - 1, d - 1, false));
-                entry = h.Add("hall", 0, 1, 1, 4, d - 2, ModuleKind.Hall);
-                h.Add("quarters", 0, 6, 1, 10, 6);
-                loot = h.Add("farm-kitchen", 0, 6, 8, 10, d - 2);
-                Room upperHall = h.Add("hall", 1, 1, 1, 4, d - 2, ModuleKind.Hall);
-                h.Add("quarters", 1, 6, 1, 10, 6);
-                h.Add("storage", 1, 6, 8, 10, d - 2);
-                h.Raise();
-                h.Gap(door, 0, true);
-                foreach (int s in new[] { 0, 1 })
-                {
-                    h.Gap(5, 2, false, s);
-                    h.Gap(5, 10, false, s);
-                }
-                int stair = h.Stair(1, 4);
-                h.Modules();
-                l.C.Link(entry.Module, stair);
-                l.C.Link(stair, upperHall.Module);
-                Upper(l, h);
-                h.Windows();
-                h.Roof();
-                h.GableVent(w / 2 - 1, 0);
-                h.Chimney(w - 1, 6, 0, 1);
-                break;
-            }
-        }
-        h.Furnish();
-        h.Loot(loot);
-        h.Box();
-        l.Approach(f, door, step);
-        h.FrontDoor(door, step + 3, entry);
-        l.C.Link(l.C.EntranceModule, entry.Module);
-        return (w, d, door);
-    }
-
-    /// <summary>
-    /// The yard: a path from the door to the lot's front edge, a low wall or a rail along the front and
-    /// down the sides with a gate in it, gaps where it has fallen. Where the path meets the edge is the
-    /// lot's gate, which the driveway comes to.
-    /// </summary>
-    static void Yard(Lot l, Frame f, int doorU, int lotW, int lotD)
-    {
-        Canvas c = l.C;
-        var pale = l.S.Base.Scale(1.1f);
-        // Up the path until the steps of the way in.
-        for (int v = 0; v < lotD && !c.Occ.Contains(f.At(doorU, 1, v + 1)) && !c.Solid(f.At(doorU, 0, v)); v++)
-            for (int k = 0; k < 2; k++) l.Plate(f, doorU + k, v, pale);
-        c.X.Gate = f.At(doorU, 0, -1);
-        void Lay(int u, int v)
-        {
-            Int3 p = f.At(u, 0, v);
-            if (c.Blocks.ContainsKey(p) || c.Occ.Contains(p)) return;
-            // It falls in 2 m sections, not block by block.
-            if (Hash.Cell(new Int3(u / 2, 0, v / 2), 61 + (uint)lotW) % 100 < 26) return;
-            c.Set(p, l.Tech == TechLevel.Low ? new Block(BlockType.Rail, Material.Timber, l.S.Door, Role.Decor) : new Block(BlockType.Cube, l.S.BaseM, l.S.Base, Role.Wall));
-        }
-        for (int u = 0; u < lotW; u++)
-            if (u < doorU - 2 || u > doorU + 3) Lay(u, 0);
-        for (int v = 1; v < lotD * 2 / 3; v++) { Lay(0, v); Lay(lotW - 1, v); }
-    }
 
     // ---- farmsteads --------------------------------------------------------------------------
 
@@ -694,6 +519,7 @@ public static class Homes
         barn.Modules();
         barn.Windows(0.6f);
         barn.Roof();
+        barn.Headroom(w / 2 - 2, 0, Dir.North, 0, 4, exit: false);
         barn.GableVent(w / 2, 0);
         barn.Box();
         // Stalls down one side.
@@ -711,16 +537,20 @@ public static class Homes
         // The house at the front of the yard, the barn across the back of it, the silo beside the barn.
         const int HouseU = 6, HouseV = 12;
         var (hw, _, door) = House(l, f.Shift(HouseU, HouseV), layout switch { 0 => "bungalow", 1 => "cottage", _ => "twostorey" });
+        // How far back the house reaches, wings, eaves and all: the shed keeps clear of it.
+        int back = l.C.Blocks.Keys.Where(p => p.Y >= 0).Select(p => f.Q switch { 0 => p.Z - f.Z, 1 => f.X - p.X, 2 => f.Z - p.Z, _ => p.X - f.X }).DefaultIfEmpty(HouseV).Max();
         for (int v = 0; v < HouseV - 4; v++)
             for (int k = 0; k < 2; k++) l.Plate(f, HouseU + door + k, v, l.S.Base.Scale(1.1f));
         l.C.X.Gate = f.At(HouseU + door, 0, -1);
-        int bu = HouseU + hw + 10 + 2 * r.Range(0, 3), bv = 6 + 2 * r.Range(0, 3), bw = 14 + 2 * r.Range(0, 2), bd = 20 + 2 * r.Range(0, 3);
+        // A working farm's yard and fields at the size of one (a farm lot is about 60 m by 60 and more): the barn well across
+        // the yard, the field out to the silo's far side and twenty-odd rows deep.
+        int bu = HouseU + hw + 24 + 2 * r.Range(0, 3), bv = 6 + 2 * r.Range(0, 3), bw = 14 + 2 * r.Range(0, 2), bd = 20 + 2 * r.Range(0, 3);
         Barn(l, f.Shift(bu, bv), bw, bd);
         Silo(l, f.At(bu + bw + 7, 0, bv + 6), layout == 2 ? 16 : 12);
         // The field the place served, its rows gone to weeds, an old rail along it.
-        int fieldV = bv + bd + 6, run = 30;
+        int fieldV = bv + bd + 4, run = Math.Max(30, bu + bw + 12 - HouseU);
         var weed = new Rgb(0x6a, 0x72, 0x44);
-        for (int k = 0; k < 12 + layout * 2; k += 2)
+        for (int k = 0; k < 24 + layout * 2; k += 2)
             for (int u = 0; u < run; u++)
             {
                 Int3 p = f.At(HouseU + u, 0, fieldV + k);
@@ -729,13 +559,15 @@ public static class Homes
         for (int u = 0; u < run; u++)
             if (Hash.Cell(new Int3(u / 2, 0, 0), 85) % 100 > 25) l.C.Blocks.TryAdd(f.At(HouseU + u, 0, fieldV - 2), new Block(BlockType.Rail, Material.Timber, l.S.Door, Role.Decor));
         if (layout == 0) return;
-        var shed = new Hut(l, f.Shift(HouseU, HouseV + 22), l.S) { Open = true };
+        // The shed far enough behind the house that its eaves never close the way between them overhead.
+        var shed = new Hut(l, f.Shift(HouseU, Math.Max(HouseV + 22, back + 6)), l.S) { Open = true };
         shed.Wings.Add(new Wing(0, 0, 9, 7));
         Room s = shed.Add("workshop", 0, 1, 1, 8, 6);
         shed.Raise();
         shed.Gap(4, 0, true);
         shed.Modules();
         shed.Roof();
+        shed.Headroom(4, 0, Dir.North, 0, exit: false);
         shed.Furnish();
         shed.Box();
         l.C.Link(l.C.EntranceModule, s.Module);
@@ -745,16 +577,8 @@ public static class Homes
     {
         const float R = 3.4f;
         var shell = new Rgb(0x8c, 0x88, 0x7c);
-        for (int y = 0; y < h + 3; y++)
-        {
-            float r = y < h ? R : R - (y - h + 1) * 1.05f;
-            for (int dz = -4; dz <= 4; dz++)
-                for (int dx = -4; dx <= 4; dx++)
-                {
-                    if (MathF.Sqrt(dx * dx + dz * dz) > r) continue;
-                    l.C.Set(at + new Int3(dx, y, dz), new Block(BlockType.Cube, Material.Concrete, y % 4 == 3 ? shell.Scale(0.85f) : shell, Role.Wall));
-                }
-        }
+        Round.Lay(l.C, at.X + 0.5, at.Z + 0.5, at.Y, at.Y + h + 2, y => (y - at.Y < h ? R : R - (y - at.Y - h + 1) * 1.05, 0),
+            y => new Block(BlockType.Cube, Material.Concrete, (y - at.Y) % 4 == 3 ? shell.Scale(0.85f) : shell, Role.Wall));
     }
 
     // ---- sheds -------------------------------------------------------------------------------
@@ -773,7 +597,7 @@ public static class Homes
         switch (kind)
         {
             case "toolshed":
-                w = 8 + 2 * r.Range(0, 3); d = 6 + 2 * r.Range(0, 3); mouth = w / 2 / 2 * 2 - 2; wide = 2;
+                w = 8 + 2 * r.Range(0, 3); d = 6 + 2 * r.Range(0, 3); mouth = w / 2 / 2 * 2 - 2; wide = 4;
                 h.Wings.Add(new Wing(0, 0, w - 1, d - 1));
                 break;
             case "machineshed":
@@ -787,10 +611,12 @@ public static class Homes
         }
         Room room = h.Add("workshop", 0, 1, 1, w - 2, d - 2, ModuleKind.Hall);
         h.Raise();
-        h.Gap(mouth, 0, true, 0, wide, h.Height - 1);
+        // A shed's doors are a cart's or a machine's: full width, up to the wall's top course, never a low hatch.
+        h.Gap(mouth, 0, true, 0, wide, h.Height);
         h.Modules();
         h.Windows(0.5f);
         h.Roof();
+        h.Headroom(mouth, 0, Dir.North, 0, wide, exit: false);
         h.Furnish();
         h.Loot(room);
         h.Box();
@@ -832,6 +658,7 @@ public static class Homes
         else h.Modules();
         h.Windows(0.5f);
         h.FlatRoof();
+        h.Headroom(door, 0, Dir.North, 0);
         for (int u = 2; u < w - 2; u++) l.C.Set(f.At(u, h.Ring(h.Storeys - 1) + 1, -1), new Block(BlockType.Cube, l.S.BaseM, l.S.Sign, Role.Wall));
         h.Furnish();
         h.Loot(store);
@@ -890,6 +717,7 @@ public static class Homes
         else h.Modules();
         h.Windows();
         h.Roof();
+        h.Headroom(door, 0, Dir.North, 0);
         h.Chimney(w - 1, d / 2 - 1, 0, 1);
         h.Furnish();
         h.Loot(store);
@@ -903,9 +731,10 @@ public static class Homes
         stable.Wings.Add(new Wing(0, 0, sw - 1, sd - 1, true, RoofKind.Lean));
         Room stalls = stable.Add("storage", 0, 1, 1, sw - 2, sd - 2, ModuleKind.Hall);
         stable.Raise();
-        stable.Gap(2, 0, true, 0, 8, 2);
+        stable.Gap(2, 0, true, 0, 8, DoorSize.Tall);
         stable.Modules();
         stable.Roof();
+        stable.Headroom(2, 0, Dir.North, 0, 8, exit: false);
         stable.Box();
         l.C.Link(l.C.EntranceModule, stalls.Module);
         var wood = new Rgb(0x54, 0x46, 0x38);
@@ -951,6 +780,7 @@ public static class Homes
         h.Gap(4, 0, true);
         h.Modules();
         h.FlatRoof(1, 1);
+        h.Headroom(4, 0, Dir.North, 0);
         h.Loot(room);
         h.Box();
         l.Approach(f, 4, -3);

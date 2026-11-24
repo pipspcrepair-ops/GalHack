@@ -33,7 +33,7 @@ You start in the air over a planet patch.
 | N | | a new layout from a random seed | |
 | S | | next state: active, abandoned, infested, ruined | |
 | R | | next rarity: common to unique | |
-| E | | | use: take a keycard, break a cracked wall, call or ride a lift, open a cache |
+| E | | | use: open a door, break a cracked wall, call or ride a lift, open a cache |
 | L | | | head torch (on by default except when active) |
 | Tab | | layout map | layout map |
 | Esc | free the mouse | | |
@@ -66,7 +66,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
    A pattern already used on another storey is less likely again. A storey whose plan signature matches another storey's is planned again. Shape follows purpose: hospitals and prisons spread their wings, towers climb, bunkers and mines go down.
 3. **Rooms.** The space left over is cut into rooms by recursive wall splits. Each room gets a purpose from the program's demands (`rooms ground lobby! nurses ...`) and from the room library (`rooms.txt`). The library gives each room its size, props, adjacency, and a deco set for the decorations library. Slivers become hidden rooms behind breakable walls, each with its tells.
-4. **Doors and locks.** Every room reaches a corridor, either directly or through a room it belongs with. Some doors need a keycard, and the keycard always lies on the reachable side of its lock. The vault sits on the deepest level. A program's must-have rooms (`lobby!`) are guaranteed: a plan that leaves one out is planned again.
+4. **Doors.** Every room reaches a corridor, either directly or through a room it belongs with. Every door opens by hand (a blast door is only heavier to look at): no locks, no keycards. The vault sits on the deepest level. A program's must-have rooms (`lobby!`) are guaranteed: a plan that leaves one out is planned again.
 5. **Verticality.**
    - Stairs, with 3 cells of headroom over every step.
    - Ladders, and lifts with cars.
@@ -78,13 +78,14 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 6. **Ominous.** Wrongness rises with depth and height (`Decay.cs`):
    - Lights fail level by level: working, then flickering, then red emergency lamps, then dead.
    - Fog thickens, and the Bloom creeps in at the bottom.
-   - Puddles appear, and walls bruise.
+   - Walls bruise. No room floods and no cell is ever water: a place's own water (a settling channel, a filter bed) is a surface over its floor (`LayoutExtras.Water`, drawn by `MeshBuild.Water`), with no collision, hiding nothing.
    - Sound hooks are placed: drips, hums, knocks, wind.
 
    From outside, one high window is still lit and a thin column of smoke rises. A place with no window keeps a work lamp burning over its door.
 7. **Checked, then regenerated.** `LayoutCheck` checks every layout before it is used:
    - Corridor cells have a floor, walls, a ceiling and 3 m of headroom, and are two cells wide.
    - Every doorway sits in a wall, with floor on both sides.
+   - Every door is the one standard door (`DoorSize`: one large block, 2 m wide and tall under a solid head; a place may open grander ways, a barn's or a garage's, but no person's door is lower), in every family: for 2 m either side nothing hangs lower than its head, out of doors nothing lower than a metre over it, and no opening between two walls is lower. A door is framed only in its building's own trim (`facade ... trim`), or not at all; hazard stripes go only on a dangerous opening's own door (a blast door, an airlock). PoiTest's `Doors` check walks every family.
    - Every stair has its headroom.
    - Every room and level can be reached on foot.
    - Hidden rooms open only when their wall breaks.
@@ -93,10 +94,33 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
    A layout that fails is thrown away and planned again from a new sub-seed, up to 24 times. `Architect.Stats` counts the generated, failed and regenerated layouts.
 
+### Below ground
+
+Places below ground are planned by `Depths` (`src/Gen/Arch/Depths*.cs`) from rules in `data/depths.txt`, not drawn by hand and not as a building's basements. Each purpose (shelter, command, cryo, biolab, research, ice, mine, silo, prison, hive, library) names the shared plan parts its levels draw on, by band of depth:
+
+- a spine with rooms down both sides, hub and spokes, a ring round a central hall, a ring of pod halls, a grid of cross corridors with a room in every cell;
+- a great hall with a gallery round three sides over it (a flight up to it, rooms off the floor and off the gallery), a round chamber with a gallery ring halfway up;
+- a long gallery with alcoves, cell blocks round a guarded hub (or a tiered cell hall), winding drifts with stopes at their ends (raw rock), round and oval chambers on curved ways (alien);
+- a structure through every level: a silo's shaft with a gallery ring at each level and the levels ringed round it, or a mine's shaft with a station on each level, ladders and a cage.
+
+Levels stack on one core (a switchback stairwell or a ladderway, a lift beside it at higher tech) or step down by long stairs, ramps and ladders. Zones are parted by airlocks, decontamination chains and blast vestibules; service crawlways (2 m) run beside the main ways; dead ends keep vaults or hidden rooms behind them. The builders' tech (main ways about 8 by 6 m, 10 by 8 at high tech, 6 m at low) and habit (orderly, radial, linear, warren, a faction's own, organic for aliens), and the world's age and fall (`LayoutHints.Ruin`), tilt every weight, and the years mark the plan: a collapse across a corridor (with a way dug round it if there was none), a cave broken into, a squatters' tunnel, a door welded shut with the section reached another way, a breach from the surface. Underground places get a fresh seed on every world.
+
+A head stands on the surface: a blockhouse with vents and a mast, a hatch, a low bermed portal, a shaft house, an alien dome. `part grand ... what below purpose P` is a whole place; `part below X Z rot N purpose P` puts one under a composed site (a research base's or a biolab's labs, a prison, the old mine's headframe, a military base). PoiTest's `Depths` check generates many of each family on fresh seeds, measures their plans (branching, loops, levels, room-size and corridor-width spread, the parts used), shows the families differ from each other and within themselves, and walks every one from its way in; `-- --only=DepthsSheet --depthsheet=FILE.png` draws six of them as plans.
+
+### Shapes
+
+A spawned place's plain cubes take the shapes its builders used, last of all, round whatever was set down (`Shaping.cs`, docs/place-patterns.md rule P6). The places' own block set on the 1 m grid adds half and quarter cubes, thin walls, beams, round columns and hung slopes (a chamfer and its two corners) to the cube, ramp, corner, post and pane; each is solid to the walking grids and collides as its real shape. Only a cube with nothing against it is shaped, and a top anything stands on stays whole.
+
+- **Low and mid tech**: facades in panels set back between pilasters, a cornice under the roof's edge; walls with more behind them coved at the ceiling and panelled; joists across the ceilings with beams under them; thin walls between rooms; posts in big halls; mines timbered with posts and cap beams.
+- **High tech** (and alien): every storey of a facade with a sloped foot and a chamfered head, the corners turned; rooms coved at the ceiling and cut back at the floor, their inner corners turned; ceilings folded in V-bays between ribs; round columns in big halls.
+- **Every roof's edge and wall top** sloped (a coping or a chamfer), its corners turned.
+
+PoiTest's Patterns check holds each manner and kind of place (`shapes` in `data/references.txt`) within 5 points of the reference bands, over the blocks a place shows.
+
 ### Places, states and loot
 
-- **Plain ruins** (`src/Gen/Arch/Homes.cs`, `PlainRuin.cs`; families `flavour_*`) are the small roadside buildings, drawn by hand rather than planned. They are real size against a 1.8 m person and built as a player builds: a 2 m lattice in plan and storey (POI cells are 1 m, the player's large block 2 m), walls and slabs as large half blocks, 45 degree slope roofs, thin plate floors, 2 m doors, panes in the windows. `LayoutHints` turns a lot to face its road and picks its materials by tech level. Nothing goes below ground, and their decay takes everything above smooth collapses, so walls end in broken tops. Overgrowth runs last. They have no block trees (the big places still grow them).
-- **Cores** appear only where a faction owns the place (`FamilyDef.HasCore(state)`). Wrecks, ruins, the old world's abandoned places and gang forts never have one.
+- **Plain ruins** (`src/Gen/Arch/Homes.cs`, `PlainRuin.cs`; families `flavour_*`) are the small roadside buildings, drawn by rule rather than planned. A house is put together from parts (`HomeStyles.cs`, `HomeBuild.cs`, `HomeParts.cs`, `HomeLots.cs`; families in `data/homes.txt`): its culture, era, tech, climate and wealth pick a family, the family weights each part (plan, storeys, roof form and cover, cladding, windows, porch, chimney, balcony, garage and its door, fence), and city houses and terraces come from the same rules. Each house records its service-drop fixing in `LayoutExtras.Service`. They are real size against a 1.8 m person and built as a player builds: a 2 m lattice in plan and storey (POI cells are 1 m, the player's large block 2 m), walls and slabs as large half blocks, 45 degree slope roofs, thin plate floors (a floor's finish stays under whatever is set on it, `BlockGrid.Under`, and what stands on it is drawn on top of it; only a full cube hides a face), the standard 2 m door with nothing low over the way to it, panes in the windows. `LayoutHints` turns a lot to face its road and picks its materials by tech level. Nothing goes below ground, and their decay takes everything above smooth collapses, so walls end in broken tops. Overgrowth runs last. They have no block trees (the big places still grow them).
+- **Cores** appear only where a faction owns the place (`FamilyDef.HasCore(state)`). Wrecks, ruins, the old world's abandoned places and gang forts never have one. A faction base's program (`garrison_hq`: command, barracks, armoury, workshop, power and fuel, a vehicle bay, a medical bay, 40 to 110 m) keeps its core in a **core vault** (`core-vault` in `rooms.txt`) on its deepest storey in the middle of the plan, no cache within 10 m; one core in two stands in a case of armoured glass, seen from the whole room and reached by breaking it, never walled in opaque and never locked. Its heaviest guard stands in the vault with a gun on its way in, and a guard in each room that leads to it (`Dressing`). PoiTest's `HeldPlaces` check holds every one of these.
 - **States**:
   - *Active*: power and guards.
   - *Abandoned*: dead lights and wildlife.
@@ -135,9 +159,55 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
   - Families say which levels they belong to (`tech low mid high` before any variant; none means any). `WorldPlacement.Place(..., profile:)` then places a family only in a state whose level it fits, weights the set by the trade and the old population (farms on agricultural worlds, mines on mining worlds, labs on research worlds, more towns where many lived), puts no old-world place on a world never inhabited (wrecks, alien and Precursor sites still appear), and picks the layout built for that level.
   - The old starport sets the spaceport ruins: none below a field, then a landing field, the port, and a grand yard with two pads (`port` on a spaceport's variants).
 
+## Worlds, regions and the large places
+
+A world that was ever lived in is laid out in this order, all deterministic from its seed:
+
+1. **Layers** (`data/world-layers.txt`, `src/Gen/WorldLayers.cs`): a world type, a theme, features and presences are rolled and their tables added together. Nothing in the generators names a theme.
+2. **Region plan** (`src/Gen/Regions.cs`): towns first, each with what it needed (a sewage works downhill, water uphill), what it lived on, the plant that fed it, the depot its railway ended at and its farmland; then the port, camps, wrecks, and a share of places that break from the theme out in the wilds. Every place carries its reason, and most a link (road, rail, power). The planet's roads, railways, power lines and small ruins follow the plan; most of the land stays empty.
+3. **Places**: the three large plans (`src/Gen/Arch/SewageWorks.cs`, `FarmEstate.cs`, `BrutalComplex.cs`) each have their own layout logic, and are drawn with `Plot`, in the player's 2 m blocks: walls a block thick, half-block decks, large slopes, the player's one-block door. A corridor is 8 m wide and 6 m high; a narrow passage is an exception. Each is built per tech level (variants' `tech`).
+4. **Occupancy** (`src/Gen/Occupancy.cs`): who's in a place is its own layer, last of all: the same layout empty, nested, camped in, held by a gang, lived in, or two of those at once by floors or across a front line. The theme's mix sets the odds.
+
+`BlockGrid` keeps 16 m chunks only where something stands, so a 300 m works costs what's in it. The mass tests cover the small places; `PoiTest --only=Grand` builds every large variant on fresh seeds, turned every way.
+
+## Worlds, regions and the large places
+
+A world that was ever lived in is laid out in this order, all deterministic from its seed:
+
+1. **Layers** (`data/world-layers.txt`, `src/Gen/WorldLayers.cs`): a world type, a theme, features and presences are rolled and their tables added together. Nothing in the generators names a theme.
+2. **Region plan** (`src/Gen/Regions.cs`): towns first, each with what it needed (a sewage works downhill, water uphill), what it lived on, the plant that fed it, the depot its railway ended at and its farmland; then the port, camps, wrecks, and a share of places that break from the theme out in the wilds. Every place carries its reason, and most a link (road, rail, power). The planet's roads, railways, power lines and small ruins follow the plan; most of the land stays empty.
+3. **Places**: the three large plans (`src/Gen/Arch/SewageWorks.cs`, `FarmEstate.cs`, `BrutalComplex.cs`) each have their own layout logic, and are drawn with `Plot`, in the player's 2 m blocks: walls a block thick, half-block decks, large slopes, the player's one-block door. A corridor is 8 m wide and 6 m high; a narrow passage is an exception. Each is built per tech level (variants' `tech`).
+4. **Occupancy** (`src/Gen/Occupancy.cs`): who's in a place is its own layer, last of all: the same layout empty, nested, camped in, held by a gang, lived in, or two of those at once by floors or across a front line. The theme's mix sets the odds.
+
+`BlockGrid` keeps 16 m chunks only where something stands, so a 300 m works costs what's in it. The mass tests cover the small places; `PoiTest --only=Grand` builds every large variant on fresh seeds, turned every way.
+
+## Capital hulks
+
+`src/Gen/Arch/CapitalHull.cs` composes every crashed capital ship from rules: site part `what capital role <freighter|warship|liner|miner|carrier> size <medium|large|huge> crash <broken|nose|scattered|long>` (`data/sites.txt`), the world's tech, the style kit's livery. The `crashed_freighter` variants each name one crash.
+
+| | |
+| --- | --- |
+| Sizes | from Empyrion's capital wrecks and derelicts (place-patterns 1.4): medium 64 to 96 m long, 25 to 29 m beam, 3 decks; large 96 to 148 m, 31 to 39 m, 4 decks; huge 150 to 250 m (now and then to 270 m), 41 to 51 m, 5 decks; the crew's and power bays hold a stair core and a full set of rooms, so a hull comes out a little longer than its class |
+| Decks | hull decks 5 m apart (a 1 m deck, 4 m clear) plus 2 tower decks; holds, hangar and engine room 2 decks tall (9 m) with a catwalk through; the top deck crushed to 2 m where the crash struck |
+| Bays | bow (tapered, raked forefoot), crew, cargo by role, hangar, power (reactor, core room behind it, generators), engine room against the stern |
+| Shape | an envelope (tapered bow, raked stem and forefoot, chamfered shoulders and bilges, tower with cut corners, chamfered nacelles) that the slice fits with the player's slopes, corners and inverted corners cell by cell |
+| Ways in | a cargo ramp or cutting down from a hangar bay door, plus the crash's own: the broken back's tear, a flank torn open where the hull meets the ground, the open faces of a hull in pieces |
+| Pose | each piece a rigid body pitched about its keel: nose down 9 to 10 m deep at about 4 degrees, a broken back sagged 5 m in the middle, a scattered stern 34 to 44 m down the furrow, a long hauler buried 4 to 7 m |
+
+The route follows Empyrion's crashed vessels: walk round the hull for a way in, up its stairs deck by deck, the best loot deepest (the dead core's room, reached only through the reactor, and the bridge at the top); the danger is outside it, round the wreck.
+
+The hull itself is a vessel, not part of the place. `CapitalHull.Of(layout)` hands the slice a `HullPlan`: the envelope, the bays, the ways in, the crash's tears and crushing, and per piece its stretch of the hull and its pose (origin and rotation) in the place's frame. The place keeps the ground cut for it (open over the hull as it came down, wide enough for it to level as it lifts), its ramps and cuttings, the yard of wreckage, loot and spawns: nobody waits inside a wreck (place-patterns 2.3). In the slice, `Places/HullVessel*.cs` builds each piece of the player's 1 m blocks (rooms by purpose off a spine, flank and cross passages, dressed by the decorations library's ship recipes and lit for their use; thrusters, lift engines, generators, gyros, a warp drive, turrets, cargo containers, a cockpit and command chairs; no fuel tanks), and `Places/Hulks.cs` builds them on a worker within 1.5 km of the sleeper (devices lost by state, Active 10% to ruined 55%, never under a third of thrusters, generators and chairs; shell holes), sets each down as a fixed coreless wreck pitched as it came down, and stocks its containers. Setting a core in the empty seat claims it (`Vessel.ClaimWith`, or the build tool aimed at the wreck). Filled in and switched to capital mode, the pilot's climb input lifts it off along capital-base's clean lift-off (`CutFree.Plan` and `LiftOff`, now compiled into the slice): the ground along the straight climb is cut and crumbles, the hull rises through it, then flies. Orbit derelict capital ships (`data/orbit.txt` `hull`) use the same builder.
+
+`PoiTest --only=Hulks` checks the plans: sizes by class, bays, tower, nacelles, ways in, the place and poses on fresh seeds. The slice's `tests/HulkTest.tscn` builds every capital site's hull on fresh seeds and measures it from its blocks (rooms, dressing, lights, decks, corridors, machines and containers per 100 m², devices, the silhouette), then claims a crashed freighter in any pose, fills it, checks thrust and power in Flight Mode and lifts it off through its cut, and checks a derelict in orbit is the same builder's; `--view=hulk` and `--view=derelict-hull` frame them outside and in.
+
+Empyrion references (read only, nothing copied):
+- Size: Steam discussion on capital vessel sizes and safe lengths, https://steamcommunity.com/app/383120/discussions/8/2645252442209113899 ; empyriononline "Would love to build this" (CV dimensions), https://empyriononline.com/posts/432226/
+- POI structure: empyriononline "POI's and you; a how-to" (entrances, the route, the core, loot by difficulty, depth), https://empyriononline.com/posts/387653/ ; "General Notes and Rules", https://empyriononline.com/threads/general-notes-and-rules.94100/
+- Crashed vessels in play: the local install's playfield yaml (Barren `playfield_static.yaml` crashed-ship groups, tilted and buried; MoonStarter `playfield_debug.yaml` crashed Titan in front, middle and back pieces 300 to 400 m apart)
+
 ## Authoring a kit module as data
 
-A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; the first colour is the main one, and on walls, roofs and floors the others show as whole sheets, never cell by cell. A kit's `panels W H share` line sets those sheets (cells wide, cells tall, the share of them that differ); several colours on a decor cube paint regular stripes. Its `facade base coping door` line gives the three colours `Facade` adds outside: the course at the ground, the top of the walls and the frame of a door to the outside. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
+A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; the first colour is the main one, and on walls, roofs and floors the others show as whole sheets, never cell by cell. A kit's `panels W H share` line sets those sheets (cells wide, cells tall, the share of them that differ); several colours on a decor cube paint regular stripes. Its `facade base coping door` line gives what `Facade` adds outside: the course at the ground and the top of the walls (colours), and whether a door to the outside is framed: `trim` frames it in the coping's colour, where the style calls for a frame, and `none` leaves it in its wall. A frame is never a colour of its own, and never hazard yellow: hazard stripes belong on a dangerous opening's own door (a blast door, an airlock), never round a person's door. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
 
 ```
 kit vharn
@@ -168,7 +238,7 @@ module vh_gullet
   |====|
 ```
 
-Reserved symbols: space is outside the module, `.` air inside it, `D` a socket (a doorway; a connected rectangle on one outside face, 2 wide and 3 high so all kits fit together), `X` the way in (entrances only), `$` loot, `T` terminal, `C` core, `!` enemy spawn, `B` boss, `?` story prop, and `^ v < >` ramps rising that way (made of the palette's `ramp` entry). Block types are the shapes the mesher knows (`cube`, `ramp`, `pillar`, `rib`, `pane`, `lattice`, `spike`, `pod`, `machine`, `crystal` and more); materials and roles are listed in `src/Gen/Blocks.cs`. Roles and materials matter: ruin never removes `floor` blocks, and losing power darkens every `lumen` block (lamps, lit windows, eggs, cryo cradles) while `glyph` and `crystal` keep glowing.
+Reserved symbols: space is outside the module, `.` air inside it, `D` a socket (a doorway; a connected rectangle on one outside face, 2 wide and 3 high so all kits fit together), `X` the way in (entrances only), `$` loot, `T` terminal, `C` core, `!` enemy spawn, `B` boss, `?` story prop, and `^ v < >` ramps rising that way (made of the palette's `ramp` entry). Block types are the shapes the mesher knows (`cube`, `ramp`, `pillar`, `rib`, `pane`, `lattice`, `spike`, `pod`, `machine`, `crystal` and more); materials and roles are listed in `src/Gen/Blocks.cs`. Roles and materials matter: ruin never removes `floor` blocks, and losing power darkens every `lumen` block (lamps, lit windows, eggs, cryo cradles) while `glyph` and `crystal` keep glowing. A `pane` is a thin sheet in the plane of its wall: its facing is the wall's outward normal, settled for the whole place once it is laid out (`src/Gen/PaneFacing.cs`, from the cells that hold the sheet at its ends, never from what the mesher sees later), and a wall that is several panes thick draws one sheet, the outermost, so a window is one plane at one depth.
 
 A family (`data/families.txt`) names its kits, rarity, biomes, territory, near and avoid rules, spacing, reveal distance and state weights, and 3 to 6 layouts, each a fixed seed and a recipe:
 
@@ -207,6 +277,7 @@ A family names a `style` to re-skin its program or site. That is how the alien f
 
   `PoiInstance.Mood` is peaceful, wary or hostile, rolled per settlement. `Friendly` means the guards keep order and turn only if you start shooting. There are no schedules: at night everyone goes indoors to a home spot.
 - **Blast data.** `PoiSite.GroundZero` and `Instance.Layout.Extras.Blast` give the crater, ruin ring, dead zone and fade radii, for the ground tint and the world work. `BlastZone.Strength(d)` falls off with distance. Places within a blast take `StateTransforms.Blast`. Markers flag `shadow` (burnt faces toward ground zero), `hulk` and `radiation-edge`.
+- **War strikes.** A world whose fall is a war (nuclear, bombardment, kinetic) has strikes on its targets (`src/Gen/Strikes.cs`, `data/strikes.txt`): the old capital and cities, bases, airfields, ports, power, refineries and works, the bridges and junctions of the main roads, each by its worth on a world of its tech, the count from the roll's severity. A few miss near their target, the odd one bursts over open country, none comes down in open water unless aimed at ships. Every blast, a blast site's own included, is one `Strike` record, which the crater, the decay of the places round it, the dead ground, the flora and the map all read.
 - **Faction-held mix.** Most faction places are working sites (relays, depots, works, research, markets, flats, an air-defence battery, a sky railgun). Garrisons are tagged `fort` and uncommon.
 - **Composable stamps.** `TerrainStamp.Compose` is the one height rule. In list order, each stamp eases the height so far toward its own target, by its weight. Overlapping pads meet smoothly, and a road or rail stamp laid later wins wherever its weight is 1. Order the list by what should win. `TerrainStamp.Apply` is the step for a single stamp.
 - **Grounding stamps.** Beyond its pad a place lays a crater `Bowl` (shows in the far rings too), `Terraces` stepping down the slope below a hillside place, an approach `Cut` from the way in, a `Tilt` that half-buries a ruin (its rooms stay carved open), and an impact `Furrow` behind a wreck (`PoiSite.Extra`, `PoiSite.Stamps`; all compose and stay walkable to every gate).
@@ -215,6 +286,28 @@ A family names a `style` to re-skin its program or site. That is how the alien f
 - **Dig anywhere.** Stamps are shape only. Faction places lay armoured foundations (`Material.Armour`), so tunnelling in is slow but a valid way in.
 - **Far rings.** `FarBuilder` samples `SurfaceHeight`, which already includes the stamps, so pads show in the distance. Underground carves and crater bowls below the pad don't show in the far heightfield. To show a crater there, the far ring's height sampling needs its bowl (a stamp target below the pad), not only the voxel carve mask.
 - **Screenshots and caps.** `PoiSiting.ForceFamily` seats one family near the landing site, for screenshots. `MaxSites` caps how many places are seated: the nearest half first, then an even spread to the far side.
+
+## Light colour and animation (PoiLights)
+
+Every light has a `LightSettings` (colour, second colour for fades, mode, speed, seed): modes
+`Steady, Pulse, Flicker, Strobe, Fade`. The record lives in `prototypes/building/src/Structures/LightSettings.cs`
+and is the same one the player's light blocks and glowing paint use. Call these from the generator or the rollout
+(all in `PoiGenerator.Gen.PoiLights`, `src/Gen/PoiLights.cs`):
+
+```csharp
+var red = LightSettings.Make(0xff3322, LightAnim.Pulse, 1f, seed);   // colour, mode, hertz, seed (0..127)
+PoiLights.Set(spot, red);                                            // style an existing LightSpot  <-- the call
+PoiLights.Add(poi, cell, red, energy: 1.4f, range: 8f);              // add a styled lamp
+PoiLights.SetMood(poi, LightMood.Dying);                             // every lamp: Warm, Dying, Hostile, Cold, Sealed
+PoiLights.PaintFace(poi, cell, Dir.North, LampShape.Border, style);  // glowing paint on a block face (shape Full/Strip/Panel/Border)
+PoiLights.PaintStrip(poi, from, to, Dir.Up, style);                  // a strip along a run of cells
+```
+
+`PoiLights.Set(LightSpot, LightSettings)` is the single call for a lamp. A painted face only glows (no real light).
+A kit file may carry `mood warm|dying|hostile|cold|sealed`; `Decay.Apply` then calls `ApplyKitMood`, and
+`PoiLights.MoodFor(poi)` gives the default by state (Active warm, Infested hostile, otherwise dying) for callers that want it.
+`PoiView` draws styled lamps (real light follows the animation) and `poi.LitFaces` (quads). Lamps with no style keep the
+old per-mode behaviour. planet-surface's `PoiLayer` does not read `Style` or `LitFaces` yet: the rollout should add that.
 
 ## Test it
 
@@ -238,7 +331,6 @@ The tests run headless and exit 0 or 1. Add `-- --only=Name,Name` to run only th
   - Underground levels are carved.
   - Hidden rooms open only when broken, and each has its tells.
   - Collapse breaches lead in.
-  - Keycards lie before their locks.
   - Cables and tendrils always hang from an anchor.
   - No stray geometry: every vertex inside its place, no triangle edge over 24 m (what catches a stroke thrown across the landscape).
   - Circulation varies within a type: no pattern walks more than 45% of a type's storeys.
@@ -293,7 +385,7 @@ Two more views render many tiles in one run and save a labelled sheet:
 - Space places are data and siting only. They have no layouts and no orbit play.
 - Hybrids, layering rules and repurposing between programs are not in data yet. The only combinations are flavour (a style kit over a program) and kit layering (a mine that turns Precursor further down).
 - Power lines between poles are not drawn. Hanging cables follow the one-anchor rule.
-- Sockets on kit modules are all 2 wide and 3 high.
+- Sockets on kit modules are all 2 wide and 3 high: the standard door takes their foot (2 m) and the wall closes over it.
 - Figures are static stand-ins. Combat and AI belong to other prototypes.
 - There is no audio. Sound hooks are markers for the slice to play.
 - Data files are read with `FileAccess`, so an export must include `*.kit` and `*.txt` in its filter.

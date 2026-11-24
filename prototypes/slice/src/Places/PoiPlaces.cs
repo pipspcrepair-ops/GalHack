@@ -18,7 +18,7 @@ namespace Slice.Places;
 /// The planet's places as part of the surface world you walk in. planet-surface's POI layer
 /// draws every place on the planet (solid, on the world layer, so a vessel lands on a roof and
 /// nothing flies through a wall); a place within <see cref="BuildRadius"/> of the focus is stood
-/// up here as a real structure (<see cref="Place"/>): doors, keycards, caches, hidden rooms,
+/// up here as a real structure (<see cref="Place"/>): doors, caches, hidden rooms,
 /// ladders, lifts, its rooms dressed, its creatures and people. The build runs on a worker and
 /// then a few milliseconds a frame, so it never hitches, and finishes long before you are close
 /// enough to see in; only then does the far drawing's block mesh give way to it, in the same
@@ -31,9 +31,6 @@ public partial class PoiPlaces : Node3D
     public SurfaceZone Zone;
     public Func<Vector3> Focus = () => Vector3.Zero;
 
-    /// <summary>Whether the survivor carries a keycard of at least this clearance (the game asks the bag).</summary>
-    public Func<string, bool> Holds = _ => false;
-
     /// <summary>Places within this of the focus (to the nearest edge of their footprint) stand as structures.</summary>
     public float BuildRadius = 320f;
 
@@ -42,6 +39,13 @@ public partial class PoiPlaces : Node3D
 
     /// <summary>Main-thread time a frame may spend standing a place up.</summary>
     public double BudgetMs = 2.5;
+
+    /// <summary>The focus's own speed and way, m/s (the game sets it). A place stands this many seconds of travel before <see cref="BuildRadius"/>, and the way you are going comes first.</summary>
+    public Vector3 Heading;
+    public float AheadSeconds = 6f;
+
+    /// <summary>The most that reach comes to, m: past it a place is only its far drawing, and flying over it needs no more.</summary>
+    const float MostReach = 760f;
 
     /// <summary>The longest single build step and the most build work in one frame so far, ms (tests).</summary>
     public double WorstStepMs { get; private set; }
@@ -79,7 +83,9 @@ public partial class PoiPlaces : Node3D
         return null;
     }
 
-    public bool HasClearance(string clearance) => clearance == null || Holds(clearance);
+    /// <summary>Where the drawing is seen from (tests can say; otherwise the camera).</summary>
+    public Func<Vector3> Eye;
+    internal Vector3 EyeAt() => Eye?.Invoke() ?? Zone.Camera?.GlobalPosition ?? Focus();
 
     // ---- Standing places up, and taking them down -----------------------------------------------
 
@@ -93,6 +99,16 @@ public partial class PoiPlaces : Node3D
     }
 
     Job _job;
+
+    /// <summary>The place being stood up just now, if any (measurements).</summary>
+    public string Building => _job?.Place.Site.Name;
+
+    /// <summary>Nothing being stood up and nothing in reach waiting to be (measurements).</summary>
+    public bool Idle => _job == null && Next(Focus()) == null;
+
+    /// <summary>Starts the worst-frame figures over (measurements).</summary>
+    public void ResetWorst() => WorstStepMs = WorstFrameMs = 0;
+
     /// <summary>The distance from a point to a site's footprint, on the planet (nearest copy).</summary>
     public float DistanceTo(PoiSite site, Vector3 p)
     {
@@ -120,8 +136,7 @@ public partial class PoiPlaces : Node3D
     /// </summary>
     void Keep(Place p, Vector3 focus)
     {
-        Vector3 at = Zone.Planet.NearestCopy(p.Origin, focus);
-        if (p.Position != at) p.Position = at;
+        p.MoveTo(Zone.Planet.NearestCopy(p.Origin, focus));
     }
 
     public override void _Process(double delta)
@@ -135,6 +150,45 @@ public partial class PoiPlaces : Node3D
             Scan(focus);
         }
         if (_job != null) Work();
+        TakeDown();
+        BurnFuses(delta);
+    }
+
+    /// <summary>How far off a place is started at the speed you are going.</summary>
+    float Reach => MathF.Min(BuildRadius * Stand + Heading.Length() * AheadSeconds, MostReach * Stand);
+
+    /// <summary>How far places stand as structures, as a multiple of their own radii: the detail distance takes them further (DetailReach).</summary>
+    static float Stand => PlanetSurface.Terrain.DetailReach.StandScale;
+
+    /// <summary>How much a site is worth starting now: the lower the sooner. Null: not now (out of reach, or behind you and receding).</summary>
+    float? Urgency(PoiSite site, Vector3 focus)
+    {
+        float d = DistanceTo(site, focus);
+        if (d >= Reach) return null;
+        float speed = Heading.Length();
+        if (speed < 3f) return d;
+        var lo = site.Footprint.Min;
+        var hi = site.Footprint.Max;
+        Vector3 to = Zone.Planet.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, 0f, (lo.Z + hi.Z + 1) * 0.5f), focus) - focus;
+        float along = (to.X * Heading.X + to.Z * Heading.Z) / speed;
+        if (along < 0f && d > BuildRadius * Stand * 0.5f) return null;
+        return d - along * 0.5f;
+    }
+
+    /// <summary>The site to start next, leaving out one (the place the worker is ahead on).</summary>
+    PoiSite Next(Vector3 focus, PoiSite besides = null)
+    {
+        PoiSite next = null;
+        float best = float.MaxValue;
+        foreach (PoiSite site in Zone.Planet.Pois)
+        {
+            if (site.Layout == null || site == besides || _placeOf.ContainsKey(site)) continue;
+            if (Urgency(site, focus) is not float u || u >= best) continue;
+            // Not built yet: built next, ahead of everything else; started once it has been.
+            if (site.Built == null) { Zone.Pois.Builds?.Ask(site); continue; }
+            (best, next) = (u, site);
+        }
+        return next;
     }
 
     /// <summary>Starts the nearest place within reach that isn't standing; drops the ones out of reach.</summary>
@@ -145,51 +199,79 @@ public partial class PoiPlaces : Node3D
             // (A place stood up while the planet was still loading: its far drawing arrived after it.)
             if (!p.FarHidden) p.FarHidden = ShowFar(p.Site, false);
             float d = DistanceTo(p.Site, focus);
-            if (d <= DropRadius) { p.SetDormant(false); continue; }
+            if (d <= MathF.Max(DropRadius * Stand, Reach + 140f)) { p.SetDormant(false); continue; }
             if (p.Memory.Modified) { p.SetDormant(true); continue; }
             Drop(p);
         }
-        if (_job != null) return;
-        PoiSite next = null;
-        float best = BuildRadius;
-        foreach (PoiSite site in Zone.Planet.Pois)
+        // While a place stands up a frame at a time, the place builder keeps quiet (its allocations would pause the frames).
+        if (Zone.Pois.Builds is { Hold: null } builds) builds.Hold = () => _job != null;
+        if (_job != null)
         {
-            if (site.Instance == null || _placeOf.ContainsKey(site)) continue;
-            float d = DistanceTo(site, focus);
-            if (d < best) { best = d; next = site; }
+            // The worker gets on with the place after this one, so it starts with its slow half done.
+            if (_ahead == null && _job.Meshing.IsCompleted && Next(focus, _job.Place.Site) is PoiSite after)
+            {
+                _ahead = after;
+                _aheadMeshing = Meshing(MemoryOf(after));
+            }
+            return;
         }
+        // One worker's job at a time: what they read of the catalogues is made once, and not for two at once.
+        if (_ahead != null && !_aheadMeshing.IsCompleted) return;
+        PoiSite next = Next(focus);
         if (next != null) Begin(next);
+        else _ahead = null;
+    }
+
+    PoiSite _ahead;
+    Task<List<ChunkMesh>> _aheadMeshing;
+
+    Task<List<ChunkMesh>> Meshing(PlaceMemory memory)
+    {
+        Decor decor = Decor.Shared; // loaded on the main thread the first time
+        PlaceFauna.Deep deep = Fauna;
+        PlanetSurface.World.PlanetWorld planet = Zone.Planet;
+        WildlifePatch wild = Zone.Wildlife;
+        return Task.Run(() => GalHack.Testing.AllocMeter.Measure("place build", () =>
+        {
+            GalHack.Testing.AllocMeter.Measure("  its instance", () => memory.Inst);
+            GalHack.Testing.AllocMeter.Measure("  its world's life", () => wild.Life); // (an airless world rolls it here, on first need, not on arrival)
+            Prepare(memory, decor, deep, planet);
+            BlockGrid g = memory.Inst.Blocks;
+            return GalHack.Testing.AllocMeter.Measure("  its collision mesh", () => Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min)));
+        }));
     }
 
     void Begin(PoiSite site)
     {
         PlaceMemory memory = MemoryOf(site);
         Place place = Place.Create(this, memory);
-        place.Position = Zone.Planet.NearestCopy(place.Origin, Focus());
         AddChild(place);
+        place.MoveTo(Zone.Planet.NearestCopy(place.Origin, Focus()));
         _placeOf[site] = place;
-        Decor decor = Decor.Shared; // loaded on the main thread the first time
-        PlaceFauna.Deep deep = Fauna;
-        _job = new Job
-        {
-            Place = place, Clock = Stopwatch.StartNew(),
-            Meshing = Task.Run(() =>
-            {
-                Prepare(memory, decor, deep);
-                BlockGrid g = memory.Inst.Blocks;
-                return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Options(g.Min));
-            }),
-        };
+        _job = new Job { Place = place, Clock = Stopwatch.StartNew(), Meshing = _ahead == site ? _aheadMeshing : Meshing(memory) };
+        _ahead = null;
+        _aheadMeshing = null;
     }
 
     /// <summary>What a place needs worked out once, off the main thread: its rooms' dressing (clearing the generic props there) and its creatures.</summary>
-    static void Prepare(PlaceMemory memory, Decor decor, PlaceFauna.Deep deep)
+    static void Prepare(PlaceMemory memory, Decor decor, PlaceFauna.Deep deep, PlanetSurface.World.PlanetWorld planet)
     {
         if (memory.Prepared) return;
-        memory.Rooms = decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>();
-        if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
-        memory.Fauna?.Populate(memory, deep);
-        memory.Town = Town.For(memory);
+        memory.Rooms = GalHack.Testing.AllocMeter.Measure("  its rooms' plans", () => decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>());
+        // Every look its rooms are dressed with, as far as a worker can take it: on the main thread a piece is only handed over.
+        if (decor?.Meshes is { } meshes)
+            foreach (PlaceRoom room in memory.Rooms.Values)
+                GalHack.Testing.AllocMeter.Measure("  its dressing's meshes", () =>
+                {
+                    foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
+                    room.Wires = Place.WiresOf(room, null);
+                });
+        GalHack.Testing.AllocMeter.Measure("  its creatures", () =>
+        {
+            if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
+            memory.Fauna?.Populate(memory, deep);
+        });
+        memory.Town = GalHack.Testing.AllocMeter.Measure("  its town", () => Town.For(memory, planet));
         memory.Prepared = true;
     }
 
@@ -198,13 +280,16 @@ public partial class PoiPlaces : Node3D
     {
         var frame = Stopwatch.StartNew();
         Job j = _job;
-        while (frame.Elapsed.TotalMilliseconds < BudgetMs)
+        // The frame's loading allowance, shared with the places' own (their cubes and rooms): at least one step a frame, so a place always comes.
+        double budget = Math.Max(PlanetSurface.Fx.LoadBudget.Left(BudgetMs), 0.001);
+        while (frame.Elapsed.TotalMilliseconds < budget)
         {
             var step = Stopwatch.StartNew();
             int collections = GC.CollectionCount(0);
-            string stage = j.Stage;
             bool more = Step(j);
             double ms = step.Elapsed.TotalMilliseconds;
+            // Named by where the step ended: a stage's first piece runs in the step that leaves the one before.
+            string stage = j.Stage;
             if (ms > 3.0) SlowSteps.Add((j.Place.Site.Name, stage, ms, GC.CollectionCount(0) > collections));
             // A garbage collection landing in a step is the runtime's, not the build's: counted apart.
             if (GC.CollectionCount(0) > collections) { frame.Restart(); continue; }
@@ -213,6 +298,7 @@ public partial class PoiPlaces : Node3D
             if (!more || _job != j) break;
         }
         WorstFrameMs = Math.Max(WorstFrameMs, frame.Elapsed.TotalMilliseconds);
+        PlanetSurface.Fx.LoadBudget.Spend(frame.Elapsed.TotalMilliseconds);
     }
 
     /// <summary>One piece of main-thread work; false once nothing more can be done this frame.</summary>
@@ -239,9 +325,11 @@ public partial class PoiPlaces : Node3D
     {
         Place p = j.Place;
         j.Stage = "blocks";
-        foreach (ChunkMesh c in chunks)
+        int side = Place.GroupSize / Place.ChunkSize;
+        Int3 Of(Int3 c) => new(c.X >= 0 ? c.X / side : (c.X - side + 1) / side, c.Y >= 0 ? c.Y / side : (c.Y - side + 1) / side, c.Z >= 0 ? c.Z / side : (c.Z - side + 1) / side);
+        foreach (var group in chunks.GroupBy(c => Of(c.Chunk)))
         {
-            p.SetChunk(c);
+            foreach (int x in p.SetGroupShapes(group)) yield return x;
             yield return 0;
         }
         j.Stage = "fixtures";
@@ -265,6 +353,7 @@ public partial class PoiPlaces : Node3D
         p.FarHidden = ShowFar(p.Site, false);
         BuildLog.Add((p.Site.Name, j.Clock.Elapsed.TotalSeconds, p.ChunkCount));
         _job = null;
+        _scan = 0; // the next one starts now, not at the next look round
         Stood?.Invoke(p);
     }
 
@@ -277,44 +366,111 @@ public partial class PoiPlaces : Node3D
         p.Memory.Town?.Sit(p);
         Standing.Remove(p);
         _placeOf.Remove(p.Site);
-        ShowFar(p.Site, true);
-        p.QueueFree();
+        p.GiveBack();
+        // Taken down a piece a frame (TakeDown): freed whole, a city block's thousands of nodes were one frame's 100 ms and more.
+        // Its cubes go from sight now (the far drawing's are back), and nothing of it collides or runs from here.
+        p.Ready = false;
+        p.HideCubes();
+        p.ProcessMode = ProcessModeEnum.Disabled;
+        _goingDown.Add((p, 0, 0, 0));
     }
 
-    /// <summary>The far drawing's blocks (and its own dressing) shown or hidden; its lamps, glows and smoke always stay.</summary>
+    readonly List<(Place Place, double Ms, int Pieces, double Worst)> _goingDown = new();
+    /// <summary>Places taken down: their main-thread ms in all, the pieces, the longest piece (checks read and clear it).</summary>
+    public static readonly List<(string Name, double Ms, int Pieces, double Worst)> TakenDown = new();
+
+    /// <summary>
+    /// Frees dropped places within the frame's loading allowance, a node at a time from the last child down (one holding many
+    /// is opened up first), so no frame frees more than a small subtree. A place's far dressing shows again once it is gone.
+    /// </summary>
+    void TakeDown()
+    {
+        if (_goingDown.Count == 0) return;
+        var clock = Stopwatch.StartNew();
+        double budget = Math.Max(PlanetSurface.Fx.LoadBudget.Left(1.0), 0.001);
+        while (_goingDown.Count > 0 && clock.Elapsed.TotalMilliseconds < budget)
+        {
+            var (p, ms, pieces, worst) = _goingDown[0];
+            double began = clock.Elapsed.TotalMilliseconds;
+            Node n = p;
+            while (n.GetChildCount() > 0 && n.GetChild(n.GetChildCount() - 1) is Node last && last.GetChildCount() > 16) n = last;
+            bool done = n == p && p.GetChildCount() == 0;
+            Node next = done ? p : n.GetChild(n.GetChildCount() - 1);
+            // A body holding a room's worth of shapes (as shape owners, not nodes) gives them up 16 at a time first.
+            var owners = next is CollisionObject3D body ? body.GetShapeOwners() : null;
+            if (owners is { Length: > 16 })
+            {
+                done = false;
+                for (int i = 0; i < 16; i++) ((CollisionObject3D)next).RemoveShapeOwner((uint)owners[owners.Length - 1 - i]);
+            }
+            else next.Free();
+            double step = clock.Elapsed.TotalMilliseconds - began;
+            (ms, pieces, worst) = (ms + step, pieces + 1, Math.Max(worst, step));
+            if (!done) { _goingDown[0] = (p, ms, pieces, worst); continue; }
+            _goingDown.RemoveAt(0);
+            TakenDown.Add((p.Site.Name, ms, pieces, worst));
+            if (!_placeOf.ContainsKey(p.Site)) ShowFar(p.Site, true);
+        }
+        PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
+    }
+
+    /// <summary>The far drawing's own dressing shown or hidden (its blocks give way cube by cube; its lamps, glows and smoke always stay).</summary>
     bool ShowFar(PoiSite site, bool show)
     {
         Node3D far = Zone.Pois.NodeOf(site);
         if (far == null) return false;
         foreach (Node n in far.GetChildren())
         {
-            string name = n.Name.ToString();
-            if (n is CollisionObject3D body) body.ProcessMode = show ? ProcessModeEnum.Inherit : ProcessModeEnum.Disabled;
-            else if (n is Node3D n3 && (name.StartsWith("Chunk") || name == "Deco")) n3.Visible = show;
+            if (n is Node3D n3 && n.Name.ToString() == "Deco") n3.Visible = show;
         }
         return true;
     }
 
     /// <summary>
-    /// Stands the nearest place once, all at once, while the game is still loading (the castaway
+    /// Stands the nearest place once, all at once, while the game is still loading (the sleeper
     /// asleep): the first time anything is built costs the most (the runtime compiles its code then),
     /// so that is paid here and never in play. A place out of reach is taken down again at once.
     /// </summary>
     public void WarmUp()
     {
         Vector3 from = Focus();
-        PoiSite nearest = Zone.Planet.Pois.Where(s => s.Instance != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
+        // The dissolves' copies of the dressing's, the blocks' and the creatures' materials, made while loading, and each put on a speck
+        // in its vertex format so its pipelines are compiled now (the first cube of a kind to dissolve in took 250 ms in play).
+        if (Decor.Shared?.Meshes?.Materials is { } deco) PlanetSurface.Fx.Fade.Warm(deco.BySurface, Zone, Speck(true));
+        // (A surface's faces carry their finish codes, or none: two formats.)
+        foreach (bool coded in new[] { true, false }) PlanetSurface.Fx.Fade.Warm(new PoiGenerator.BlockMaterials().BySurface, Zone, Speck(false, coded));
+        PlanetSurface.Fx.Fade.CopyOf(Wildlife.CreatureMaterials.Clothed);
+        PoiSite nearest = Zone.Planet.Pois.Where(s => s.Layout != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
         if (nearest == null) return;
         var clock = Stopwatch.StartNew();
         Begin(nearest);
         _job.Meshing.Wait();
         while (_job != null && Step(_job)) { }
-        if (PlaceOf(nearest) is Place p && DistanceTo(nearest, from) > DropRadius) Drop(p);
+        if (PlaceOf(nearest) is Place p)
+        {
+            // The first full-detail cube costs the same one-off, so it is paid here too.
+            p.MeshNearNow(p.Inst.Layout.EntranceCell.Y < 0 ? new Int3(0, -1, 0) : new Int3(0, 0, 0));
+            if (DistanceTo(nearest, from) > DropRadius * Stand) Drop(p);
+        }
         WarmUpMs = clock.Elapsed.TotalMilliseconds;
         WorstStepMs = WorstFrameMs = 0;
         StageWorst.Clear();
         SlowSteps.Clear();
         BuildLog.Clear();
+    }
+
+    /// <summary>A triangle's arrays in the format a place's blocks are drawn in (with each face's code, or none), or the dressing's (with each face's extent too).</summary>
+    static Godot.Collections.Array Speck(bool deco, bool coded = true)
+    {
+        var a = new Godot.Collections.Array();
+        a.Resize((int)Mesh.ArrayType.Max);
+        a[(int)Mesh.ArrayType.Vertex] = new Vector3[3];
+        a[(int)Mesh.ArrayType.Normal] = new[] { Vector3.Up, Vector3.Up, Vector3.Up };
+        a[(int)Mesh.ArrayType.Color] = new[] { Colors.White, Colors.White, Colors.White };
+        if (coded) a[(int)Mesh.ArrayType.TexUV] = new Vector2[3];
+        if (deco) a[(int)Mesh.ArrayType.TexUV2] = new Vector2[3];
+        else a[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2 };
+        return a;
     }
 
     /// <summary>What the warm-up took, ms (tests).</summary>
@@ -352,6 +508,7 @@ public partial class PoiPlaces : Node3D
                 if (!items.TryGet(li.Id, out ItemDef def)) continue;
                 bill.Add(def.Id, CountOf(def, c.Tier, Hash.Cell(c.Cell, (uint)(++k * 31))));
             }
+            Slice.Arms.ArmsLoot.Add(bill, m.Inst.Family.Tags, c.Tier, c.InVault || c.Secret, (int)m.Inst.Tech, Hash.Cell(c.Cell, 0xA77u), Zone.Data.Arms, items); // weapons by place and rarity
             string name = c.Secret ? "Hidden stash" : c.InVault ? "Vault cache" : "Cache";
             Lootable loot = Zone.Loot.Create(LootKind.Cache, name, p.WorldOf(c.Cell, 0.05f), Math.Max(4, size[0]), Math.Max(3, size[1]), bill);
             loot.Radius = 0.55f;
@@ -379,13 +536,13 @@ public partial class PoiPlaces : Node3D
     /// <summary>What a look ray's hit is, in a place: the place, the cell just inside the face, and a door or deco piece if it was one.</summary>
     public readonly record struct Hit(Place Place, Int3 Cell, Place.Door Door, DecoHit Piece);
 
-    public bool Resolve(GodotObject collider, Vector3 point, Vector3 normal, out Hit hit)
+    public bool Resolve(GodotObject collider, Vector3 point, Vector3 normal, out Hit hit, int shape = -1)
     {
         hit = default;
         Place p = PlaceOf(collider);
         if (p == null) return false;
         Place.Door door = p.DoorOf(collider);
-        DecoHit piece = p.PieceOf(collider);
+        DecoHit piece = p.PieceOf(collider, shape);
         Int3 cell = p.CellAt(point - normal * 0.05f);
         hit = new Hit(p, cell, door, piece);
         return true;
@@ -397,10 +554,14 @@ public partial class PoiPlaces : Node3D
     /// What holds the survivor up at their feet: a ladder in the cell at their feet or just below
     /// (so the top rung carries them over), or a lift shaft; and the place and lift.
     /// </summary>
-    public ClimbMode ClimbAt(Vector3 feet, out Place place, out int lift)
+    public ClimbMode ClimbAt(Vector3 feet, out Place place, out int lift) => ClimbAt(feet, out place, out lift, out _);
+
+    /// <summary>As <see cref="ClimbAt(Vector3, out Place, out int)"/>, and on a ladder, the ladder as the climber holds it (in the world).</summary>
+    public ClimbMode ClimbAt(Vector3 feet, out Place place, out int lift, out LadderHold ladder)
     {
         place = null;
         lift = -1;
+        ladder = default;
         foreach (Place p in Standing)
         {
             if (p.Dormant) continue;
@@ -415,13 +576,37 @@ public partial class PoiPlaces : Node3D
                 lift = shaft;
                 return ClimbMode.Shaft;
             }
-            if (p.Inst.Blocks.Get(up).Type == BlockType.Ladder || p.Inst.Blocks.Get(below).Type == BlockType.Ladder)
+            Block at = p.Inst.Blocks.Get(up), under = p.Inst.Blocks.Get(below);
+            if (at.Type == BlockType.Ladder || under.Type == BlockType.Ladder)
             {
                 place = p;
+                Int3 cell = at.Type == BlockType.Ladder ? up : below;
+                Int3 o = p.Inst.Blocks.Get(cell).Facing.Vec();
+                Block back = p.Inst.Blocks.Get(cell - o);
+                Vector3 mid = p.WorldOf(cell, 0f);
+                ladder = new LadderHold
+                {
+                    Out = new System.Numerics.Vector3(o.X, 0f, o.Z),
+                    Centre = new System.Numerics.Vector3(mid.X, mid.Y, mid.Z),
+                    Backed = back.IsAir ? !p.Inst.Extras.InSpace && (cell - o).Y <= Assembler.GroundY && !p.Inst.Layout.Occupied[cell - o] : BlockInfo.Collides(back.Type) && back.Type != BlockType.Door,
+                    Below = p.Inst.Blocks.Get(up with { Y = Mathf.FloorToInt(local.Y - 0.1f) }).Type == BlockType.Ladder,
+                    Top = at.Type != BlockType.Ladder,
+                };
                 return ClimbMode.Ladder;
             }
         }
         return ClimbMode.None;
+    }
+
+    /// <summary>Whether a world point is inside a standing place's built blocks (for creatures out on the surface: they walk round places, never through them).</summary>
+    public bool SolidAt(Vector3 world)
+    {
+        foreach (Place p in Standing)
+        {
+            Int3 c = p.CellAt(world);
+            if (p.Inst.Blocks.InBounds(c) && PlaceFauna.BuiltSolid(p.Inst, c)) return true;
+        }
+        return false;
     }
 
     /// <summary>The standing place whose grid holds a world point, if any.</summary>

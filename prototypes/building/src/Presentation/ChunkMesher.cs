@@ -37,6 +37,10 @@ public sealed class MeshBuffers
         }
     }
 
+    /// <summary>The way a face's UV runs across it, and up it, for a face slot.</summary>
+    public static Vector3 Right(Dir slot) => Rights[(int)slot];
+    public static Vector3 Up(Dir slot) => Ups[(int)slot];
+
     public void Clear()
     {
         Vertices.Clear();
@@ -231,7 +235,7 @@ public static class ChunkMesher
                     _full[i] = cat.FullMask(b);
                     _glass[i] = t.Transparent ? b.Type : (ushort)0;
                     _cube[i] = t.IsArmor && cat.Shapes[b.Shape].IsCube;
-                    _damage[i] = inside ? (byte)Damage.Bucket(b.Hp, cat.MaxHp(b, s.Grid)) : (byte)0;
+                    _damage[i] = inside ? (byte)Damage.Bucket(b.Hp, cat.MaxHp(b)) : (byte)0;
                 }
 
         float size = s.Grid.CellSize;
@@ -244,7 +248,7 @@ public static class ChunkMesher
     /// <summary>One block on its own, with nothing culled: the ghost preview.</summary>
     public static ChunkMeshData BuildSingle(Structure s, Block block)
     {
-        var scratch = new Structure(s.Catalogue, s.Grid);
+        var scratch = new Structure(s.Catalogue);
         foreach (Dir d in Dirs.All)
             if (block.Paint[d] != 0) block.Paint[d] = scratch.Palette.Intern(s.Palette[block.Paint[d]]);
         scratch.Set(Int3.Zero, block);
@@ -490,41 +494,54 @@ public static class ChunkMesher
                 {
                     int c = Pad(x, y, z);
                     Block b = _pad[c];
-                    if (b.IsEmpty || _cube[c]) continue;
+                    // A block spanning several cells is drawn whole from its anchor; its fillers draw nothing.
+                    if (b.IsEmpty || _cube[c] || b.IsFiller) continue;
                     BlockType t = cat.Types[b.Type];
                     Vector3 centre = MeshBuffers.ToGodot((origin + new Int3(x, y, z)).ToVector3());
                     if (t.IsArmor)
                     {
                         MeshBuffers target = t.Transparent ? data.Glass : data.Opaque;
                         foreach (Polygon poly in cat.Shapes[b.Shape].Polygons)
-                            AddPart(s, b, c, centre, size, poly, NVec.Zero, PartStyle.Body, target);
+                            AddPart(s, b, c, centre, size, poly, null, target);
                     }
                     else
                     {
                         if (_damage[c] == 3) data.Smoking.Add(origin + new Int3(x, y, z));
                         foreach (Part part in t.Parts)
                         {
-                            if (part.ClosedOnly && b.Open) continue;
+                            if (!part.Shows(b)) continue;
                             MeshBuffers target = part.Style == PartStyle.Glass ? data.Glass : data.Opaque;
-                            NVec partCentre = (part.Min + part.Max) * 0.5f;
                             foreach (Polygon poly in part.Polygons)
-                                AddPart(s, b, c, centre, size, poly, partCentre, part.Style, target);
+                                AddPart(s, b, c, centre, size, poly, part, target);
+                        }
+                        // The device's detail, while the face it sits on shows.
+                        foreach (Part part in t.Detail)
+                        {
+                            if (!part.Shows(b)) continue;
+                            if (part.Mount is Dir mount)
+                            {
+                                if (FaceHidden(s, b, c, centre, Orientations.ToWorld(b.Rot, mount))) continue;
+                            }
+                            foreach (Polygon poly in part.Polygons)
+                                AddPart(s, b, c, centre, size, poly, part, data.Opaque);
                         }
                     }
                 }
     }
 
+    /// <summary>One polygon of a shaped block (no part) or of one of a component's parts.</summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    static void AddPart(Structure s, in Block b, int c, Vector3 centre, float size, Polygon poly, NVec smoothCentre,
-        PartStyle style, MeshBuffers target)
+    static void AddPart(Structure s, in Block b, int c, Vector3 centre, float size, Polygon poly, Part part, MeshBuffers target)
     {
+        NVec smoothCentre = part == null ? NVec.Zero : (part.Min + part.Max) * 0.5f;
+        PartStyle style = part?.Style ?? PartStyle.Body;
         Basis basis = Bases[b.Rot];
+        BlockType bt = s.Catalogue.Types[b.Type];
         Dir slot;
         if (poly.Boundary is Dir local)
         {
             Dir world = Orientations.ToWorld(b.Rot, local);
-            Int3 step = world.Vec();
-            if (Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ)) return;
+            if (FaceHidden(s, b, c, centre, world)) return;
             slot = world;
         }
         else slot = Dirs.Closest(ToN(basis * ToG(poly.Normal)));
@@ -533,16 +550,29 @@ public static class ChunkMesher
         ReadOnlySpan<Vector3> points = MemoryMarshal.Cast<NVec, Vector3>(poly.Points.AsSpan());
         for (int i = 0; i < points.Length; i++)
         {
-            _poly[i] = (centre + basis * points[i]) * size;
+            // A block spanning several cells stretches its parts over all of them (Footprint.PartPoint).
+            Vector3 point = bt.Multi ? ToG(Footprint.PartPoint(bt, poly.Points[i])) : points[i];
+            _poly[i] = (centre + basis * point) * size;
             if (poly.SmoothAxis >= 0)
             {
                 NVec radial = Geometry.Set(poly.Points[i] - smoothCentre, poly.SmoothAxis, 0f);
                 _normals[i] = (basis * ToG(NVec.Normalize(radial))).Normalized();
             }
         }
-        FaceLook look = Look(s, b, slot, style, _damage[c]);
+        Int3 cell = Int3.Round(ToN(centre));
+        BlockType type = s.Catalogue.Types[b.Type];
+        FaceLook look;
+        if (style == PartStyle.Glow && type.IsLight) look = Look(s, b, slot, style, _damage[c], light: s.LightAt(cell));
+        else if (style == PartStyle.Glow) look = StatusLook(type, part.Finish, _damage[c], cell, type.Switches && b.Off);
+        else look = Look(s, b, slot, style, _damage[c]);
+        if (part?.Finish is PartFinish finish)
+        {
+            look = Finished(look, finish);
+            if (finish.Symbol != DeviceSymbol.None) look = WithSymbol(look, finish.Symbol, _poly.AsSpan(0, points.Length), slot, size);
+        }
         // Every polygon of a shaped or component block carries its own seed: these faces never merge.
-        if (_damage[c] > 0) look = look with { Base = WithSeed(look.Base, FaceSeed(Int3.Round(ToN(centre)), slot)) };
+        // A device's lights share one, so a damaged one flickers as a whole.
+        if (_damage[c] > 0) look = look with { Base = WithSeed(look.Base, FaceSeed(cell, style == PartStyle.Glow ? Dir.PosX : slot)) };
         target.AddPolygon(_poly.AsSpan(0, points.Length), basis * ToG(poly.Normal), slot, size, look,
             poly.SmoothAxis >= 0 ? _normals.AsSpan(0, points.Length) : default);
     }
@@ -550,10 +580,29 @@ public static class ChunkMesher
     static Vector3 ToG(NVec v) => new(v.X, v.Y, v.Z);
     static NVec ToN(Vector3 v) => new(v.X, v.Y, v.Z);
 
+    /// <summary>
+    /// True if the block's face towards <paramref name="world"/> is hidden. A block spanning several
+    /// cells is read from the structure, since its far cells can lie beyond the chunk's one-cell
+    /// border: that whole side is hidden only if every cell beyond it hides it.
+    /// </summary>
+    static bool FaceHidden(Structure s, in Block b, int c, Vector3 centre, Dir world)
+    {
+        Int3 step = world.Vec();
+        if (!s.Catalogue.Types[b.Type].Multi) return Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ);
+        Int3 anchor = Int3.Round(ToN(centre));
+        int back = 1 << ((int)world ^ 1);
+        foreach (Int3 cell in s.CellsOf(anchor, b))
+        {
+            if (!s.TryGet(cell + step, out Block n)) return false;
+            if (cell + step + n.ToAnchor != anchor && (s.Catalogue.OccludeMask(n) & back) == 0) return false;
+        }
+        return true;
+    }
+
     // ---- Appearance ----------------------------------------------------------------------
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static FaceLook Look(Structure s, in Block b, Dir slot, PartStyle style, int damage, bool holed = false)
+    public static FaceLook Look(Structure s, in Block b, Dir slot, PartStyle style, int damage, bool holed = false, LightSettings? light = null)
     {
         BlockType t = s.Catalogue.Types[b.Type];
         DamageLook wear = t.DamageLook;
@@ -565,7 +614,9 @@ public static class ChunkMesher
                 return new FaceLook(Rgb(t.Accent), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 1, 0, false, wear, holed));
             case PartStyle.Glow:
                 // Smashed badly enough, a light goes out.
-                bool lit = !(t.IsLight && b.Off) && damage < 3;
+                bool lit = !(t.Switches && b.Off) && damage < 3;
+                if (lit && light is LightSettings ls)
+                    return new FaceLook(Rgb(ls.Color), ls.PackAccent(), Flags(Pattern.None, 0, FaceTexture.Smooth, damage, true, 0, 0, false, wear, holed) | ((int)ls.Anim << LightSettings.AnimShift));
                 return new FaceLook(Rgb(lit ? t.GlowColor : 0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, lit, 0, 0, false, wear, holed));
         }
 
@@ -573,9 +624,76 @@ public static class ChunkMesher
         if (slotPaint == 0)
             return new FaceLook(Rgb(t.Color), t.Accent, Flags(Pattern.None, 0, t.Texture, damage, false, t.Metal, 0, false, wear, holed));
         Paint p = s.Palette[slotPaint];
+        if (p.IsLamp)
+        {
+            LightSettings ls = p.Lamp.Value;
+            return new FaceLook(Rgb(ls.Color), ls.PackAccent(), Flags((Pattern)(int)p.Shape, 0, FaceTexture.Smooth, damage, true, 0, 0, true, wear, holed) | ((int)ls.Anim << LightSettings.AnimShift));
+        }
         int stencil = p.Stencil >= '0' && p.Stencil <= '9' ? p.Stencil - '0' + 1 : 0;
-        return new FaceLook(Rgb(p.Base), p.Accent, Flags(p.Pattern, stencil, p.Texture, damage, false, t.Metal, p.Grime, true, wear, holed));
+        return new FaceLook(Rgb(p.Base), p.Accent, Flags(p.Pattern, stencil, t.Texture, damage, false, t.Metal, p.Grime, true, wear, holed));
     }
+
+    /// <summary>
+    /// A device's own light or screen: its type's glow colour (or its finish's), moving as the finish
+    /// says. It shows the device's state: out once the block is wrecked or switched off, and (in the shader) flickering
+    /// while it is damaged and, marked as a status light, dim without power.
+    /// </summary>
+    static FaceLook StatusLook(BlockType t, PartFinish finish, int damage, Int3 cell, bool off)
+    {
+        uint colour = finish?.Color ?? t.GlowColor;
+        if (damage >= 3 || off) // wrecked, or switched off (a spotlight, a turret): dark
+            return new FaceLook(Rgb(0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 0, 0, false, t.DamageLook, false));
+        int flags = Flags(Pattern.None, 0, FaceTexture.Smooth, damage, true, BlockMaterials.StatusMetal, 0, false, t.DamageLook, false);
+        if (finish == null || finish.Anim == LightAnim.Steady || finish.Symbol != DeviceSymbol.None)
+            return new FaceLook(Rgb(colour), Paint.DefaultAccent, flags);
+        // Each device keeps its own time, so neighbouring devices don't blink in step.
+        LightSettings ls = LightSettings.Make(colour, finish.Anim, finish.Speed, (int)(FaceSeed(cell, Dir.PosY) & 127));
+        return new FaceLook(Rgb(colour), ls.PackAccent(), flags | ((int)finish.Anim << LightSettings.AnimShift));
+    }
+
+    /// <summary>A part's finish over its style's look: colour, accent, pattern, surface and polish where it sets them (a light keeps its own colour and surface).</summary>
+    static FaceLook Finished(FaceLook look, PartFinish f)
+    {
+        int flags = look.Flags;
+        bool glow = (flags & (1 << BlockMaterials.GlowShift)) != 0;
+        if (f.Color is uint c && !glow) look = look with { Base = Rgb(c) };
+        if (f.Accent is uint a) look = look with { Accent = a };
+        if (f.Pattern != 0) flags = Set(flags, BlockMaterials.PatternShift, 7, f.Pattern);
+        if (f.Texture is FaceTexture tx && !glow) flags = Set(flags, BlockMaterials.TextureShift, 3, (int)tx);
+        if (f.Metal >= 0 && !glow) flags = Set(flags, BlockMaterials.MetalShift, 3, f.Metal);
+        return look with { Flags = flags };
+    }
+
+    /// <summary>
+    /// A symbol on a polygon, centred on it and as big as fits. Where it goes rides in the accent: the
+    /// polygon's middle across and up its block, and its size, a byte each.
+    /// </summary>
+    static FaceLook WithSymbol(FaceLook look, DeviceSymbol symbol, ReadOnlySpan<Vector3> points, Dir slot, float size)
+    {
+        Vector3 right = MeshBuffers.Right(slot), up = MeshBuffers.Up(slot);
+        float u0 = float.MaxValue, u1 = float.MinValue, v0 = float.MaxValue, v1 = float.MinValue;
+        var half = new Vector3(0.5f, 0.5f, 0.5f);
+        foreach (Vector3 p in points)
+        {
+            Vector3 q = p / size + half;
+            float u = q.Dot(right), v = q.Dot(up);
+            u0 = MathF.Min(u0, u);
+            u1 = MathF.Max(u1, u);
+            v0 = MathF.Min(v0, v);
+            v1 = MathF.Max(v1, v);
+        }
+        float cu = (u0 + u1) * 0.5f, cv = (v0 + v1) * 0.5f;
+        cu -= MathF.Floor(cu);
+        cv -= MathF.Floor(cv);
+        float side = Math.Clamp(MathF.Min(u1 - u0, v1 - v0), 0f, 1f);
+        uint packed = ((uint)MathF.Round(cu * 255f) << 16) | ((uint)MathF.Round(cv * 255f) << 8) | (uint)MathF.Round(side * 255f);
+        int flags = Set(Set(look.Flags, BlockMaterials.PatternShift, 7, DetailPattern.Symbol), BlockMaterials.StencilShift, 15, (int)symbol);
+        // A symbol and a moving lamp would both ride in the accent: a screen holds steady.
+        flags &= ~(7 << LightSettings.AnimShift);
+        return look with { Accent = packed, Flags = flags };
+    }
+
+    static int Set(int flags, int shift, int mask, int value) => (flags & ~(mask << shift)) | ((value & mask) << shift);
 
     static int Flags(Pattern pattern, int stencil, FaceTexture texture, int damage, bool glow, int metal, int grime, bool painted, DamageLook wear, bool holed) =>
         ((int)pattern << BlockMaterials.PatternShift)
@@ -606,11 +724,14 @@ public static class ChunkMesher
                     Block b = _pad[c];
                     if (b.IsEmpty) continue;
                     BlockType t = cat.Types[b.Type];
+                    // A solid block spanning several cells fills each of them, fillers too, so its
+                    // cells merge into boxes in whichever chunk holds them.
                     if (_cube[c] || (t.IsDoor ? !b.Open : !t.IsArmor && t.Collide == Collide.Cell))
                     {
                         _solid[x + S * (y + S * z)] = true;
                         continue;
                     }
+                    if (b.IsFiller) continue; // its parts' boxes come from the anchor
                     Vector3 centre = MeshBuffers.ToGodot((origin + new Int3(x, y, z)).ToVector3());
                     Basis basis = Bases[b.Rot];
                     if (t.IsArmor)
@@ -624,8 +745,8 @@ public static class ChunkMesher
                     {
                         foreach (Part part in t.Parts)
                         {
-                            if (part.ClosedOnly) continue;
-                            Vector3 p0 = basis * ToG(part.Min), p1 = basis * ToG(part.Max);
+                            if (part.ClosedOnly || !part.Shows(b)) continue;
+                            Vector3 p0 = basis * ToG(Footprint.PartPoint(t, part.Min)), p1 = basis * ToG(Footprint.PartPoint(t, part.Max));
                             Vector3 min = p0.Min(p1), max = p0.Max(p1);
                             data.Boxes.Add(((centre + (min + max) * 0.5f) * size, (max - min) * size));
                         }

@@ -12,32 +12,24 @@ using Slice.Game;
 using Slice.Surface;
 using Slice.Vessels;
 using N = System.Numerics;
-using StructureClass = GalHack.Items.StructureClass;
 
 namespace Slice.Construction;
 
 /// <summary>
-/// Structure classes and areas. A structure's class is its core and that core's mode (Empyrion's
-/// four: a base or capital vessel on a Big Core, a small or hover vessel on a Small Core). Its area is its blocks'
-/// bounding box grown by a margin for its class plus a share of its own size (data/slice.json
-/// build.area): inside it you are linked to its one shared storage, and only there can you build
-/// from that storage, open the CORE tab on it, or use its containers and constructors.
+/// A structure's area: its blocks' bounding box grown by one margin plus a share of its own size
+/// (data/slice.json build.area), whatever the structure is. Inside it you are linked to its one
+/// shared storage, and only there can you build from that storage, open the CORE tab on it, or use
+/// its containers and constructors.
 /// </summary>
 public static class StructureArea
 {
-    /// <summary>The structure's class, from its core's mode.</summary>
-    public static StructureClass ClassOf(Vessel v) => BuildingBridge.ClassOf(v.Structure);
-
-    /// <summary>The core item that founds a structure and, taken down last, comes back: there is one for each grid.</summary>
-    public static string CoreItem(Vessel v) => BuildingBridge.IsSmall(v.Structure) ? Slice.Items.PlayerInventory.SmallCore : Slice.Items.PlayerInventory.BigCore;
-
     /// <summary>How far past its blocks a structure's area reaches, m.</summary>
     public static float Margin(Vessel v, SliceRules.AreaRules rules)
     {
         var (min, max) = v.Structure.Bounds();
         float cell = v.Structure.Grid.CellSize;
         float half = MathF.Max(max.X - min.X, MathF.Max(max.Y - min.Y, max.Z - min.Z)) * cell * 0.5f + cell * 0.5f;
-        return rules.Margin(ClassOf(v)) + rules.SizeShare * half;
+        return rules.Margin + rules.SizeShare * half;
     }
 
     /// <summary>Distance from a point in the world to the structure's blocks' bounding box (0 inside it), m.</summary>
@@ -57,7 +49,7 @@ public static class StructureArea
         v.Structure.Count > 0 && Distance(v, world) <= Margin(v, rules);
 
     /// <summary>Structures with a shared storage you could link to: built, cored, not wrecks or ruins.</summary>
-    public static bool Linkable(Vessel v) => !v.IsWreck && !v.IsRuin && v.Structure.Core != null;
+    public static bool Linkable(Vessel v) => !v.IsWreck && !v.IsRuin && v.Structure.Core != null && v.Structure.Owner == GalHack.Structures.Building.DefaultOwner;
 
     /// <summary>Every linkable structure whose area holds a point, nearest first.</summary>
     public static List<Vessel> Around(SurfaceZone zone, Vector3 world, SliceRules.AreaRules rules) =>

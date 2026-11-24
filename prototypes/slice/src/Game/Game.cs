@@ -25,12 +25,12 @@ using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Game;
 
-/// <summary>Where the run is: the planet generating (and the castaway asleep in the cryopod), or play.</summary>
+/// <summary>Where the run is: the planet generating (and the sleeper asleep in the cryopod), or play.</summary>
 public enum Phase { Generating, Playing }
 
 /// <summary>
 /// The playable slice: wake in a buried cryopod bunker, survive, gather, craft, build a base and
-/// machines, build a vessel and fly it. It owns the surface zone and the castaway (body, suit,
+/// machines, build a vessel and fly it. It owns the surface zone and the sleeper (body, suit,
 /// inventory, tools and progress), turns one tick's <see cref="Controls"/> into what they do, and
 /// places the camera. Tests and screenshots run this same node and drive it through
 /// <see cref="Controls"/>.
@@ -56,6 +56,12 @@ public partial class Game : Node3D
     /// </summary>
     public double CraftTimeScale = 1;
 
+    /// <summary>
+    /// TEST SHORTCUT: generators run without burning fuel, as in Creative. False in play; a test of flight or handling,
+    /// not of fuel, sets it (marked where it does) for the ships it builds without storage for fuel.
+    /// </summary>
+    public bool FreePower;
+
     public readonly Controls Controls = new();
 
     public SurfaceZone Zone { get; private set; }
@@ -65,11 +71,16 @@ public partial class Game : Node3D
     public Suit Suit { get; private set; }
     public PlayerInventory Pack { get; private set; }
     public Progress Progress { get; private set; }
-    public SurvivalTool Tool { get; private set; }
+    public SleeperTool Tool { get; private set; }
     public BuildTool Builder { get; private set; }
     public ShotFx Shots { get; private set; }
     public PlayerTarget Target { get; private set; }
     public Visor Visor { get; private set; }
+
+    /// <summary>Hazards and attacks as symbols, over every menu.</summary>
+    public Alerts Alerts { get; private set; }
+    /// <summary>News in its own slot: levels, unlocks, recipes learnt, claims, orders made, blueprints saved.</summary>
+    public Notices Notices { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
     /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
@@ -117,44 +128,119 @@ public partial class Game : Node3D
     public override void _Ready()
     {
         PlanetSurface.Skies.StarSystem.TemperateYearDays = Slice.Orbit.OrbitRules.Shared.Globe.TemperateYearDays;
+        PlanetSurface.Skies.StarSystem.StarSkyScale = Slice.Orbit.OrbitRules.Shared.Globe.StarSkyScale;
         ResourceMount.Mount();
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
-        // The command line pins the world and the mode: -- --seed 123 --planet ice --creative
-        string[] args = OS.GetCmdlineUserArgs();
+        // The world stops with the escape menu open, whatever runs it (a test's or the screenshots' node runs on through a pause).
+        ProcessMode = ProcessModeEnum.Pausable;
+        LoadSettings();
+        // The command line pins the world and the mode: -- --seed 123 --type meadow --depth 0.7 --fall famine --creative (WorldChoice.FromArgs)
+        // A game started by NEW GAME pins nothing: it asks, as at launch.
+        string[] args = AskWorld ? Array.Empty<string>() : OS.GetCmdlineUserArgs();
         if (Array.IndexOf(args, "--creative") >= 0) _mode = GameMode.Creative;
         World ??= WorldChoice.FromArgs(args);
-        if (World == null && Interactive)
+        // The last game's world let go of (its streets' layouts forgotten, sound drained, shared caches released, collected) before this one is built.
+        if (AskWorld) _settling = Settle();
+        if (World == null && (Interactive || AskWorld))
         {
             // A new game: the start screen asks for the mode, the planet type and (if any) a seed.
-            var start = new StartScreen { Name = "Start" };
-            start.Chosen += (world, mode) =>
+            StartScreen = new StartScreen { Name = "Start" };
+            StartScreen.Chosen += (world, mode) =>
             {
                 World = world;
                 _mode = mode;
-                Begin();
+                StartScreen = null;
+                if (_settling is { IsCompleted: false }) BeginSettled();
+                else Begin();
             };
-            AddChild(start);
+            AddChild(StartScreen);
             return;
         }
         World ??= WorldChoice.Fresh();
         Begin();
     }
 
-    /// <summary>A new game from the start screen (STATS: NEW GAME).</summary>
-    public void NewGame() => GetTree().ReloadCurrentScene();
+    /// <summary>The new-game screen while it is up (at launch, and after NEW GAME), or null.</summary>
+    public StartScreen StartScreen { get; private set; }
+
+    /// <summary>Show the start screen whatever runs the game (a test too), and pin nothing from the command line: set on the game NEW GAME starts.</summary>
+    public bool AskWorld;
+
+    /// <summary>The game that took this one's place on NEW GAME (a test follows it there), or null.</summary>
+    public Game Next { get; private set; }
+
+    System.Threading.Tasks.Task _settling;
+
+    /// <summary>The last game's world let go of (at once for a game that followed none).</summary>
+    public bool Settled => _settling?.IsCompleted ?? true;
+
+    /// <summary>What the last world left in the shared caches, keyed to it (its streets' layouts, its looks in its own paint), forgotten; then the sound drained, the creature caches released and all of it collected.</summary>
+    System.Threading.Tasks.Task Settle()
+    {
+        PlanetSurface.Infra.FlavourRuins.Forget();
+        PlanetSurface.Infra.InfraDeco.Forget();
+        Slice.Places.Decor.Forget();
+        return Wildlife.Shutdown.Quiet(this);
+    }
+
+    async void BeginSettled()
+    {
+        await _settling;
+        if (IsInsideTree()) Begin();
+    }
+
+    /// <summary>
+    /// NEW GAME (the escape menu's, and STATS'): the settings written, then this game torn down
+    /// whole (its zones, places, wildlife, weather, orbit, vessels, sound and workers go with its
+    /// nodes) and a fresh game put in its place, on the start screen exactly as at launch.
+    /// </summary>
+    public void NewGame()
+    {
+        if (Next != null || !IsInsideTree()) return;
+        SaveSettings();
+        Next = new Game { Interactive = Interactive, SkipIntro = SkipIntro, CraftTimeScale = CraftTimeScale, SettingsPath = SettingsPath, AskWorld = true };
+        if (!Name.ToString().Contains('@')) Next.Name = Name; // the running scene's "Game" (an engine-given name is the engine's to give again)
+        Callable.From(HandOver).CallDeferred();
+    }
+
+    /// <summary>Out of the tree and freed, every sound stopped first, and the next game where this one was (the running scene, in play).</summary>
+    void HandOver()
+    {
+        Node parent = GetParent();
+        SceneTree tree = GetTree();
+        int at = GetIndex();
+        bool scene = tree.CurrentScene == this;
+        Audio?.StopAll();
+        foreach (Node n in FindChildren("*", "", true, false))
+            switch (n)
+            {
+                case AudioStreamPlayer p: p.Stop(); break;
+                case AudioStreamPlayer2D p: p.Stop(); break;
+                case AudioStreamPlayer3D p: p.Stop(); break;
+            }
+        if (Slice.Ui.ItemIcons.Shared == Icons) Slice.Ui.ItemIcons.Shared = null;
+        parent.RemoveChild(this);
+        QueueFree();
+        parent.AddChild(Next);
+        parent.MoveChild(Next, at);
+        if (scene) tree.CurrentScene = Next;
+    }
 
     /// <summary>The world chosen: generate it, and everything that lives in it.</summary>
     void Begin()
     {
         GD.Print($"world: {World}");
-        Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), PickStart = PickStart };
+        Wildlife.Weapons.GameDraws = _ => true; // people hold the player's own weapon models (Slice.Arms), not the body's
+        Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
+        AddChild(new GcPacer { Name = "GC pacer", Room = () => Pacer.Room });
         Zone.WorldRules.Mode = _mode;
         // Placed every frame from interpolated transforms, so it is not interpolated itself.
         Camera = new Camera3D { Name = "Camera", Fov = 75f, Near = 0.05f, Far = 12000f, Current = true, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
         Zone.AddChild(Camera);
         Zone.Camera = Camera;
         Zone.Focus = Focus;
+        Pacer.Deferred = () => Zone.IsBuilt ? Zone.Streamer.LastFrameMs : 0;
         Zone.Built += OnPlanetBuilt;
         StartZones();
         AddChild(new AfterStep { Name = "AfterStep", Game = this });
@@ -163,6 +249,12 @@ public partial class Game : Node3D
         AddChild(Visor);
         Menu = new TabMenu { Name = "Menu", Game = this };
         AddChild(Menu);
+        Escape = new EscapeMenu { Name = "Escape", Game = this };
+        AddChild(Escape);
+        Alerts = new Alerts { Name = "Alerts", Game = this };
+        AddChild(Alerts);
+        Notices = new Notices { Name = "Notices", Game = this };
+        AddChild(Notices);
         Debug = new DebugHud { Name = "Debug", Game = this, Visible = false };
         AddChild(Debug);
         Said += (text, colour) => Visor.Say(text, colour);
@@ -221,34 +313,53 @@ public partial class Game : Node3D
 
         Shots = new ShotFx { Name = "Shots" };
         Zone.AddChild(Shots);
-        Tool = new SurvivalTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
+        Tool = new SleeperTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
+        Arms = new Slice.Arms.ArmsHost { Name = "Arms", Game = this };
+        Tool.Arms = Arms;
+        Zone.AddChild(Arms);
         var debris = new PlanetSurface.Fx.Debris
         {
             Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f,
             ColorOf = (material, at) => Zone.Planet?.ChipColor(material, at) ?? new Color(0.5f, 0.45f, 0.4f),
         };
         Zone.AddChild(debris);
+        Zone.Dust = debris;
         Tool.Debris = debris;
         Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };
         Bikes.Bumped += at => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.8f, -6f);
+        Bikes.TornOff = bike => { if (Survivor.OnBike == bike) Survivor.Dismount(); };
         Zone.AddChild(Bikes);
         Survivor.Bikes = Bikes;
         Tool.Said += Say;
         Tool.Overflowed += left => SetDown(left, Survivor.WorldFeet);
-        Tool.CreatureHit += c => Visor.Hit();
+        Tool.CreatureHit += c => Arms?.Confirm(c.Dead);
         Tool.CreatureStruck += OnCreatureStruck;
         Builder = new BuildTool(Zone, Survivor, Pack, Progress);
+        Tool.Builder = Builder;
         Builder.Said += Say;
-        Builder.Finished += v => Say($"Fly it: F at the {v.Name}'s seat", Tones.Good);
         Builder.Spilled += SetDown;
         WireProgress();
 
         Target = new PlayerTarget(this);
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
-        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
+        Zone.Wildlife.Quaked += OnQuake;
+        SetUpHusks();
+        Zone.Wildlife.Telegraphed += e =>
+        {
+            Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
+            Visor.Threat(from);
+            // A Husk's wind-up is never flagged: it looks like anyone until it has you.
+            if (!e.Creature.Species.Husk) Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
+        };
         Zone.Wildlife.Died += OnCreatureDied;
+        SetUpBodies();
+        SetUpAftermath();
         Zone.Weather.Observer = () => Survivor.WorldFeet;
+        if (Zone.Weather.Bridge != null) Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
+        Zone.Weather.Shelter = Sheltered;
+        Suit.UnderCover = UnderCover;
+        Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
         Zone.Weather.Happened += OnWeather;
 
         Console = new CockpitConsole { Name = "Console", Game = this };
@@ -267,16 +378,36 @@ public partial class Game : Node3D
         Paperdoll.Attach(this);
         Audio = new SliceAudio { Name = "Audio", Game = this };
         AddChild(Audio);
-        // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
-        Survivor.Node.AddChild(CharacterModel.Build());
+        Howl = new WindHowl { Name = "Howl", Zone = Zone, Eye = () => Survivor.WorldEye(), Quiet = () => Spaceflight.AirGone > 0.5f };
+        Zone.AddChild(Howl);
+        Exposure = new AmbientExposure { Name = "Exposure", Zone = Zone, Eye = () => Survivor.WorldEye() };
+        Zone.AddChild(Exposure);
+        // The sleeper seen from outside (third person and screenshots); the first-person camera leaves it out.
+        Figure = CharacterModel.Build();
+        // Placed every drawn frame from the same interpolated transforms the eye and the vehicle draw
+        // with (PoseFigure), so never interpolated again on its own, and not hung off the body node:
+        // that is set down on a seat or a bike each physics tick (and lives in a cabin's own world
+        // aboard), and the figure jittered against the vehicle with it.
+        Figure.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        Figure.TopLevel = true;
+        AddChild(Figure);
         Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
         Zone.AddChild(Bodies);
         SetUpPlaces();
 
     }
 
+    /// <summary>Wind moaning in the openings around you.</summary>
+    public WindHowl Howl { get; private set; }
+
+    /// <summary>Roof, walls, lee and relief round the eye: what the weather's sound hears.</summary>
+    public AmbientExposure Exposure { get; private set; }
+
     /// <summary>Small 3D icons of items, each rendered once.</summary>
     public Slice.Ui.ItemIcons Icons { get; private set; }
+
+    /// <summary>Hand weapons: the guns in your hands and every shot in flight, stuck or set down.</summary>
+    public Slice.Arms.ArmsHost Arms { get; private set; }
 
     /// <summary>The hover bikes standing in the world.</summary>
     public HoverBikes Bikes { get; private set; }
@@ -290,7 +421,13 @@ public partial class Game : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (Zone == null) return; // the start screen is up
-        if (Interactive) PollKeyboard();
+        if (Interactive || Keyboard) PollKeyboard();
+        // Esc with no menu open: the escape menu, and the world stops (with the Tab menu open, Esc is the Tab menu's, below).
+        if (Controls.KeyWasPressed(Key.Escape) && !Menu.IsOpen)
+        {
+            Escape.Open();
+            return;
+        }
         if (Phase == Phase.Generating)
         {
             if (Zone.IsBuilt) Waking();
@@ -308,13 +445,16 @@ public partial class Game : Node3D
             else if (!Menu.IsOpen) Menu.OpenMap(Slice.Ui.MapLevel.Local);
             else Menu.Tab = Slice.Ui.MenuTab.Map;
         }
-        if (c.WasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
-        if (c.WasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
-        if (Menu.IsOpen && c.WasPressed(Key.A) && c.IsHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
+        if (c.KeyWasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
+        if (c.KeyWasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
+        if (Menu.IsOpen && c.KeyWasPressed(Key.A) && c.ModifierHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
+        StepOrbit(c, (float)delta);
         if (c.WasPressed(Key.L)) ToggleTorch();
+        if (!Menu.IsOpen) StepGestures(c);
         Survivor.WantCrouch = false; // only the walk below asks for it
+        StepWrongness((float)delta);
         if (Suit.Dead)
         {
             Survivor.Dismount();
@@ -323,28 +463,39 @@ public partial class Game : Node3D
             Survivor.Legs.Jump = Survivor.Legs.Jetpack = false;
             return;
         }
-        if (Survivor.OnBike is HoverBike bike) Ride(bike, c);
+        // Seized by a Husk: the hold has the body until it ends.
+        if (Held(c, (float)delta)) return;
+        if (Survivor.OnBike is HoverBike bike) Ride(bike, c, (float)delta);
         else if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
         else Walk(c);
     }
 
-    /// <summary>On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The mouse looks.</summary>
-    void Ride(HoverBike bike, Controls c)
+    /// <summary>Looking around from the bike's seat (Alt held), or easing the view back onto its heading after.</summary>
+    bool _lookingAround;
+
+    /// <summary>
+    /// On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The
+    /// mouse steers: the bike comes round toward where you look. Alt held looks around without steering,
+    /// and on letting go the view eases back onto the bike's heading.
+    /// </summary>
+    void Ride(HoverBike bike, Controls c, float dt)
     {
         Survivor s = Survivor;
         s.Legs.Move = default;
         s.Legs.Jump = s.Legs.Jetpack = false;
         s.Legs.Vertical = 0f;
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
-        if (!Menu.IsOpen)
+        if (!Menu.IsOpen) Turn(s, c);
+        if (c.ModifierHeld(Key.Alt)) _lookingAround = true;
+        else if (_lookingAround)
         {
-            s.Yaw -= c.Look.X * 0.0025f;
-            s.Pitch = Mathf.Clamp(s.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
+            s.Yaw = Mathf.LerpAngle(s.Yaw, bike.Yaw, 1f - MathF.Exp(-10f * dt));
+            if (MathF.Abs(Mathf.Wrap(bike.Yaw - s.Yaw, -MathF.PI, MathF.PI)) < 0.01f) _lookingAround = false;
         }
+        bike.Aim = _lookingAround ? float.NaN : s.Yaw;
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
             s.Dismount();
-            Say("Off the hover bike", Tones.Text);
             return;
         }
         bike.Throttle = typing ? 0f : c.Axis(Key.W, Key.S);
@@ -358,13 +509,12 @@ public partial class Game : Node3D
     {
         if (!WorldRay.Cast(Zone, Survivor, 9f, Layers.World | Layers.Hull, out LookHit look) || look.Normal.Y < 0.5f)
         {
-            Say("Look at open ground to set the hover bike down", Tones.Caution);
+            Say("NEEDS OPEN GROUND", Tones.Caution);
             return;
         }
         if (Pack.Remove("hover-bike", 1) < 1) return;
         Pack.Grid.Reconcile();
         Bikes.Place(look.Point, Survivor.Yaw);
-        Say("Hover bike set down: F to ride, E to pick it up", Tones.Good);
     }
 
     /// <summary>E at a standing hover bike: it goes back in the pack.</summary>
@@ -374,7 +524,6 @@ public partial class Game : Node3D
         Bill left = Pack.Add("hover-bike", 1);
         if (!left.IsEmpty) SetDown(left, bike.Position);
         Bikes.Remove(bike);
-        Say("Hover bike packed away", Tones.Text);
         return true;
     }
 
@@ -382,11 +531,7 @@ public partial class Game : Node3D
     {
         Survivor s = Survivor;
         // The menu takes the mouse (the game doesn't pause: you can still walk with it open).
-        if (!Menu.IsOpen)
-        {
-            s.Yaw -= c.Look.X * 0.0025f;
-            s.Pitch = Mathf.Clamp(s.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
-        }
+        if (!Menu.IsOpen) Turn(s, c);
         // Typing into a filter box doesn't move you.
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
         s.Legs.Move = typing ? N.Vector2.Zero : new N.Vector2(c.Axis(Key.D, Key.A), c.Axis(Key.S, Key.W));
@@ -395,6 +540,7 @@ public partial class Game : Node3D
         s.Legs.Jump = !typing && c.IsHeld(Key.Space);
         s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
         s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
+        Tangled(s);
         Climb(c); // a ladder or a lift shaft at the feet
         if (Menu.IsOpen) return;
 
@@ -409,52 +555,48 @@ public partial class Game : Node3D
                 else Select(i);
             }
         if (c.WasPressed(Key.Y)) SwitchBar();
-        if (c.WasPressed(Key.F) && !OpenCryopod()) TrySit();
+        if (c.WasPressed(Key.F) && !OpenCryopod() && !PickUpPod()) TrySit();
         if (c.WasPressed(Key.E)) Use();
         if (c.WasPressed(Key.B)) Report(Suit.Sim.DeployOrPack(FeetPos()));
         if (c.WasPressed(Key.H)) Report(Suit.Sim.ToggleHelmet());
         HandKind hand = Pack.Hand;
-        if (hand == HandKind.Tool && c.WasPressed(Key.Q))
+        if (hand == HandKind.Weapon)
         {
-            Tool.Mode = Tool.Mode switch { ToolMode.Gather => ToolMode.Shoot, ToolMode.Shoot => ToolMode.Deconstruct, _ => ToolMode.Gather };
-            Say(Tool.Mode switch
-            {
-                ToolMode.Shoot => "Survival tool: SHOOT (Q: deconstruct)",
-                ToolMode.Deconstruct => "Survival tool: DECONSTRUCT: take blocks down, their items back (Q: gather)",
-                _ => "Survival tool: GATHER (Q: shoot)",
-            }, Tones.Text);
+            if (c.WasPressed(Key.Q)) Arms.NextMode();   // fire mode or shell type
+            if (c.WasPressed(Key.R)) Arms.Reload();
         }
+        if (hand == HandKind.Tool && c.WasPressed(Key.Q)) Tool.Mode = Tool.Mode == ToolMode.Gather ? ToolMode.Repair : ToolMode.Gather;
+        bool plating = hand == HandKind.Plater;
+        if (plating && c.Wheel != 0) Builder.NextPlating(c.Wheel);
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
             bool decoInHand = hand == HandKind.Block && Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem;
-            bool smallGrid = Builder.TargetVessel != null && Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
             if (c.Wheel != 0 && hand == HandKind.Block)
             {
-                if (decoInHand) Builder.NextPiece(c.Wheel, smallGrid);
+                if (decoInHand) Builder.NextPiece(c.Wheel);
                 else Builder.NextShape(c.Wheel);
             }
-            if (decoInHand && c.WasPressed(Key.G)) Builder.NextTheme(smallGrid);
+            if (decoInHand && c.WasPressed(Key.G)) Builder.NextTheme();
             if (decoInHand && c.WasPressed(Key.R)) Builder.TurnDeco();
             else if (c.WasPressed(Key.R)) Builder.Rotate(1);
             if (c.WasPressed(Key.T)) Builder.Rotate(0);
             if (c.WasPressed(Key.X))
             {
                 Builder.MirrorX = !Builder.MirrorX;
-                Say(Builder.MirrorX ? "Mirror left/right on" : "Mirror off", Tones.Text);
             }
         }
-        else if (c.Wheel != 0) Select((Pack.Selected + Math.Sign(c.Wheel) + PlayerInventory.ToolbarSlots) % PlayerInventory.ToolbarSlots);
+        else if (c.Wheel != 0 && !plating) Select((Pack.Selected + Math.Sign(c.Wheel) + PlayerInventory.ToolbarSlots) % PlayerInventory.ToolbarSlots);
     }
 
     /// <summary>How soon a number pressed again counts as a double tap, seconds.</summary>
     const double DoubleTap = 0.4;
     double _numberAt = -1;
 
-    /// <summary>The survival tool has been in your hands. Until then the visor says how to make it.</summary>
+    /// <summary>The Sleeper tool has been in your hands. Until then the visor says how to make it.</summary>
     public bool ToolEquipped { get; private set; }
 
     /// <summary>The hint at waking, until the tool is equipped; null after.</summary>
-    public string ToolHint => ToolEquipped ? null : "Press Tab: make your survival tool in the suit fabricator";
+    public string ToolHint => ToolEquipped ? null : "SUIT FABRICATOR";
 
     /// <summary>Puts a toolbar slot in your hands.</summary>
     public void Select(int slot)
@@ -464,9 +606,8 @@ public partial class Game : Node3D
         Builder.Hide();
         Slot s = Pack.InHand;
         string id = Pack.HandItem;
-        string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "empty hands";
+        string what = s.Block == PlayerInventory.BlueprintBlock ? "BLUEPRINT · SKIFF" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "EMPTY";
         string origin = Pack.OnRemoteBar && Pack.HandRemote is RemoteSlot rs ? $" ({rs.Origin})" : "";
-        Say($"{slot + 1}{origin}: {what}{(Pack.OnRemoteBar && !Pack.HandUsable && Pack.HandRemote != null ? " · out of range" : "")}", Tones.Text);
     }
 
     /// <summary>Switches between your own toolbar and the remote one (an empty remote bar can't be opened).</summary>
@@ -479,7 +620,6 @@ public partial class Game : Node3D
             return;
         }
         Builder.Hide();
-        Say(Pack.OnRemoteBar ? "REMOTE TOOLBAR: items stay in their core's storage" : "YOUR TOOLBAR: items come from your own stacks", Tones.Text);
     }
 
     /// <summary>The structure you are linked to (its area holds you), or null.</summary>
@@ -506,7 +646,7 @@ public partial class Game : Node3D
     void Fly(Vessel vessel, Controls c)
     {
         // The mouse moves a virtual stick that recentres by itself (as in ship-handling).
-        if (!Menu.IsOpen) _stick = (_stick * 0.85f + c.Look * 0.012f).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
+        if (!Menu.IsOpen) _stick = (_stick * 0.85f + StickPush(c)).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
         if (_stick.LengthSquared() < 1e-8f) _stick = Vector2.Zero; // recentred means centred: the decay alone never reaches zero
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
@@ -514,24 +654,22 @@ public partial class Game : Node3D
             _stick = Vector2.Zero;
             return;
         }
+        StepBar(vessel, c);
         if (vessel.Flight == null) return;
         var move = new Vector3(c.Axis(Key.D, Key.A), c.Axis(Key.Space, Key.Ctrl), c.Axis(Key.S, Key.W));
-        // Small vessels turn no faster than the data's cap, however light (the stick asks for a share of it).
-        float cap = vessel.Structure.Grid.Size == GridSize.Small && vessel.Stats is HandlingStats st && st.TurnRate > 0f
-            ? Mathf.Min(1f, Zone.Data.Rules.Build.SmallVesselMaxTurn / st.TurnRate) : 1f;
-        var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E)) * cap;
+        var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E));
         // Anyone in a seat can reach the ship's systems; only the pilot role's holder flies it.
         if (vessel.Roles.Pilot != Vessel.Player) return;
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
-        if (c.WasPressed(Key.G)) vessel.Controller?.ToggleGear();
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
+        if (c.WasPressed(Key.I)) vessel.Flight.ToggleAssist();
+        if (c.WasPressed(Key.J) && Spaceflight.JumpKey() is { } no) Say(no, Tones.Warning); // the map may be open: pick, then J
     }
 
     void ToggleTorch()
     {
         Torch.Visible = !Torch.Visible;
         Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, Camera.GlobalPosition, Torch.Visible ? 2.2f : 1.8f, -18f);
-        Say(Torch.Visible ? "Head torch on (L)" : "Head torch off", Tones.Text);
     }
 
     /// <summary>F on foot: the nearest command chair within reach.</summary>
@@ -549,14 +687,12 @@ public partial class Game : Node3D
         HoverBike bike = Bikes.Nearest(eye, bestDistance, out _);
         if (bike != null && Survivor.Mount(bike))
         {
-            Say("On the hover bike: W/S throttle, A/D steer, Shift boost, Space hop, F get off", Tones.Text);
             return;
         }
-        if (best == null) Say("No seat or hover bike within reach", Tones.Caution);
-        else if (TakeNearestChair(best, eye) && Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
+        if (best != null && TakeNearestChair(best, eye)) Survivor.Sit(best);
     }
 
-    void Report(Outcome o) => Say(o.Message, o.Ok ? Tones.Good : Tones.Caution);
+    void Report(Outcome o) { if (!o.Ok) Say(o.Message, Tones.Caution); } // what worked shows for itself
 
     Pos FeetPos()
     {
@@ -584,7 +720,7 @@ public partial class Game : Node3D
         Pack.Grid.Reconcile();
         LinkStructure();
         HandKind hand = Pack.Hand;
-        if (Pack.Tick()) Say("The remote toolbar emptied: back on your own", Tones.Text);
+        Pack.Tick(); // an emptied remote toolbar hands back to your own: the bar's name shows it
         // A remote slot out of its origin's range stays in the hand, greyed, and does nothing.
         bool hands = !Suit.Dead && Survivor.Seated == null && Survivor.OnBike == null && !Menu.IsOpen && Pack.HandUsable;
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
@@ -592,23 +728,29 @@ public partial class Game : Node3D
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
         if (hand == HandKind.Tool) ToolEquipped = true;
         if (hands && Spaceflight.TakeHands(dt, hand, primary, pressed)) hands = false; // in space: salvage, claiming
-        bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct;
+        bool plating = hand == HandKind.Plater;
         bool building = Builder.Projecting || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         if (hands && Builder.Projecting) Builder.Tick(dt, HandKind.Blueprint, Pack.InHand, Pack.Selected, primary, pressed, Controls.SecondaryPressed);
-        else if (hands && deconstruct)
+        else if (hands && plating)
         {
-            Builder.TickDeconstruct(pressed);
-            if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel dv && dv.Structure.TryGet(Builder.TargetCell, out _))
-                Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
+            Builder.TickPlate(pressed, Controls.SecondaryPressed);
+            if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel pv)
+                Tool.ShowBeam(pv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(pv.Structure, Builder.TargetCell)));
         }
         else if (hands && hand == HandKind.Tool) { Tool.ItemId = Pack.HandItem; Tool.Tick(dt, primary); }
+        else if (hands && hand == HandKind.Weapon) Arms.Hold(dt, Pack.HandItem, primary, pressed);
         else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
         else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
-        if (!hands || !(building || deconstruct)) Builder.Hide();
+        else if (hands && hand == HandKind.Scanner && pressed) Scan();
+        TickPings();
+        if (!hands || !(building || plating || hand == HandKind.Tool && Tool.OnStructure)) Builder.Hide();
+        if (!hands || hand != HandKind.Weapon) Arms.Idle(dt);
+        FireBar(dt);
         TickMachines(dt);
         CheckDeath();
+        KeepRisen();
         Stats.Tick(this, dt);
         TrackProgress();
         Controls.EndTick();
@@ -619,22 +761,45 @@ public partial class Game : Node3D
         // A lunge that meets a wall on the way lands on the wall.
         if (Slice.Vessels.VesselDamage.Struck(Zone, e.Creature, Survivor.WorldEye())) return;
         if (!e.Hit || e.Damage <= 0f) return;
+        HurtBy(e.Creature);
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
         Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
         Visor.Hurt(from);
         Hands?.Jolt(from, MathF.Min(1f, e.Damage / 20f));
-        Zone.Wildlife.Audio.PlayUi("hurt", -6f);
-        Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
+        Survivor.Knock(e.Push); // thrown by the blow, by the striker's mass
+        Zone.Wildlife.Audio.PlayUi("hurt", -6f); // the blow landing, not an alert
+        Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
     }
 
-    /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
+    /// <summary>The ground shakes under a stomp or a heavy charge: the view shakes, harder close in, and a stomp kicks up dust round the foot.</summary>
+    void OnQuake(QuakeEvent e)
+    {
+        float near = Survivor.WorldFeet.DistanceTo(e.Position);
+        if (near < e.Reach) Hands?.Shake(e.Strength * (1f - near / e.Reach));
+        if (e.Stomp) Zone.Dust?.Puff(e.Position, Zone.Planet.Grit(e.Position), 1.2f + 3f * e.Strength);
+    }
+
+    /// <summary>A weapon's hit on a creature: the same smack and blood as the tool's.</summary>
+    public void CreatureStruck(Creature c, Vector3 point, Vector3 dir) => OnCreatureStruck(c, point, dir);
+
+    /// <summary>The fewest seconds between a struck thing's cries (a shot's pellets cry once).</summary>
+    public const float CryEvery = 0.35f;
+
+    /// <summary>A hit lands on a creature: a wet smack where it landed, its cry, its blood, and a critter of a swarm gone with a pop.</summary>
     void OnCreatureStruck(Creature c, Vector3 point, Vector3 dir)
     {
         Species s = c.Species;
         bool swarm = s.Rig == RigKind.Swarm;
         Zone.Wildlife.SimOf(c, out Vector3 origin, out _);
+        c.Struck(point - origin, dir); // the struck part snaps away from where it landed
         float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, s.Body.Size)), 0.6f, 1.6f);
         Zone.Wildlife.Sound(origin, a => a.Play(swarm ? "pop" : "hit", c.Position + Vector3.Up * 0.5f, pitch, -2f));
+        float now = Time.GetTicksMsec() / 1000f;
+        if (now - c.CriedAt > CryEvery)
+        {
+            c.CriedAt = now;
+            Zone.Wildlife.Sound(origin, a => a.Cry(s, c.Position + Vector3.Up * s.BodyHeight * 0.8f));
+        }
         if (swarm) Zone.Blood.Pop(point, s.Blood, 8);
         else Zone.Blood.Hit(point, dir, s.Blood, s.Body.Size);
     }
@@ -646,25 +811,25 @@ public partial class Game : Node3D
         {
             case WeatherEventKind.LightningStrike:
                 float distance = feet.DistanceTo(e.Position);
-                Zone.Sfx.Play(PlanetSurface.Fx.Sfx.Sound.Thunder, Camera.GlobalPosition + (e.Position - Camera.GlobalPosition).Normalized() * 20f,
-                    1f, Mathf.Clamp(6f - distance / 60f, -12f, 6f));
-                if (Survivor.Seated == null && distance < e.DamageRadius)
+                Zone.Weather.Thunder(e.Position);
+                if (distance < e.DamageRadius && !UnderCover())
                 {
                     Suit.Hit(e.Damage, DamageKind.Hit);
-                    Say("STRUCK BY LIGHTNING: get low in a storm", Tones.Warning);
+                    Visor.Hurt(e.Position);
+                    Alerts.Attack("storm", e.Position);
                 }
-                break;
-            case WeatherEventKind.TornadoForming:
-                Say($"Funnel cloud forming {WeatherSim.Bearing(feet, e.Position)}", Tones.Warning);
                 break;
         }
     }
 
-    /// <summary>The weather's warnings for the visor, nearest first.</summary>
+    /// <summary>Whether a working forecast block reaches you: on a core structure whose broadcast holds you, or on the structure whose chair you are seated in.</summary>
+    public bool ForecastReaches => Survivor?.Seated?.Forecasting == true || CoresInReach.Any(v => v.Forecasting);
+
+    /// <summary>The weather's warnings for the visor, nearest first; none at all without a forecast reaching you.</summary>
     public IReadOnlyList<WarningEntry> WeatherWarnings()
     {
         _warnings.Clear();
-        Zone.Weather.Sim?.GetWarnings(_warnings, Survivor?.WorldFeet ?? Vector3.Zero);
+        if (ForecastReaches) Zone.Weather.Sim?.GetWarnings(_warnings, Survivor?.WorldFeet ?? Vector3.Zero);
         return _warnings;
     }
 
@@ -672,12 +837,32 @@ public partial class Game : Node3D
 
     static readonly Key[] Watched =
     {
-        Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E, Key.M,
+        Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E, Key.M, Key.Z,
     };
+
+    /// <summary>
+    /// Reads the real keyboard every tick, as play does. On whenever <see cref="Interactive"/> is;
+    /// a test turns it on to press real keys through the engine's input (and off again before its
+    /// script holds keys itself, since the keyboard's state overwrites them).
+    /// </summary>
+    public bool Keyboard;
+
+    /// <summary>The view turned by a tick's mouse movement, at your sensitivity, the pitch held short of straight up and down.</summary>
+    void Turn(Survivor s, Controls c)
+    {
+        Vector2 turn = LookTurn(c);
+        s.Yaw -= turn.X;
+        s.Pitch = Mathf.Clamp(s.Pitch - turn.Y, -1.5f, 1.5f);
+    }
 
     void PollKeyboard()
     {
-        foreach (Key k in Watched) Controls.Hold(k, Input.IsPhysicalKeyPressed(k));
+        // Each held action by the key bound to it; the modifiers themselves too, for the menus' Shift- and Ctrl-clicks.
+        KeyBindings keys = Settings.Keys;
+        foreach (Key k in Watched) Controls.Hold(k, Input.IsPhysicalKeyPressed(keys.BoundFor(k)));
+        foreach (Key m in new[] { Key.Shift, Key.Ctrl, Key.Alt })
+            if (Input.IsPhysicalKeyPressed(m)) Controls.Modifiers.Add(m);
+            else Controls.Modifiers.Remove(m);
         bool captured = Input.MouseMode == Input.MouseModeEnum.Captured;
         Controls.Primary = (captured || Menu.IsOpen) && Input.IsMouseButtonPressed(MouseButton.Left);
         Controls.Secondary = (captured || Menu.IsOpen) && Input.IsMouseButtonPressed(MouseButton.Right);
@@ -686,7 +871,7 @@ public partial class Game : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
-        if (!Interactive) return;
+        if (!Interactive || Zone == null) return; // the start screen takes its own
         switch (e)
         {
             case InputEventMouseMotion motion when Input.MouseMode == Input.MouseModeEnum.Captured:
@@ -716,8 +901,7 @@ public partial class Game : Node3D
                     break;
                 }
                 if (key.Echo) break;
-                if (key.PhysicalKeycode == Key.Escape && !Menu.IsOpen) Input.MouseMode = Input.MouseModeEnum.Visible;
-                else Controls.Tap(key.PhysicalKeycode);
+                Press(key.PhysicalKeycode);
                 break;
         }
     }
@@ -729,6 +913,7 @@ public partial class Game : Node3D
     public override void _Process(double delta)
     {
         if (Zone == null) return; // the start screen is up
+        KeepSettingsApplied();
         if (Suit != null) SyncReplicators();
         if (Interactive)
         {
@@ -737,12 +922,42 @@ public partial class Game : Node3D
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.
+        if (Zone.IsBuilt) Zone.Streamer.UploadBudgetMs = Pacer.Room; // what the frame's pace leaves room for
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
-        Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
-        Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
-            ? Chase(v, 1.6f, 0.5f)
-            : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : Survivor.Eye());
+        LoadAhead(delta);
+        Survivor.ViewLead = ViewLead();
+        PoseFigure(delta);
+        // Seen from outside, the whole figure; in first person only seated (its lap under the view), and never the head the eye is in.
+        bool outside = ThirdPerson || FixedCamera != null;
+        Camera.SetCullMaskValue(Slice.Player.CharacterModel.BodyLayer, outside || Survivor.Seated != null);
+        Camera.SetCullMaskValue(Slice.Player.CharacterModel.HeadLayer, outside);
+        Camera.GlobalTransform = FixedCamera ?? View((float)delta);
+    }
+
+    Vector3 _focusWas;
+    double _focusFor;
+
+    /// <summary>What streams round you is told how you're moving, however you are: on foot, by bike, in a vessel, or carried. It loads ahead of you.</summary>
+    void LoadAhead(double delta)
+    {
+        if (!Surface.IsBuilt) return;
+        Vector3 focus = Focus();
+        // Over the time since the focus last moved: it moves a physics tick at a time, so on a fast screen a frame
+        // that saw no move and the next that saw a whole tick's made the heading (and the rings it leads) jitter
+        // with the frame rate. The same easing a second, whatever the frame rate.
+        _focusFor += delta;
+        if (focus == _focusWas && _focusFor < 0.1) return;
+        Vector3 moved = (focus - _focusWas) / (float)Math.Max(_focusFor, 0.001);
+        float ease = 1f - MathF.Exp(-(float)_focusFor / 0.15f);
+        _focusWas = focus;
+        _focusFor = 0;
+        if (moved.Length() > 400f || InSpace) moved = Vector3.Zero; // a seam or a crossing moved the frame, not you
+        Vector3 heading = Surface.Streamer.Heading.Lerp(moved, ease);
+        Surface.Streamer.Heading = heading;
+        Surface.Infra.Heading = heading;
+        if (Zone.Pois != null) Zone.Pois.Heading = heading;
+        if (Places != null) Places.Heading = heading;
     }
 
     /// <summary>The survival replicators set down in the world, drawn as the kit's little cabinet.</summary>
@@ -774,20 +989,6 @@ public partial class Game : Node3D
         }
     }
 
-    /// <summary>A chase camera behind and above a vessel, sized to it.</summary>
-    public static Transform3D Chase(Vessel vessel, float distance, float height)
-    {
-        Transform3D t = vessel.DrawTransform;
-        var (min, max) = vessel.Structure.Bounds();
-        float size = MathF.Max(3f, (max - min).ToVector3().Length() * vessel.Structure.Grid.CellSize);
-        Vector3 target = t.Origin + Vector3.Up * size * 0.15f;
-        Vector3 back = t.Basis.Z;
-        back.Y = 0f;
-        back = back.LengthSquared() < 1e-4f ? Vector3.Back : back.Normalized();
-        Vector3 eye = target + back * size * distance + Vector3.Up * size * height;
-        return new Transform3D(Basis.LookingAt(target - eye, Vector3.Up), eye);
-    }
-
     /// <summary>Runs <see cref="Game.AfterPhysics"/> once the physics host (-10) and the world's logic (0) have stepped.</summary>
     sealed partial class AfterStep : Node
     {
@@ -803,10 +1004,13 @@ public sealed class PlayerTarget : ITarget
     readonly Game _game;
     public PlayerTarget(Game game) => _game = game;
 
-    public string Name => "Castaway";
+    public string Name => "Sleeper";
     public Vector3 Position => _game.Zone.Wildlife.PatchLocal(_game.Survivor.WorldFeet);
     public Vector3 Forward => _game.Survivor.WorldLook();
     public bool Crouched => _game.Survivor.Crouched && OnFoot;
+    public float Lamp => _game.Torch is { Visible: true } ? 1f : 0f;
+    /// <summary>A weapon in your hands (not bare fists): people read it, aimed at them, as a threat.</summary>
+    public bool Drawn => OnFoot && _game.Arms?.InHand is { } g && g.Def.Id != Weapons.Fists;
     public Health Health { get; } = new(100f);
 
     /// <summary>On foot and alive; aboard a vessel nothing can bite you, and nothing on the surface can reach you underground or under a place's roof.</summary>

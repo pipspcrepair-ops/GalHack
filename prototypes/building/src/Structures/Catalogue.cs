@@ -10,8 +10,6 @@ namespace GalHack.Structures;
 
 public enum DamageType { Kinetic, Explosive, Energy }
 
-public enum GridSize { Large, Small }
-
 public enum BlockKind { Armor, Component }
 
 /// <summary>How a component collides: as a whole cell, as its part boxes, or not at all (ladders, lights).</summary>
@@ -20,8 +18,12 @@ public enum Collide { Cell, Parts, None }
 /// <summary>How a component part is drawn. Body faces take the block's paint; the rest are fixed.</summary>
 public enum PartStyle { Body, Dark, Accent, Glow, Glass }
 
-/// <summary>How a block's material shows damage: metal dents and scorches, concrete chips, alien alloy bruises and bleeds light, glass cracks and shatters.</summary>
-public enum DamageLook { Metal, Concrete, Alien, Glass }
+/// <summary>
+/// How a material shows damage, and (the shader reads the same two bits) which surface it has bare
+/// or under paint: metal dents and scorches over plates, concrete chips, alien alloy bruises and
+/// bleeds light, bare polymer wears like metal, glass cracks and shatters.
+/// </summary>
+public enum DamageLook { Metal, Concrete, Alien, Polymer, Glass }
 
 /// <summary>Resistance to each damage type, 0 (none) to 1 (immune).</summary>
 public readonly record struct Resist(float Kinetic, float Explosive, float Energy)
@@ -29,17 +31,11 @@ public readonly record struct Resist(float Kinetic, float Explosive, float Energ
     public float this[DamageType t] => t switch { DamageType.Kinetic => Kinetic, DamageType.Explosive => Explosive, _ => Energy };
 }
 
-/// <summary>
-/// A grid size. Stats in the data files are for a large-grid cube; a grid scales them, so one
-/// catalogue serves both grids and a small block is never a separate definition.
-/// </summary>
+/// <summary>The one block grid: its cell size and how much a structure's containers may hold.</summary>
 public sealed class GridDef
 {
     public string Id;
-    public GridSize Size;
     public float CellSize;
-    public float HpScale, MassScale, CpuScale, CostScale, StorageScale, FunctionScale;
-    public long[] CpuTiers;
     public double StorageCap;
 }
 
@@ -51,6 +47,44 @@ public sealed class Part
 
     /// <summary>Drawn (and solid) only while a door is closed: the door leaf.</summary>
     public bool ClosedOnly;
+
+    /// <summary>Drawn (and solid) only while its block is switched on, or only while it is off: a turret's barrels run out or parked.</summary>
+    public bool OnOnly, OffOnly;
+
+    /// <summary>Is it there on this block, as the block stands (a door open, a device switched off)?</summary>
+    public bool Shows(in Block b) => !(ClosedOnly && b.Open) && !(OnOnly && b.Off) && !(OffOnly && !b.Off);
+
+    /// <summary>How its faces depart from the style's look (colour, pattern, a screen's symbol, a pulse), or null.</summary>
+    public PartFinish Finish;
+
+    // Detail parts only (see BlockType.Detail).
+    /// <summary>The face it sits on: hidden, with all of it, when a neighbour hides that face.</summary>
+    public Dir? Mount;
+}
+
+/// <summary>
+/// What a part changes about its style's look. Unset values keep the style's: a body part keeps
+/// the block's paint, a dark part the housing grey, a glow its type's colour.
+/// </summary>
+public sealed class PartFinish
+{
+    public uint? Color, Accent;
+    /// <summary>A <see cref="Structures.Pattern"/> or one of the detail patterns (<see cref="DetailPattern"/>).</summary>
+    public int Pattern;
+    public FaceTexture? Texture;
+    /// <summary>0..3 like a material's; -1 keeps the style's.</summary>
+    public int Metal = -1;
+    /// <summary>A symbol shown on the part's faces: lit on a screen (a glow part), stencilled on anything else.</summary>
+    public DeviceSymbol Symbol;
+    /// <summary>A glow that moves: a slow pulse, a blinking lamp.</summary>
+    public LightAnim Anim;
+    public float Speed = 0.5f;
+}
+
+/// <summary>Patterns only parts use, beyond the paint patterns: fine hazard trim, slotted grilles, a symbol.</summary>
+public static class DetailPattern
+{
+    public const int FineHazard = 5, Grille = 6, Symbol = 7;
 }
 
 /// <summary>
@@ -63,8 +97,8 @@ public sealed class BlockType
     public int Index;
     public BlockKind Kind;
 
-    // Stats for a full large-grid cube. Shapes scale hit points and mass by volume.
-    public float Hp, Armor, Mass, Cpu;
+    // Stats for a full cube. Shapes scale hit points, mass and plates by volume.
+    public float Hp, Armor, Mass;
     public Resist Resist;
 
     public bool Airtight, Transparent;
@@ -75,12 +109,40 @@ public sealed class BlockType
     public string UpgradesTo;
     public BlockType Upgrade;
     public Dictionary<string, int> Cost = new();
-    /// <summary>The small-grid recipe, from common materials. Null falls back to Cost × the grid's costScale.</summary>
-    public Dictionary<string, int> SmallCost;
+
+    // Plated blocks only: the block under the plating, and the plate item sprayed on per full cube.
+    // Armour takes plating, and so does a component listed as a plated one's base (a field emitter).
+    public BlockType Base;
+    public string Plate;
+    public int Plates;
+    public bool IsPlated => Plate != null;
+
+    /// <summary>The plated blocks with this one under them (empty: it takes no plating).</summary>
+    public readonly List<BlockType> Platings = new();
 
     // Components only.
+    /// <summary>
+    /// Cells the component spans, in its own frame (x, y, z), from its anchor towards +x, +y and
+    /// +z. One cell unless the data gives a size; its parts fill the whole of it (see <see cref="Footprint"/>).
+    /// </summary>
+    public Int3 Size = Footprint.One;
+    /// <summary>True when <see cref="Size"/> is more than one cell.</summary>
+    public bool Multi;
     public string Function = "";
-    public float Power, Thrust, Storage, Fuel;
+    public float Power, Thrust, Storage;
+    // What the handling model reads: gyro torque, hover lift (kN) and ride height (m), leg reach (m).
+    public float Torque, Lift, RideHeight, LegLength;
+    /// <summary>Chairs: where a seated person's hips rest and where their eyes are, in the block's -0.5..0.5 box.</summary>
+    public Vector3 Seat, Eye;
+
+    /// <summary>
+    /// A variant family placed from one item, its size picked like a shape (doors), or null. The
+    /// first type listed in the family is its head, the one the item names.
+    /// </summary>
+    public string Group;
+    public BlockType Head;
+    /// <summary>How many of the family's item one block takes: its cells over the head's, rounded up.</summary>
+    public int Units = 1;
     public int AttachFaces = 0x3f, AirtightFaces, CoverFaces;
 
     // A door's faces seal and hide what is behind them only while it is closed.
@@ -88,21 +150,38 @@ public sealed class BlockType
     public Collide Collide = Collide.Cell;
     public List<Part> Parts = new();
 
+    /// <summary>
+    /// Looks only: the bolts, vents, screens, fins and trim that make a device read as a machine
+    /// (<see cref="DeviceDetail"/>). Never solid, never covering a face, never sealing one.
+    /// </summary>
+    public List<Part> Detail = new();
+
     public bool IsArmor => Kind == BlockKind.Armor;
     public bool IsCore => Function == "core";
     public bool IsDoor => Function == "door";
     public bool IsLadder => Function == "ladder";
     public bool IsLight => Function == "light";
+    /// <summary>An exterior spotlight: a lamp throwing a beam outward from the hull, switched apart from the lights inside.</summary>
+    public bool IsSpotlight => Function == "spotlight";
+    /// <summary>A lamp: a light or a spotlight.</summary>
+    public bool IsLamp => IsLight || IsSpotlight;
+    public bool IsTurret => Function == "turret";
+    /// <summary>A block with a switch of its own (its Off flag): a lamp or a turret. Switched off it draws no power, its glow goes dark and its off-only parts show.</summary>
+    public bool Switches => IsLamp || IsTurret;
     public bool IsThruster => Function == "thruster";
     public bool IsGenerator => Function == "generator";
     public bool IsContainer => Function == "container";
-    public bool IsCpuExtender => Function == "cpu-extender";
-    /// <summary>A CPU extender: the highest CPU tier it counts towards.</summary>
-    public int ExtenderTier;
-    /// <summary>The one block that gives control: a seat with a small console. There are no cockpit components.</summary>
+    /// <summary>A weather forecast block: the structure it is on broadcasts the weather warnings.</summary>
+    public bool IsForecast => Function == "forecast";
+    /// <summary>A life support pod: keeps the structure's sealed rooms' air and warmth, and tops up the suit's air when used.</summary>
+    public bool IsLifeSupport => Function == "life-support";
+    /// <summary>A scanner: a scan from the structure marks the places within its tier's range.</summary>
+    public bool IsScanner => Function == "scanner";
+    /// <summary>A seat that gives control: the command chair, or a cockpit built round one.</summary>
     public bool IsCommandChair => Function == "chair";
-    /// <summary>Old name for <see cref="IsCommandChair"/>, kept for branches that still use it.</summary>
-    public bool IsCockpit => IsCommandChair;
+    /// <summary>A force field's corner emitter (any plating).</summary>
+    public bool IsFieldEmitter => Function == "field-emitter";
+    public int Cells => Size.X * Size.Y * Size.Z;
 
     public static bool Has(int mask, Dir d) => (mask & (1 << (int)d)) != 0;
 }
@@ -116,25 +195,23 @@ public sealed class Catalogue
     public const string GridsFile = "grids.json", MaterialsFile = "materials.json",
         ShapesFile = "shapes.json", ComponentsFile = "components.json";
 
-    readonly List<GridDef> _grids = new();
     readonly List<ShapeDef> _shapes = new();
     readonly List<BlockType> _types = new() { null }; // type 0 is "empty"
     readonly Dictionary<string, ShapeDef> _shapeById = new();
     readonly Dictionary<string, BlockType> _typeById = new();
+    readonly List<(string old, string now)> _was = new(); // old ids, read as the types that replaced them
 
-    public IReadOnlyList<GridDef> Grids => _grids;
+    public GridDef Grid { get; private set; }
     public IReadOnlyList<ShapeDef> Shapes => _shapes;
     public IReadOnlyList<BlockType> Types => _types;
     public ShapeDef Cube => _shapes[0];
     public BlockType CoreType { get; private set; }
-    public int[] ExtendersPerTier { get; private set; } = { 0, 1, 2, 4 };
     public double CargoMassPerSu { get; private set; } = 0.001;
 
-    /// <summary>Materials found on any planet; small-grid recipes use only these.</summary>
-    public string[] CommonMaterials { get; private set; } = Array.Empty<string>();
+    /// <summary>A variant family's types in data order, head first (just the type itself when it has no family).</summary>
+    public IReadOnlyList<BlockType> VariantsOf(BlockType t) =>
+        t.Group == null ? new[] { t } : _types.Skip(1).Where(v => v.Group == t.Group).ToList();
 
-    public GridDef Grid(GridSize size) => _grids.First(g => g.Size == size);
-    public GridDef GridById(string id) => _grids.FirstOrDefault(g => g.Id == id);
     public bool TryGetShape(string id, out ShapeDef shape) => _shapeById.TryGetValue(id, out shape);
     public bool TryGetType(string id, out BlockType type) => _typeById.TryGetValue(id, out type);
     public BlockType Type(string id) => _typeById.TryGetValue(id, out var t) ? t : throw new KeyNotFoundException($"unknown block type '{id}'");
@@ -153,10 +230,17 @@ public sealed class Catalogue
         c.LoadMaterials(Parse(readFile(MaterialsFile), "galhack.materials"));
         c.LoadComponents(Parse(readFile(ComponentsFile), "galhack.components"));
         foreach (BlockType t in c._types.Skip(1))
+        {
+            t.Base?.Platings.Add(t);
             if (t.UpgradesTo != null) t.Upgrade = c.Type(t.UpgradesTo);
+            if (!t.IsArmor) t.Detail = DeviceDetail.For(t);
+            if (t.Group == null) continue;
+            t.Head = c._types.Skip(1).First(v => v.Group == t.Group);
+            t.Units = (t.Cells + t.Head.Cells - 1) / t.Head.Cells;
+        }
+        foreach (var (old, now) in c._was)
+            if (!c._typeById.TryAdd(old, c.Type(now))) throw new InvalidDataException($"'{old}' is listed as replaced but is a block id");
         c.CoreType = c._types.Skip(1).FirstOrDefault(t => t.IsCore) ?? throw new InvalidDataException("no core component in components.json");
-        // Old blueprints name the command chair by its old id.
-        if (c._typeById.TryGetValue("chair", out BlockType chair)) c._typeById["cockpit"] = chair;
         c.BuildFaceTables();
         return c;
     }
@@ -170,14 +254,35 @@ public sealed class Catalogue
 
     int FaceIndex(in Block b) => (((b.Type * _shapes.Count + b.Shape) * Orientations.Count + b.Rot) << 1) | (b.Open ? 1 : 0);
 
+    // A cell of a block that spans several cells has only the faces on the outside of the
+    // block: the faces between two of its cells don't exist. An outer face does what the
+    // component's face list says for that side, so "+z" means the whole +z side of the block.
+
     /// <summary>World faces the block touches at all (full or partial): it can attach through these.</summary>
-    public byte TouchMask(in Block b) => _touch[FaceIndex(b)];
+    public byte TouchMask(in Block b) => Outer(b, _touch[FaceIndex(b)]);
     /// <summary>World faces the block covers completely.</summary>
-    public byte FullMask(in Block b) => _full[FaceIndex(b)];
+    public byte FullMask(in Block b) => Outer(b, _full[FaceIndex(b)]);
     /// <summary>World faces fully and opaquely covered: the neighbour's face behind is hidden.</summary>
-    public byte OccludeMask(in Block b) => _occlude[FaceIndex(b)];
-    /// <summary>World faces air cannot pass.</summary>
-    public byte SealMask(in Block b) => _seal[FaceIndex(b)];
+    public byte OccludeMask(in Block b) => Outer(b, _occlude[FaceIndex(b)]);
+
+    byte Outer(in Block b, byte mask) => _types[b.Type].Multi ? (byte)(mask & Footprint.OuterMask(_types[b.Type], b)) : mask;
+
+    /// <summary>True if the whole block, all round, hides what's behind it (a block spanning several cells: every outer face).</summary>
+    public bool OpaqueAllRound(in Block b) => _occlude[FaceIndex(b)] == 0x3f;
+
+    /// <summary>
+    /// World faces air cannot pass. Inside a block that spans several cells, air passes between
+    /// its cells unless the block seals all round (then all of it is solid to air, like a cube).
+    /// </summary>
+    public byte SealMask(in Block b)
+    {
+        byte seal = _seal[FaceIndex(b)];
+        BlockType t = _types[b.Type];
+        if (!t.Multi) return seal;
+        byte outer = Footprint.OuterMask(t, b);
+        bool allRound = (b.Open ? t.AirtightFacesOpen : t.AirtightFaces) == 0x3f;
+        return (byte)((seal & outer) | (allRound ? ~outer & 0x3f : 0));
+    }
 
     void BuildFaceTables()
     {
@@ -233,11 +338,16 @@ public sealed class Catalogue
         return false;
     }
 
-    /// <summary>Full hit points of a placed block: the type's, scaled by the grid and the shape's volume.</summary>
-    public float MaxHp(in Block b, GridDef grid)
+    /// <summary>Full hit points of a placed block: the type's, scaled by the shape's volume.</summary>
+    public float MaxHp(in Block b) => _types[b.Type].Hp * VolumeOf(b);
+
+    float VolumeOf(in Block b) => _types[b.Type].IsArmor ? _shapes[b.Shape].Volume : 1f;
+
+    /// <summary>Plates a plated block of this shape carries: the cube's share by volume, never fewer than one.</summary>
+    public int PlatesOf(in Block b)
     {
         BlockType t = _types[b.Type];
-        return t.Hp * grid.HpScale * (t.IsArmor ? _shapes[b.Shape].Volume : 1f);
+        return t.IsPlated ? Math.Max(1, (int)MathF.Round(t.Plates * VolumeOf(b))) : 0;
     }
 
     static JsonElement Parse(string json, string schema)
@@ -252,29 +362,9 @@ public sealed class Catalogue
 
     void LoadGrids(JsonElement root)
     {
-        foreach (JsonElement g in root.GetProperty("grids").EnumerateArray())
-        {
-            string id = Str(g, "id");
-            _grids.Add(new GridDef
-            {
-                Id = id,
-                Size = id == "small" ? GridSize.Small : GridSize.Large,
-                CellSize = Num(g, "cellSize"),
-                HpScale = Num(g, "hpScale", 1),
-                MassScale = Num(g, "massScale", 1),
-                CpuScale = Num(g, "cpuScale", 1),
-                CostScale = Num(g, "costScale", 1),
-                StorageScale = Num(g, "storageScale", 1),
-                FunctionScale = Num(g, "functionScale", 1),
-                CpuTiers = g.GetProperty("cpuTiers").EnumerateArray().Select(e => e.GetInt64()).ToArray(),
-                StorageCap = Num(g, "storageCap"),
-            });
-        }
-        if (root.TryGetProperty("extendersPerTier", out JsonElement ext))
-            ExtendersPerTier = ext.EnumerateArray().Select(e => e.GetInt32()).ToArray();
+        JsonElement g = root.GetProperty("grids").EnumerateArray().Single();
+        Grid = new GridDef { Id = Str(g, "id"), CellSize = Num(g, "cellSize"), StorageCap = Num(g, "storageCap") };
         CargoMassPerSu = Num(root, "cargoMassPerSu", 0.001f);
-        if (root.TryGetProperty("commonMaterials", out JsonElement common))
-            CommonMaterials = common.EnumerateArray().Select(e => e.GetString()).ToArray();
     }
 
     void LoadShapes(JsonElement root)
@@ -318,6 +408,12 @@ public sealed class Catalogue
             t.Transparent = Bool(m, "transparent", false);
             t.UpgradesTo = m.TryGetProperty("upgradesTo", out JsonElement up) ? up.GetString() : null;
             Add(t);
+            if (!m.TryGetProperty("base", out JsonElement under)) continue;
+            // A plated block is made of its base block and its plates.
+            t.Base = Type(under.GetString());
+            t.Plate = Str(m, "plate");
+            t.Plates = Int(m, "plates", 1);
+            t.Cost = new Dictionary<string, int>(t.Base.Cost) { [t.Plate] = t.Plates };
         }
     }
 
@@ -326,12 +422,28 @@ public sealed class Catalogue
         foreach (JsonElement c in root.GetProperty("components").EnumerateArray())
         {
             BlockType t = Common(c, BlockKind.Component);
+            if (c.TryGetProperty("base", out JsonElement under))
+            {
+                // A plated component is its base under plates: the same shape, faces and work, its own hit points, armour and colour.
+                BlockType b = Type(under.GetString());
+                (t.Function, t.Power, t.Size, t.Multi, t.Collide, t.Parts, t.GlowColor, t.Accent) = (b.Function, b.Power, b.Size, b.Multi, b.Collide, b.Parts, b.GlowColor, b.Accent);
+                (t.AttachFaces, t.AirtightFaces, t.CoverFaces, t.AirtightFacesOpen, t.CoverFacesOpen, t.Airtight) = (b.AttachFaces, b.AirtightFaces, b.CoverFaces, b.AirtightFacesOpen, b.CoverFacesOpen, b.Airtight);
+                (t.Base, t.Plate, t.Plates) = (b, Str(c, "plate"), Int(c, "plates", 1));
+                t.Cost = new Dictionary<string, int>(b.Cost) { [t.Plate] = t.Plates };
+                Add(t);
+                continue;
+            }
             t.Function = Str(c, "function", "");
-            t.ExtenderTier = t.IsCpuExtender ? Int(c, "extenderTier", 2) : 0;
             t.Power = Num(c, "power", 0);
             t.Thrust = Num(c, "thrust", 0);
             t.Storage = Num(c, "storage", 0);
-            t.Fuel = Num(c, "fuel", 0);
+            t.Torque = Num(c, "torque", 0);
+            t.Lift = Num(c, "lift", 0);
+            t.RideHeight = Num(c, "rideHeight", 0);
+            t.LegLength = Num(c, "legLength", 0);
+            if (c.TryGetProperty("group", out JsonElement group)) t.Group = group.GetString();
+            if (c.TryGetProperty("seat", out JsonElement seat)) t.Seat = Vec(seat);
+            if (c.TryGetProperty("eye", out JsonElement eye)) t.Eye = Vec(eye);
             t.AttachFaces = Faces(c, "attach", 0x3f);
             t.AirtightFaces = Faces(c, "airtight", 0);
             t.CoverFaces = Faces(c, "covers", 0);
@@ -339,6 +451,14 @@ public sealed class Catalogue
             t.CoverFacesOpen = Faces(c, "coversOpen", t.CoverFaces);
             t.Airtight = t.AirtightFaces != 0;
             t.Collide = Str(c, "collide", "cell") switch { "none" => Collide.None, "parts" => Collide.Parts, _ => Collide.Cell };
+            if (c.TryGetProperty("size", out JsonElement size))
+            {
+                int[] n = size.EnumerateArray().Select(e => e.GetInt32()).ToArray();
+                if (n.Length != 3 || n.Any(v => v < 1 || v > Footprint.MaxSize))
+                    throw new InvalidDataException($"{t.Id}: size must be three whole cell counts from 1 to {Footprint.MaxSize}");
+                t.Size = new Int3(n[0], n[1], n[2]);
+                t.Multi = t.Size != Footprint.One;
+            }
             if (c.TryGetProperty("parts", out JsonElement parts))
                 foreach (JsonElement p in parts.EnumerateArray())
                     t.Parts.Add(LoadPart(p));
@@ -355,11 +475,39 @@ public sealed class Catalogue
             Max = max,
             Style = Enum.Parse<PartStyle>(Str(p, "style", "body"), ignoreCase: true),
             ClosedOnly = Bool(p, "closedOnly", false),
+            OnOnly = Str(p, "shown", "always") == "on",
+            OffOnly = Str(p, "shown", "always") == "off",
+            Finish = LoadFinish(p),
         };
         part.Polygons = p.TryGetProperty("cylinder", out JsonElement axis)
             ? Geometry.Cylinder(AxisIndex(axis.GetString()), min, max, Int(p, "segments", 12))
             : Geometry.ConvexHull(Geometry.BoxPoints(min, max).ToList());
         return part;
+    }
+
+    /// <summary>A part's finish from its optional fields: color, accent, pattern, texture, metal, symbol, anim, speed.</summary>
+    static PartFinish LoadFinish(JsonElement p)
+    {
+        string[] keys = { "color", "accent", "pattern", "texture", "metal", "symbol", "anim" };
+        if (!keys.Any(k => p.TryGetProperty(k, out _))) return null;
+        var f = new PartFinish
+        {
+            Metal = Int(p, "metal", -1),
+            Speed = Num(p, "speed", 0.5f),
+        };
+        if (p.TryGetProperty("color", out JsonElement c) && Paint.TryParseHex(c.GetString(), out uint cv)) f.Color = cv;
+        if (p.TryGetProperty("accent", out JsonElement a) && Paint.TryParseHex(a.GetString(), out uint av)) f.Accent = av;
+        if (p.TryGetProperty("pattern", out JsonElement pat))
+            f.Pattern = pat.GetString() switch
+            {
+                "fine-hazard" => DetailPattern.FineHazard,
+                "grille" => DetailPattern.Grille,
+                var name => (int)Enum.Parse<Pattern>(name, ignoreCase: true),
+            };
+        if (p.TryGetProperty("texture", out JsonElement tex)) f.Texture = Enum.Parse<FaceTexture>(tex.GetString(), ignoreCase: true);
+        if (p.TryGetProperty("symbol", out JsonElement sym)) f.Symbol = Enum.Parse<DeviceSymbol>(sym.GetString(), ignoreCase: true);
+        if (p.TryGetProperty("anim", out JsonElement anim)) f.Anim = Enum.Parse<LightAnim>(anim.GetString(), ignoreCase: true);
+        return f;
     }
 
     BlockType Common(JsonElement e, BlockKind kind)
@@ -371,7 +519,6 @@ public sealed class Catalogue
             Hp = Num(e, "hp"),
             Armor = Num(e, "armor", 0),
             Mass = Num(e, "mass"),
-            Cpu = Num(e, "cpu", 0),
             Metal = (byte)Int(e, "metal", 0),
         };
         t.Name = Str(e, "name", t.Id);
@@ -386,12 +533,8 @@ public sealed class Catalogue
         if (e.TryGetProperty("cost", out JsonElement cost))
             foreach (JsonProperty item in cost.EnumerateObject())
                 t.Cost[item.Name] = item.Value.GetInt32();
-        if (e.TryGetProperty("smallCost", out JsonElement smallCost))
-        {
-            t.SmallCost = new Dictionary<string, int>();
-            foreach (JsonProperty item in smallCost.EnumerateObject())
-                t.SmallCost[item.Name] = item.Value.GetInt32();
-        }
+        if (e.TryGetProperty("was", out JsonElement was))
+            foreach (JsonElement old in was.EnumerateArray()) _was.Add((old.GetString(), t.Id));
         return t;
     }
 
@@ -407,32 +550,23 @@ public sealed class Catalogue
     // ---- Per-block numbers --------------------------------------------------------------
 
     /// <summary>A placed block's stats: hit points and mass scale with shape volume, armour and resistances don't.</summary>
-    public BlockStats StatsFor(in Block b, GridDef grid)
+    public BlockStats StatsFor(in Block b)
     {
         BlockType t = _types[b.Type];
-        float volume = t.IsArmor ? _shapes[b.Shape].Volume : 1f;
-        return new BlockStats(
-            t.Hp * grid.HpScale * volume,
-            t.Armor,
-            t.Resist,
-            t.Mass * grid.MassScale * volume,
-            t.Cpu * grid.CpuScale);
+        float volume = VolumeOf(b);
+        return new BlockStats(t.Hp * volume, t.Armor, t.Resist, t.Mass * volume);
     }
 
     /// <summary>
-    /// The materials a block is built from, returned when it is taken down. Small-grid blocks use
-    /// their own cheap recipe of common materials, so a first small vessel comes quickly.
-    /// The core's mode never changes a recipe.
+    /// The materials a block is built from, returned when it is taken down: each by the shape's
+    /// volume, never fewer than one. The core's mode never changes a recipe.
     /// </summary>
-    public Dictionary<string, int> CostOf(in Block b, GridDef grid)
+    public Dictionary<string, int> CostOf(in Block b)
     {
-        BlockType t = _types[b.Type];
-        float volume = t.IsArmor ? _shapes[b.Shape].Volume : 1f;
-        bool small = grid.Size == GridSize.Small && t.SmallCost != null;
-        float scale = small ? 1f : grid.CostScale;
+        float volume = VolumeOf(b);
         var cost = new Dictionary<string, int>();
-        foreach (var (item, n) in small ? t.SmallCost : t.Cost)
-            cost[item] = Math.Max(1, (int)MathF.Round(n * volume * scale));
+        foreach (var (item, n) in _types[b.Type].Cost)
+            cost[item] = Math.Max(1, (int)MathF.Round(n * volume));
         return cost;
     }
 
@@ -483,8 +617,8 @@ public sealed class Catalogue
     }
 
     public override string ToString() =>
-        string.Create(CultureInfo.InvariantCulture, $"{_types.Count - 1} block types, {_shapes.Count} shapes, {_grids.Count} grids");
+        string.Create(CultureInfo.InvariantCulture, $"{_types.Count - 1} block types, {_shapes.Count} shapes");
 }
 
-/// <summary>A placed block's numbers, after grid and shape scaling.</summary>
-public readonly record struct BlockStats(float MaxHp, float Armor, Resist Resist, float Mass, float Cpu);
+/// <summary>A placed block's numbers, after shape scaling.</summary>
+public readonly record struct BlockStats(float MaxHp, float Armor, Resist Resist, float Mass);

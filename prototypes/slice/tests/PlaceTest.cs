@@ -18,7 +18,7 @@ namespace Slice.Tests;
 /// The planet's places as real, playable structures in the slice.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/PlaceTest.tscn
-/// (-- --survey: list the places round the start of a world and what each holds, nothing else)
+/// (-- --survey: list the places round the start of a world and what each holds, nothing else; -- --typed=airport (or any place type): a body walks one)
 /// </summary>
 public partial class PlaceTest : Node
 {
@@ -127,6 +127,11 @@ public partial class PlaceTest : Node
             }
             yield break;
         }
+        if (args.FirstOrDefault(a => a.StartsWith("--typed=")) is { } typed)
+        {
+            foreach (int x in TypedWalk(typed["--typed=".Length..])) yield return x;
+            yield break;
+        }
         if (Array.IndexOf(args, "--town-only") >= 0)
         {
             foreach (int x in Settlement(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
@@ -144,6 +149,8 @@ public partial class PlaceTest : Node
             foreach (int x in Bodies(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
         }
         if (Array.IndexOf(args, "--doors-only") >= 0) yield break;
+        foreach (int x in Neutrals(WorldChoice.Fresh("temperate"))) yield return x;
+        if (Array.IndexOf(args, "--neutrals-only") >= 0) yield break;
         foreach (int x in RealPlayer(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
         if (Array.IndexOf(args, "--walk-only") < 0) foreach (int x in Settlement(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
     }
@@ -238,7 +245,7 @@ public partial class PlaceTest : Node
             if (game.Suit.Dead) break;
         }
         foreach (int x in Watched(drive.WalkTo(entrance, 0.8f, 30f, sprint: false, dig: false))) yield return x;
-        if (game.Suit.Dead) { Fail("the castaway died on the walk to the place"); game.QueueFree(); yield break; }
+        if (game.Suit.Dead) { Fail("the sleeper died on the walk to the place"); game.QueueFree(); yield break; }
         Vector3 f = game.Survivor.WorldFeet;
         GD.Print($"  (arrived: feet {f}, the way in {entrance}, ground {game.Zone.GroundAt(f.X, f.Z).Y:F1})");
         Place place = game.Places.PlaceOf(site);
@@ -261,9 +268,7 @@ public partial class PlaceTest : Node
         // A cache a level or more down where the place has one you can get to (the stairs are walked on
         // the way); a farmhouse keeps everything on the one floor, and then there are no stairs to walk.
         var ways = inst.Caches.Where(c => !c.Secret && nav.AccessCell(c.Cell) is PoiGenerator.Gen.Int3)
-            .Select(c => (Cache: c, Steps: FreeSteps(nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)))).ToList();
-        // No card in the bag yet: a way through a locked door is no way at all.
-        int FreeSteps(List<PoiGenerator.Gen.Int3> path) => path == null || path.Any(c => place.Doors.Any(d => d.Clearance != null && (d.Cells.Contains(c) || d.Cells.Contains(c + PoiGenerator.Gen.Int3.Up)))) ? 9999 : path.Count;
+            .Select(c => (Cache: c, Steps: nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)?.Count ?? 9999)).ToList();
         bool Below((LootCache Cache, int Steps) w) => w.Steps < 9999 && w.Cache.Cell.Y <= entry.Y - 4;
         bool downstairs = ways.Any(Below);
         LootCache cache = ways.OrderBy(w => Below(w) ? 0 : 1).ThenBy(w => w.Steps).First().Cache;
@@ -289,60 +294,10 @@ public partial class PlaceTest : Node
         else GD.Print($"  ({inst.Caches.Count} caches, none below the way in here: no stairs to walk down to one)");
 
 
-        // A locked door: refused without its card; the card, lying where its owner fell, taken with E; then it opens.
-        var held = new HashSet<string>();
-        Place.Door locked = null;
-        KeyCard key = null;
-        foreach (KeyCard k in inst.Extras.Keys.OrderBy(k => nav.FindPath(walk.Here(place, nav), k.Cell, 200_000)?.Count ?? 9999))
-        {
-            var toKey = nav.FindPath(walk.Here(place, nav), k.Cell, 200_000);
-            if (toKey == null || toKey.Any(c => place.Doors.Any(d => d.Clearance != null && (d.Cells.Contains(c) || d.Cells.Contains(c + PoiGenerator.Gen.Int3.Up))))) continue;
-            int rank = Array.IndexOf(Game.Game.Clearances, k.Clearance);
-            locked = place.Doors.Where(d => d.Clearance != null && Array.IndexOf(Game.Game.Clearances, d.Clearance) <= rank)
-                .OrderBy(d => d.Cells.Min(c => c.Manhattan(k.Cell))).FirstOrDefault();
-            if (locked == null) continue;
-            key = k;
-            break;
-        }
-        if (inst.Extras.Keys.Count > 0) // a mine or a farm has none
-            Check(key != null, $"a keycard ({key?.Clearance}) lies within reach, and a door it opens ({inst.Extras.Keys.Count} keys, {place.Doors.Count(d => d.Clearance != null)} locked doors)");
-        if (key != null)
-        {
-            // To the locked door first: E says what it needs.
-            PoiGenerator.Gen.Int3 side = DoorSide(place, nav, locked, walk.Here(place, nav));
-            foreach (int x in Watched(walk.To(place, side, r => ok = r))) yield return x;
-            foreach (int x in Watched(drive.LookAt(place.ToWorld(locked.Centre), 6))) yield return x;
-            string refusedPrompt = game.UsePrompt();
-            foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-            foreach (int x in Watched(drive.Wait(60))) yield return x;
-            Check(ok && locked.IsShut && refusedPrompt.Contains("LOCKED"), $"at the {locked.Clearance} door without its card: '{refusedPrompt}', and E leaves it shut (walked there {ok}, to {side}, feet {place.FromWorld(game.Survivor.WorldFeet)}, door {locked.Index} at {locked.Centre}, {game.Survivor.WorldEye().DistanceTo(place.ToWorld(locked.Centre)):F1} m off, lift {locked.Lift}, seen {DoorSight(game, place)}{(walk.Notes.Count > 0 ? $"; {walk.Notes[^1]}" : "")})");
-            // The card.
-            foreach (int x in Watched(walk.To(place, nav.AccessCell(key.Cell) ?? key.Cell, r => ok = r))) yield return x;
-            foreach (int x in Watched(drive.LookAt(place.ToWorld(new Vector3(key.Cell.X + 0.55f, key.Cell.Y + 0.08f, key.Cell.Z + 0.42f)), 8))) yield return x;
-            string cardPrompt = game.UsePrompt();
-            foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-            Check(ok && game.Pack.Storage.Count($"keycard-{key.Clearance}") == 1, $"'{cardPrompt}': E takes the {key.Clearance} keycard off its dead owner into the bag");
-            // Back to the door: it opens now, and through it.
-            side = DoorSide(place, nav, locked, walk.Here(place, nav));
-            foreach (int x in Watched(walk.To(place, side, r => ok = r))) yield return x;
-            foreach (int x in Watched(drive.LookAt(place.ToWorld(locked.Centre), 6))) yield return x;
-            foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-            foreach (int x in Watched(play.WaitFor(() => locked.Open > 0.95f, 3))) yield return x;
-            Check(locked.Open > 0.95f, $"E on the {locked.Clearance} door with the card: it slides open ({walk.DoorsOpened + 1} doors opened with E)");
-        }
-
-        // A hidden room: the cracked panel's draft gives it away; the survival tool breaks it, and the stash behind is looted.
+        // A hidden room: the cracked panel's draft gives it away; the Sleeper tool breaks it, and the stash behind is looted.
         SecretRoom secret = inst.Extras.Secrets.FirstOrDefault();
         if (secret != null)
         {
-            // The other keycards first: the wall may lie behind a door that wants a higher one.
-            foreach (KeyCard other in inst.Extras.Keys.Where(k => k != key && !place.Memory.KeysTaken.Contains(k)).ToList())
-            {
-                foreach (int x in Watched(walk.To(place, nav.AccessCell(other.Cell) ?? other.Cell, r => ok = r))) yield return x;
-                foreach (int x in Watched(drive.LookAt(place.ToWorld(new Vector3(other.Cell.X + 0.55f, other.Cell.Y + 0.08f, other.Cell.Z + 0.42f)), 8))) yield return x;
-                foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-                GD.Print($"  (the other keycard: {other.Clearance} at {other.Cell}, reached {ok}, in the bag {game.Pack.Storage.Count($"keycard-{other.Clearance}")})");
-            }
             PoiGenerator.Gen.Int3 low = secret.WallCells.OrderBy(c => c.Y).First();
             PoiGenerator.Gen.Int3 front = low + place.FoundFrom(secret);
             // The nearest clear spot in front of the panel; where the Bloom has grown over the way to
@@ -364,7 +319,7 @@ public partial class PlaceTest : Node
             }
             foreach (int x in Watched(drive.HoldPrimary(wallMiddle, 90, () => place.Memory.Broken.Contains(secret)))) yield return x;
             Check(ok && label == "CRACKED PANEL" && place.Memory.Broken.Contains(secret) && secret.WallCells.All(c => inst.Blocks.Get(c).IsAir),
-                $"the hidden room's cracked panel ('{label}' by the crosshair, a draft through it) broken with the survival tool");
+                $"the hidden room's cracked panel ('{label}' by the crosshair, a draft through it) broken with the Sleeper tool");
             LootCache stash = inst.Caches.FirstOrDefault(c => c.Secret && c.Module == secret.Module);
             nav = place.Nav();
             if (stash != null && nav.AccessCell(stash.Cell) is PoiGenerator.Gen.Int3 at && nav.FindPath(walk.Here(place, nav), at, 400_000) == null)
@@ -384,26 +339,37 @@ public partial class PlaceTest : Node
             }
         }
 
-        // Salvage: the survival tool takes the place apart for materials: a piece of a room's dressing, then a block.
+        // Salvage: the Sleeper tool takes the place apart for materials: a piece of a room's dressing, then a block.
         {
             nav = place.Nav();
             PoiGenerator.Gen.Int3 from = walk.Here(place, nav);
             var open = nav.Reachable(from);
             int Near(Vector3 at) { var q = place.CellAt(at); return open.Where(c => c.Y == q.Y).Select(c => c.Manhattan(q)).DefaultIfEmpty(9999).Min(); }
-            DecoHit piece = place.Pieces().Where(h => h.Room.Solid.Contains(h.Index) && h.Node.GlobalPosition.Y - game.Survivor.WorldFeet.Y is > -2f and < 2f && Near(h.Node.GlobalPosition) <= 3)
-                .OrderBy(h => h.Node.GlobalPosition.DistanceTo(game.Survivor.WorldFeet)).FirstOrDefault();
-            if (piece != null)
+            var pieces = place.Pieces().Where(h => h.Room.Solid.Contains(h.Index) && h.Node.GlobalPosition.Y - game.Survivor.WorldFeet.Y is > -2f and < 2f && Near(h.Node.GlobalPosition) <= 3)
+                .OrderBy(h => h.Node.GlobalPosition.DistanceTo(game.Survivor.WorldFeet)).Take(5).ToList();
+            DecoHit piece = null;
+            Vector3 mid = default;
+            // One the crosshair meets from beside it: a furnished room can stand another piece in front of the nearest.
+            foreach (DecoHit h in pieces)
             {
-                var pc = place.CellAt(piece.Node.GlobalPosition);
+                var pc = place.CellAt(h.Node.GlobalPosition);
                 PoiGenerator.Gen.Int3 stand = open.Where(c => c.Y == pc.Y).OrderBy(c => c.Manhattan(pc)).First();
                 foreach (int x in Watched(walk.To(place, stand, r => ok = r))) yield return x;
-                Vector3 mid = piece.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, piece.Piece.Height * 0.5f);
+                mid = h.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, h.Piece.Height * 0.5f);
+                foreach (int x in Watched(drive.LookAt(mid, 10))) yield return x;
+                for (int i = 0; i < 3; i++) yield return 0;
+                piece = h;
+                if (game.Tool.PlaceHit?.Piece is DecoHit seen && seen.Room == h.Room && seen.Index == h.Index) break;
+                GD.Print($"  (the {h.Piece.Name} is behind something from where you stand: '{game.Tool.TargetLabel}' by the crosshair; the next)");
+            }
+            if (piece != null)
+            {
                 int bag = game.Pack.Storage.Contents.Total;
                 double Carried() => place.Memory.SalvageCarry.Values.Sum(); // a small piece pays in fractions, carried in the place's memory until they make a whole item
                 double carried = Carried();
                 string label = "";
                 foreach (int x in Watched(drive.HoldPrimary(mid, 240, () => { label = game.Tool.TargetLabel.Length > 0 ? game.Tool.TargetLabel : label; return !piece.Node.Visible; }))) yield return x;
-                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total + Carried() > bag + carried, $"the survival tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag, {Carried() - carried:+0.##;-0.##;0} carried to the next piece");
+                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total + Carried() > bag + carried, $"the Sleeper tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag, {Carried() - carried:+0.##;-0.##;0} carried to the next piece");
             }
             // A block of the wall beside you: gone for good, the wall meshed again round the hole.
             Vector3 eye = game.Survivor.WorldEye(), look = game.Survivor.WorldLook() with { Y = 0f };
@@ -439,7 +405,7 @@ public partial class PlaceTest : Node
             $"met a {_hunter?.Species.CommonName} ({_hunter?.Species.Role}): {_aimedTells} tells aimed at you, the nearest {_nearestTell:F1} m off; {_bites} bites, every creature's first warned before it landed ({_untold} not), health {game.Suit.HealthShare * 100:F0}%");
         if (!_nothingHere)
         {
-            Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
+            Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used{(_shotDown > 0 ? "" : $"; not shot at: {string.Join(", ", _unshot.Select(kv => $"{kv.Value} ticks {kv.Key}"))}")})");
             Slice.Items.Lootable body = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == _lastDown);
             Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
             Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood and {game.Zone.Blood.Splats} splats on the surfaces round it");
@@ -453,11 +419,24 @@ public partial class PlaceTest : Node
         foreach (int x in Watched(drive.WalkTo(outward, 1.5f, 30f, sprint: false, dig: false, hop: false))) yield return x;
         Vector3 out1 = game.Survivor.WorldFeet;
         Check(ok && !inst.Layout.Occupied[place.CellAt(out1)] && MathF.Abs(out1.Y - game.Zone.GroundAt(out1.X, out1.Z).Y) < 1.5f && !game.Suit.Dead,
-            $"and walks out of the way in, onto the open ground again (health {game.Suit.HealthShare * 100:F0}%)");
+            $"and walks out of the way in, onto the open ground again (health {game.Suit.HealthShare * 100:F0}%{(ok ? "" : $"; the walk to the way in stopped: {string.Join("; ", walk.Notes.TakeLast(2))}")}; ended {out1.DistanceTo(outward):F1} m short, {(inst.Layout.Occupied[place.CellAt(out1)] ? "inside its footprint" : "outside it")}, {out1.Y - game.Zone.GroundAt(out1.X, out1.Z).Y:F1} m over the ground)");
         Check(rescues == 0 && worst < 1.5f, $"no teleports all the visit (largest move in a tick {worst:F2} m), never rescued");
 
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
         Check(views < 8.0, $"its creatures went in a few a frame as you came near: worst {views:F1} ms a frame ({WorstViews(game)})");
+        // Nothing alive inside a wall, a floor or a stair, in the place or out on the surface round it.
+        int inside = game.Zone.Wildlife.Sites.Sum(s => Wildlife.Interpenetration.Scan(s.Sim).Count) + Wildlife.Interpenetration.Scan(game.Zone.Wildlife.Sim).Count;
+        int freed = game.Zone.Wildlife.Sites.Sum(s => s.Sim.Freed) + game.Zone.Wildlife.Sim.Freed;
+        if (inside > 0)
+            foreach (var s in game.Zone.Wildlife.Sites)
+                foreach (var c in Wildlife.Interpenetration.Scan(s.Sim).Take(4))
+                {
+                    var cell = place.CellAt(Wildlife.Interpenetration.Middle(c));
+                    GD.Print($"  (inside: {c.Species.CommonName} in a space {c.Space != null}, middle {Wildlife.Interpenetration.Middle(c)}, cell {cell}: {inst.Blocks.Get(cell)}, below {inst.Blocks.Get(cell + PoiGenerator.Gen.Int3.Down)}, in walls {c.InWalls})");
+                }
+        Check(inside == 0, $"no creature of the place or of the ground round it is inside a wall or a floor ({game.Zone.Wildlife.Sites.Sum(s => s.Sim.Creatures.Count)} in places; {freed} freed along the way)");
+        var bodies = game.Zone.Loot.All.Where(l => l.Kind == Slice.Items.LootKind.Corpse).ToList();
+        Check(bodies.All(l => l.Node.GetNodeOrNull("Ring") == null), $"the {bodies.Count} bodies lie with nothing drawn round them");
         GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  (build log: {string.Join("; ", game.Places.BuildLog.Select(l => $"{l.Name} {l.Seconds:F2} s, {l.Chunks} chunks"))}; slow steps: {string.Join(", ", game.Places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (GC)" : "")}"))})");
         GD.Print($"  (shot down {_shotDown} creatures that came for you, {_healed} patch kits used)");
@@ -472,7 +451,7 @@ public partial class PlaceTest : Node
 
     /// <summary>
     /// What a player does when something in a place comes for them: stop, turn, and shoot it (the
-    /// survival tool's bolt) until it is down or gone; and a patch kit when health runs low.
+    /// Sleeper tool's bolt) until it is down or gone; and a patch kit when health runs low.
     /// </summary>
     IEnumerable<int> Defend(Game.Game game, Playthrough play, Driver drive)
     {
@@ -492,19 +471,20 @@ public partial class PlaceTest : Node
             foreach (Wildlife.Creature c in s.Sim.Creatures)
             {
                 if (c.Dead || c.Removed || c.Species.Role == Wildlife.DeepRole.Subsister) continue;
-                if (s.World(c.Position).DistanceTo(feet) > 7f || c.InWalls) continue;
+                if (s.World(c.Position).DistanceTo(feet) > 7f) continue;
+                if (c.InWalls) { Skipped("in the walls"); continue; }
                 if (c.Target != s.Player && c.AttackTarget != s.Player && c.Noticed != s.Player && c.TellTarget != s.Player) continue;
                 // Meeting a hunter to see its tell: hold fire till it has given one, or it would die before it warned anyone.
-                if (_awaitTell && _aimedTells == 0 && c.Species.Tells.Length > 0 && game.Suit.HealthShare > 0.5) continue;
+                if (_awaitTell && _aimedTells == 0 && c.Species.Tells.Length > 0 && game.Suit.HealthShare > 0.5) { Skipped("no tell yet"); continue; }
                 // A clear shot only, and not the same one over and over: a player gives up on what they can't hit.
                 if (_shotAt.TryGetValue(c, out double when) && game.Stats.Seconds - when < 4.0) continue;
                 _shotAt[c] = game.Stats.Seconds;
                 var sight = PhysicsRayQueryParameters3D.Create(game.Survivor.WorldEye(), s.World(c.Rig != null ? c.Rig.BoundsCenter : c.Position), Layers.World | Layers.Hull);
-                if (game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(sight).Count > 0) continue;
+                if (game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(sight).Count > 0) { Skipped("no clear shot"); continue; }
                 // It's coming: stand and shoot it.
                 game.Controls.ReleaseAll();
                 var clock = Stopwatch.StartNew();
-                foreach (int x in play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+                foreach (int x in play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
                 float hp = c.Health;
                 for (int tick = 0; tick < 300 && !c.Dead && !c.Removed && s.World(c.Position).DistanceTo(game.Survivor.WorldFeet) < 16f && !game.Suit.Dead; tick++)
                 {
@@ -521,6 +501,10 @@ public partial class PlaceTest : Node
                 yield break;
             }
     }
+
+    /// <summary>Why a creature that came for you wasn't shot at, and how often (printed when none was shot down).</summary>
+    readonly Dictionary<string, int> _unshot = new();
+    void Skipped(string why) => _unshot[why] = _unshot.GetValueOrDefault(why) + 1;
 
     int _aimedTells, _bites;
     double _firstTell = -1, _firstBite = -1;
@@ -553,12 +537,20 @@ public partial class PlaceTest : Node
             float keep = MathF.Max(2f, c.Species.StrikeRadius * 0.7f);
             PoiGenerator.Gen.Int3? near = null;
             float best = float.MaxValue;
+            bool Clear(PoiGenerator.Gen.Int3 q)
+            {
+                var from = new Vector3(q.X + 0.5f, q.Y + 1f, q.Z + 0.5f);
+                Vector3 step = (c.Position + Vector3.Up * 0.5f - from).Normalized() * 0.5f;
+                for (float t = 0f, len = from.DistanceTo(c.Position); t < len - 1f; t += 0.5f, from += step)
+                    if (PlaceFauna.Solid(place.Inst, Mathf.FloorToInt(from.X), Mathf.FloorToInt(from.Y), Mathf.FloorToInt(from.Z))) return false;
+                return true;
+            }
             foreach (var q in reach)
             {
                 float d = new Vector2(q.X - cell.X, q.Z - cell.Z).Length() + Mathf.Abs(q.Y - cell.Y) * 3f;
-                if (d >= keep && d < best) { best = d; near = q; }
+                if (d >= keep && d <= keep + 2f && d < best && Clear(q)) { best = d; near = q; }
             }
-            if (near == null || best > keep + 2f) continue;
+            if (near == null) continue;
             _hunter = c;
             GD.Print($"  (going to meet a {c.Species.CommonName} ({c.Species.Role}, {c.Species.Stats.MaxHealth:F0} health) near {cell}, from {near})");
             bool ok = false;
@@ -621,37 +613,6 @@ public partial class PlaceTest : Node
         }
     }
 
-    /// <summary>A standable cell a step or two from a door, on the side reachable from here without passing it.</summary>
-    /// <summary>What the crosshair lands on, for a door the aim didn't find.</summary>
-    static string DoorSight(Game.Game game, Place p)
-    {
-        if (!WorldRay.Cast(game.Zone, game.Survivor, Game.Game.UseReach, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props, out LookHit look)) return "nothing in reach";
-        return $"{(look.Collider as Node)?.GetParent()?.Name}/{(look.Collider as Node)?.Name} on layer {(look.Collider as CollisionObject3D)?.CollisionLayer} at {look.Distance:F1} m, cell {p.FromWorld(look.Point)}, door {p.DoorOf(look.Collider)?.Index}, piece {p.PieceOf(look.Collider as GodotObject)?.Piece.Id}";
-    }
-
-    static PoiGenerator.Gen.Int3 DoorSide(Place p, PoiGenerator.Gen.NavGrid nav, Place.Door d, PoiGenerator.Gen.Int3 from)
-    {
-        int y = d.Cells.Min(c => c.Y);
-        var cells = d.Cells.Where(c => c.Y == y).ToList();
-        Vector3 n = d.Along.Cross(Vector3.Up).Normalized();
-        var step = new PoiGenerator.Gen.Int3((int)MathF.Round(n.X), 0, (int)MathF.Round(n.Z));
-        PoiGenerator.Gen.Int3 best = cells[0];
-        int bestLen = int.MaxValue;
-        var seen = new List<string>();
-        foreach (var c in cells)
-            foreach (int k in new[] { 1, -1, 2, -2 })
-            {
-                var q = c + step * k;
-                if (!nav.Standable(q)) { seen.Add($"{q} not standable"); continue; }
-                var path = nav.FindPath(from, q, 400_000);
-                seen.Add($"{q} {(path == null ? "no path" : path.Any(r => d.Cells.Contains(r)) ? "through it" : $"{path.Count}")}");
-                if (path == null || path.Any(r => d.Cells.Contains(r))) continue;
-                if (path.Count < bestLen) { bestLen = path.Count; best = q; }
-            }
-        if (bestLen == int.MaxValue) GD.Print($"  (no side of door {d.Index} ({string.Join(" ", d.Cells)}) from {from}: {string.Join("; ", seen)})");
-        return best;
-    }
-
     /// <summary>
     /// Creatures are as solid as they look (their rigs' own bodies), shots land on them, vessels
     /// meet them, and it all stays in budget. Creatures are set down by hand here (printed).
@@ -708,9 +669,11 @@ public partial class PlaceTest : Node
             Wildlife.Creature flyer = w.Sim.Spawn(wing, Spot(7f));
             flyer.Position += Vector3.Up * 2f;
             foreach (int x in drive.Wait(20)) yield return x;
+            // Shot at once its rig is posed where it is (its view poses it, a few creatures a frame).
+            for (int i = 0; i < 180 && !(flyer.Rig is { HitCount: > 0 } r && r.BoundsCenter.DistanceTo(flyer.Position) < r.BoundsRadius + 1f); i++) yield return 0;
             float hp = flyer.Health;
             foreach (int x in play.ShootAt(() => w.FromPatch(flyer.Rig.BoundsCenter), 3)) yield return x;
-            Check(flyer.Health < hp || flyer.Dead, $"a {wing.CommonName} in the air: a shot lands ({hp:F0} to {flyer.Health:F0} health)");
+            Check(flyer.Health < hp || flyer.Dead, $"a {wing.CommonName} in the air: a shot lands ({hp:F0} to {flyer.Health:F0} health; its rig {flyer.Rig?.BoundsCenter.DistanceTo(flyer.Position):F1} m from it, {flyer.Rig?.BoundsRadius:F1} m round, {(flyer.Removed ? "removed" : "there")})");
             Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood where it landed, {game.Zone.Blood.Splats} splats on the ground under it");
             w.Sim.Remove(flyer);
             foreach (int x in play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
@@ -780,7 +743,7 @@ public partial class PlaceTest : Node
         Check(chamber != null, $"a cave within 900 m of the start: {chamber}");
         if (chamber is Vector3 cave)
         {
-            GD.Print("  (SYSTEMS: the castaway set down in the cave)");
+            GD.Print("  (SYSTEMS: the sleeper set down in the cave)");
             game.Survivor.PlaceOutside((cave + Vector3.Up * 0.4f).ToNumerics());
             for (int i = 0; i < 600 && game.Caves.Found == 0; i++) yield return 0;
             // A chamber under a place or too shallow to count as underground: the next one out, as a player would try.
@@ -837,7 +800,55 @@ public partial class PlaceTest : Node
         foreach (int x in Settlement(game, drive, found)) yield return x;
     }
 
-    static bool LivingTown(PlanetSurface.Poi.PoiSite s) => s.Instance?.Townsfolk != null && s.Instance.Mood != Mood.Hostile;
+    static bool LivingTown(PlanetSurface.Poi.PoiSite s) => s.Instance?.Townsfolk != null && s.Instance.State == PoiState.Active && s.Instance.Mood != Mood.Hostile; // not a camp in a ruin: Neutrals has those
+
+    /// <summary>
+    /// Scavengers camped in a large place: they watch you and leave you be, nothing that hunts lives
+    /// where they do, and wildlife keeps off their ground. Only a shot starts it.
+    /// </summary>
+    IEnumerable<int> Neutrals(WorldChoice world)
+    {
+        PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
+        PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Scavengers);
+        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
+        AddChild(game);
+        var drive = new Driver(game);
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        PlanetSurface.Poi.PoiSiting.ForceFamily = null;
+        PlanetSurface.Poi.PoiSiting.ForceState = null;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = null;
+        GD.Print($"-- scavengers in a large place, {world} --");
+        game.Zone.Weather.Bridge.Calm = true;
+        var site = game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "sewage_works" && s.Instance.Occupancy?.Main == Occupant.Scavengers);
+        if (site == null) { GD.Print("  (no works could be seated on this world: on to the next test)"); game.QueueFree(); yield return 0; yield break; }
+        Vector3 Local(PoiGenerator.Gen.Int3 c) => game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X + c.X + 0.5f, site.Origin.Y + c.Y, site.Origin.Z + c.Z + 0.5f), game.Survivor.WorldFeet);
+        ActivitySpot camp = site.Instance.Townsfolk?.Spots.FirstOrDefault();
+        Check(camp != null && site.Instance.Mood == Mood.Wary && site.Instance.Enemies.Count == 0, $"they are in the place as people, not enemies: {site.Instance.Townsfolk?.People.Count} people, {site.Instance.Mood}, {site.Instance.Enemies.Count} enemies");
+        if (camp == null) yield break;
+        game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
+        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
+        Place place = game.Places.PlaceOf(site);
+        Check(place is { Ready: true } && place.Memory.Town != null, $"it stands, and its people are about ({place?.Memory.Town?.People.Count})");
+        if (place?.Memory.Town == null) yield break;
+        Town town = place.Memory.Town;
+        double health = game.Suit.HealthShare;
+        // Among them for a while: a look, and nothing more.
+        foreach (int x in drive.Wait(600)) yield return x;
+        Check(town.GuardShots == 0 && town.GuardAims == 0 && game.Suit.HealthShare >= health && place.Memory.Mood == Mood.Wary, $"they watch and leave you be: {town.GuardShots} shots in 10 s among them, health {game.Suit.HealthShare * 100:F0}%, still {place.Memory.Mood}");
+        // (They keep the storeys they are on, and one either side; a large place's others are nobody's.)
+        var pop = place.Memory.Fauna?.Population;
+        HashSet<int> kept = place.Memory.Fauna?.Rooms.Kept;
+        int hunters = pop == null || pop.Silent ? 0 : pop.Spawns.Count(s => s.Role != Wildlife.DeepRole.Subsister && (kept?.Contains(s.Room) ?? true));
+        Check(hunters == 0, $"nothing that hunts lives where they do ({pop?.Note ?? "nothing"}; {kept?.Count.ToString() ?? "all"} of {place.Memory.Fauna?.Rooms.Rooms.Count} rooms theirs)");
+        var sim = game.Zone.Wildlife.Sim;
+        Check(sim != null && sim.Settlements.Any(q => q.Name == site.Name), "and wildlife knows their ground as it knows a town's");
+        town.Provoked();
+        foreach (int x in drive.Wait(10)) yield return x;
+        Check(place.Memory.Mood == Mood.Hostile, "a shot starts it: they turn on you");
+        game.QueueFree();
+        yield return 0;
+    }
 
     /// <summary>
     /// A settlement on foot: over the land to it, through it among its people going about their
@@ -860,13 +871,23 @@ public partial class PlaceTest : Node
         Int3 facing = site.Instance.Layout.EntranceFacing.Vec();
         Vector3 startAt = gate + new Vector3(facing.X, 0f, facing.Z) * 55f;
         startAt.Y = game.Zone.GroundAt(startAt.X, startAt.Z).Y + 0.3f;
-        GD.Print($"  (TEST: the castaway is set down 55 m from its way in, not walked the 2 km)");
+        GD.Print($"  (TEST: the sleeper is set down 55 m from its way in, not walked the 2 km)");
         game.Survivor.PlaceOutside(startAt.ToNumerics());
         foreach (int x in drive.Wait(30)) yield return x;
         foreach (int x in drive.UntilSettled()) yield return x;
         double hurtBefore = game.Suit.HealthShare;
-        gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet); // set down over the planet's seam, the castaway is on another copy of it
+        gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet); // set down over the planet's seam, the sleeper is on another copy of it
         foreach (int x in drive.WalkTo(gate, 1f, 40f, sprint: false, dig: false, hop: false)) yield return x;
+        // Those 55 m can be a gully or a river: the walk over land is proved above, and the town is what's under test.
+        if (new Vector2(game.Survivor.WorldFeet.X - gate.X, game.Survivor.WorldFeet.Z - gate.Z).Length() > 8f)
+        {
+            GD.Print($"  (TEST: the last 55 m didn't reach its way in, stopped at {game.Survivor.WorldFeet}: set down at the gate)");
+            Vector3 atGate = gate + new Vector3(facing.X, 0f, facing.Z) * 3f;
+            atGate.Y = game.Zone.GroundAt(atGate.X, atGate.Z).Y + 0.3f;
+            game.Survivor.PlaceOutside(atGate.ToNumerics());
+            foreach (int x in drive.Wait(30)) yield return x;
+            foreach (int x in drive.UntilSettled()) yield return x;
+        }
         for (int i = 0; i < 300 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         Place place = game.Places.PlaceOf(site);
         Check(place is { Ready: true } && place.Memory.Town != null, $"it stands as a structure, its people about ({place?.Memory.Town?.People.Count})");
@@ -876,6 +897,7 @@ public partial class PlaceTest : Node
         var before = town.People.ToDictionary(q => q, Where);
         foreach (int x in drive.Wait(600)) yield return x;
         int moved = town.People.Count(q => q.Pos.DistanceTo(before[q]) > 1f);
+        Check(town.Flickers == 0, $"what their bodies say changes cleanly: {town.People.Sum(q => q.ActChanges)} gestures, none flipped straight back ({town.Flickers})");
         int stayed = town.People.Count(q => q.Role is "vendor" or "worker" && q.Pos.DistanceTo(before[q]) < 1f);
         Check(moved >= 2 && town.People.Any(q => q.Role is "rusher" or "wanderer" && q.Pos.DistanceTo(before[q]) > 2f), $"in 10 s {moved} of {town.People.Count} have gone somewhere; {stayed} vendors and workers keep to their places ({string.Join(", ", town.People.GroupBy(q => q.Role).Select(g => $"{g.Count()} {g.Key}"))})");
         // Through the town at a walk: nobody minds.
@@ -885,29 +907,317 @@ public partial class PlaceTest : Node
         foreach (int x in walk.To(place, far.Cell, r => ok = r)) yield return x;
         foreach (int x in walk.To(place, place.Inst.Layout.EntranceCell, r => ok = r)) yield return x;
         Check(ok && place.Memory.Mood == place.Inst.Mood && town.GuardShots == 0 && game.Suit.HealthShare >= hurtBefore - 0.3, $"walked through it and back in peace ({(ok ? "" : $"the walk stopped: {string.Join("; ", walk.Notes.TakeLast(2))}; ")}health {game.Suit.HealthShare * 100:F0}%): still {place.Memory.Mood}, no guard raised a gun");
+        // Personal space: a busy minute with nobody in anybody.
+        {
+            town.WorstOverlap = 0f;
+            foreach (int x in drive.Wait(3600)) yield return x;
+            Check(town.WorstOverlap < 0.08f, $"a busy minute: no two of them overlap by more than {town.WorstOverlap * 100f:F1} cm (a few cm allowed: shoulders brush; worst {town.WorstNote})");
+            Int3 door = place.Inst.Layout.EntranceCell;
+            Int3 outward = place.Inst.Layout.EntranceFacing.Vec();
+            Vector3 doorAt = new(door.X + 0.5f, door.Y, door.Z + 0.5f), outv = new(outward.X, 0f, outward.Z);
+            // The way in's own middle (a 2 m way is two cells: its entrance cell's middle is half a metre off it), where one
+            // standing in it is in your way, not beside it to be walked round.
+            var wayCells = place.Inst.Layout.Doorways.Where(d => d.Cells.Contains(door)).SelectMany(d => d.Cells).Concat(place.Inst.Layout.ExitCells.Where(c => c.Manhattan(door) <= 1))
+                .Where(c => c.Y == door.Y && (c - door).X * outward.X + (c - door).Z * outward.Z == 0).Append(door).Distinct().ToList();
+            Vector3 wayMiddle = new((float)wayCells.Average(c => c.X) + 0.5f, door.Y, (float)wayCells.Average(c => c.Z) + 0.5f);
+            // Two of them meeting in the way in: one waits or steps aside, neither passes through the other.
+            var pair = town.People.Where(q => !q.Dead && q.Looks != null && q.Role != "guard").Take(2).ToList();
+            if (pair.Count == 2)
+            {
+                GD.Print("  (TEST: two of them set either side of the way in, each sent through it)");
+                game.Survivor.PlaceOutside(place.ToWorld(doorAt + outv * 12f + Vector3.Up * 0.3f).ToNumerics());
+                pair[0].Pos = doorAt - outv * 3f; pair[1].Pos = doorAt + outv * 3f;
+                pair[0].Path = new List<Vector3> { doorAt, doorAt + outv * 3f }; pair[1].Path = new List<Vector3> { doorAt, doorAt - outv * 3f };
+                foreach (var q in pair) { q.Step = 0; q.Wait = 30f; q.Speed = 1.3f; q.ScaredFor = 0f; }
+                float closest = float.MaxValue, need = (pair[0].Looks.Stats.Radius + pair[1].Looks.Stats.Radius) * 0.78f;
+                for (int i = 0; i < 720; i++)
+                {
+                    closest = MathF.Min(closest, new Vector2(pair[0].Pos.X - pair[1].Pos.X, pair[0].Pos.Z - pair[1].Pos.Z).Length());
+                    yield return 0;
+                }
+                bool through = pair[0].Pos.DistanceTo(doorAt + outv * 3f) < 1.6f && pair[1].Pos.DistanceTo(doorAt - outv * 3f) < 1.6f; // (both past the way in)
+                Check(through && closest > need - 0.07f, $"two meeting in the way in get past each other without passing through (closest {closest:F2} m, bodies {need:F2} m; {(through ? "both through" : "not through")}; ends {pair[0].Pos.DistanceTo(doorAt + outv * 3f):F1} and {pair[1].Pos.DistanceTo(doorAt - outv * 3f):F1} m short, paths {pair[0].Path?.Count}/{pair[0].Step} {pair[1].Path?.Count}/{pair[1].Step}, yield {pair[0].Yield:F1}/{pair[1].Yield:F1}{(through ? "" : $"; threat {pair[0].Threat?.Species.CommonName}/{pair[1].Threat?.Species.CommonName}, act {pair[0].Act}/{pair[1].Act}, seat {pair[0].Seat}/{pair[1].Seat}, partner {pair[0].Partner != null}/{pair[1].Partner != null}, fleeing {pair[0].Fleeing}/{pair[1].Fleeing}, walking {pair[0].Now:F1}/{pair[1].Now:F1}")})");
+            }
+            // One standing in the way in: you can't walk through them; walking into them presses them aside, and you get through.
+            Town.Person block = town.People.Where(q => !q.Dead && q.Looks != null && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
+            int civTicks = -1;
+            float civGave = 0f;
+            if (block != null)
+            {
+                GD.Print("  (TEST: one of them set standing in the way in)");
+                int pushes = town.Pushed;
+                float closest = 0f, through = 0f;
+                foreach (int x in PushThrough(game, drive, place, town, block, wayMiddle, outv, (t, c, th, g) => { civTicks = t; closest = c; through = th; civGave = g; })) yield return x;
+                float need = block.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius;
+                Check(closest > need - 0.08f, $"you can't walk through a standing person (closest {closest:F2} m, bodies {need:F2} m; {town.SolidsInUse} capsules on people)");
+                Check(town.Pushed > pushes && civTicks >= 0 && civTicks <= 120 && through < 1.2f, $"one standing in the way in is pushed clear in {civTicks / 60f:F1} s and you get through ({through:F1} m from the far side, they answered {block.Answer})");
+            }
+            // A braced guard holds longer.
+            Town.Person brace = town.People.Where(q => !q.Dead && q.Looks != null && q.Role == "guard").OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
+            if (brace != null && civTicks >= 0)
+            {
+                GD.Print("  (TEST: a guard set braced in the way in)");
+                int guardTicks = -1;
+                float guardGave = 0f;
+                // Unwelcome, a guard off their post makes straight for it: it would walk out of the way, not stand braced in it.
+                Mood mood = place.Memory.Mood;
+                if (town.Unwelcome && mood == Mood.Wary)
+                {
+                    place.Memory.Mood = Mood.Peaceful;
+                    GD.Print("  (TEST: the wary place made peaceful for the push, so its guard stands where set)");
+                }
+                brace.Halt = 1f; // braced: they've halted someone
+                foreach (int x in PushThrough(game, drive, place, town, brace, wayMiddle, outv, (t, c, th, g) => (guardTicks, guardGave) = (t, g), keepBraced: true)) yield return x;
+                brace.Halt = 0f;
+                brace.Pursue = 0f;
+                brace.Holding = false;
+                place.Memory.Mood = mood;
+                Check(guardTicks < 0 || guardTicks > civTicks || guardGave < civGave, $"a braced guard holds longer or gives less ground ({(guardTicks < 0 ? "held the whole push" : $"{guardTicks / 60f:F1} s")} against {civTicks / 60f:F1} s; gave {guardGave:F2} m against {civGave:F2} m; it walked at up to {_pushWalked:F1} m/s, unwelcome {town.Unwelcome}, mood {place.Memory.Mood})");
+            }
+            // A creature blocks you too.
+            {
+                var sim = game.Zone.Wildlife.Sim;
+                Wildlife.Species big = game.Zone.Wildlife.Life.Moving.FirstOrDefault(s => !s.Flies && s.Rig == Wildlife.RigKind.Legged && s.Figure == null && s.Body.Size > 1f && s.Body.Size < 3f && s.BodyHeight < 1.3f); // (one you can't walk under)
+                if (sim != null && big != null)
+                {
+                    game.Zone.Wildlife.Frozen = true;
+                    // Out of the town: a wild creature that gets in is culled by its guards.
+                    Vector3 home = game.Survivor.WorldFeet;
+                    game.Survivor.PlaceOutside((home + new Vector3(0f, 0f, 160f) with { Y = game.Zone.GroundAt(home.X, home.Z + 160f).Y + 0.3f }).ToNumerics());
+                    GD.Print("  (TEST: the sleeper set down 160 m out of the town, for a creature to walk into)");
+                    foreach (int x in drive.Wait(10)) yield return x;
+                    foreach (int x in drive.UntilSettled()) yield return x;
+                    Vector3 here = game.Survivor.WorldFeet, dir = new(1f, 0f, 0f);
+                    Vector3 at = here + dir * 4f;
+                    at.Y = game.Zone.GroundAt(at.X, at.Z).Y;
+                    Wildlife.Creature c = sim.Spawn(big, game.Zone.Wildlife.PatchLocal(at));
+                    GD.Print($"  (TEST: a {big.CommonName} set down 4 m ahead, held still)");
+                    foreach (int x in drive.Wait(10)) yield return x;
+                    // Its body is solid once its rig stands where it does (its view poses it, a few creatures a frame).
+                    bool Posed() => c.Rig != null && c.Rig.HitCount > 0 && c.Rig.BoundsCenter.DistanceTo(c.Position) < c.Rig.BoundsRadius + 1f;
+                    for (int i = 0; i < 180 && !Posed(); i++) yield return 0;
+                    float near = float.MaxValue;
+                    var walking = drive.WalkTo(here + dir * 8f, 0.6f, 4f, sprint: false, dig: false, hop: false).GetEnumerator();
+                    while (walking.MoveNext())
+                    {
+                        Vector3 w = game.Zone.Wildlife.WorldOf(c);
+                        near = MathF.Min(near, new Vector2(game.Survivor.WorldFeet.X - w.X, game.Survivor.WorldFeet.Z - w.Z).Length());
+                        yield return walking.Current;
+                    }
+                    float body = MathF.Max(0.2f, c.Species.Stats.Radius * 0.5f);
+                    Check(near > body, $"a creature blocks you too: you came no nearer than {near:F2} m to the {big.CommonName}'s middle (its body {body:F2} m; {(Posed() ? "posed" : "its rig never posed")}, {c.Rig?.HitCount} hit spheres, {game.Bodies?.InUse} shape parts in use{(c.Removed ? ", removed" : "")}; the patch's sim {(ReferenceEquals(game.Zone.Wildlife.Sim, sim) ? "the same" : "another")}, in it {sim.Creatures.Contains(c)}, its rig {(c.Rig.BoundsCenter + game.Zone.Wildlife.Origin).DistanceTo(game.Survivor.WorldFeet):F1} m from you)");
+                    sim.Remove(c);
+                    game.Survivor.PlaceOutside((home + Vector3.Up * 0.3f).ToNumerics());
+                    foreach (int x in drive.Wait(10)) yield return x;
+                    game.Zone.Wildlife.Frozen = false;
+                }
+            }
+            // Out of range, no capsule is left behind.
+            {
+                Vector3 back = game.Survivor.WorldFeet;
+                game.Survivor.PlaceOutside((back + new Vector3(0f, 0f, 160f) with { Y = game.Zone.GroundAt(back.X, back.Z + 160f).Y + 0.3f }).ToNumerics());
+                foreach (int x in drive.Wait(10)) yield return x;
+                Check(town.SolidsInUse == 0, $"out of range, no capsule is left on anyone ({town.SolidsInUse} in use, {town.SolidsMade} ever made)");
+                game.Survivor.PlaceOutside((back + Vector3.Up * 0.3f).ToNumerics());
+                foreach (int x in drive.Wait(30)) yield return x;
+            }
+        }        // Each job keeps its own day, from the generator: who they are, what they carry, how they get about.
+        var jobs = town.People.Where(q => q.Looks != null).GroupBy(q => q.Job).ToDictionary(g => g.Key, g => g.Count());
+        Check(jobs.Count >= 4 && town.People.All(q => q.Looks?.Figure.Routine != null), $"their jobs set their days ({string.Join(", ", jobs.Select(kv => $"{kv.Value} {kv.Key}"))})");
+        // A checkpoint: unwelcome, you are warned off at the way in, then held at gunpoint if you come on; nobody fires.
+        Mood was = place.Memory.Mood;
+        place.Memory.Mood = Mood.Wary;
+        GD.Print("  (TEST: the place made wary of you, to meet its checkpoint)");
+        Town.Person post = town.People.Where(q => q.Role == "guard" && !q.Dead && Wildlife.Weapons.Ranged(q.Figure.Prop) && q.Threat == null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+        int halts = town.Halts, holds = town.HoldAims, shots = town.GuardShots;
+        if (post != null)
+        {
+            Vector3 postAt = new(town.Data.Spots[post.Spawn.Spot].Cell.X + 0.5f, town.Data.Spots[post.Spawn.Spot].Cell.Y, town.Data.Spots[post.Spawn.Spot].Cell.Z + 0.5f);
+            for (int i = 0; i < 1200 && post.Pos.DistanceTo(postAt) > 2.5f; i++) yield return 0; // back at the post
+            Vector3 at = place.ToWorld(post.Pos), here = game.Survivor.WorldFeet;
+            Vector3 toward = (at - here) with { Y = 0f };
+            Vector3 stand = at - toward.Normalized() * 3f;
+            foreach (int x in drive.WalkTo(stand, 0.6f, 25f, sprint: false, dig: false, hop: false)) yield return x;
+            foreach (int x in drive.Wait(200)) yield return x;
+            Check((town.Halts > halts || post.Halt > 0f) && (town.HoldAims > holds || post.Holding) && town.GuardShots == shots, $"at the post a guard warns you off, then holds you at gunpoint as you come on ({town.Halts - halts} warnings, {town.HoldAims - holds} guns up, {town.GuardShots - shots} shots, {game.Survivor.WorldFeet.DistanceTo(at):F1} m off; the guard {post.Job} {post.Pos.DistanceTo(new Vector3(town.Data.Spots[post.Spawn.Spot].Cell.X + 0.5f, town.Data.Spots[post.Spawn.Spot].Cell.Y, town.Data.Spots[post.Spawn.Spot].Cell.Z + 0.5f)):F1} m from post, halt {post.Halt:F1}, unwelcome {town.Unwelcome}, facing {post.Facing:F1}, threat {post.Threat?.Species.CommonName}, pursue {post.Pursue:F0}, act {post.Act})");
+            foreach (int x in drive.WalkTo(at - toward.Normalized() * 11f, 0.8f, 25f, sprint: false, dig: false, hop: false)) yield return x;
+            foreach (int x in drive.Wait(90)) yield return x;
+            Check(!post.Holding, "back off and the gun goes down");
+        }
+        place.Memory.Mood = was;
+        // A Husk at the edge of them: by the place's temper and each one's nerve they fight it, shut themselves in, or run.
+        {
+            var sim = game.Zone.Wildlife.Sim;
+            Town.Person near = town.People.Where(q => !q.Dead && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            if (sim != null && near != null)
+            {
+                Vector3 spot = near.Position + new Vector3(11f, 0f, 0f);
+                Wildlife.Creature h = sim.Spawn(game.Zone.Wildlife.Life.People.Person(Wildlife.Rng.Mix(place.Inst.SpawnSeed, 77), Wildlife.PersonRole.Worker, Wildlife.Occupancy.Friendly, 0.2f, husk: true), spot);
+                GD.Print("  (TEST: a Husk set down 11 m from one of them)");
+                int answered = town.Fought + town.FledFrom + town.Barricades;
+                foreach (int x in drive.Wait(100)) yield return x;
+                int sighting = town.People.Count(q => q.Facing > 0f);
+                Check(town.Fought + town.FledFrom + town.Barricades + sighting > answered, $"a Husk among them: {town.Fought} fought it ({sighting} with it in their sights), {town.FledFrom} ran, {town.Barricades} barricades; looked round {town.Senses} times, {town.Sensed} creatures last)");
+                if (!h.Removed) sim.Remove(h);
+                for (int i = 0; i < 2400 && (town.Barricaded || town.People.Count(q => q.Fleeing) > 0 && i < 1500); i++) yield return 0; // until the scare has passed and they are out again
+            }
+        }
+        // The gesture wheel through the real keyboard: Z pressed and held as a key through the engine's
+        // input, read by the game's own keyboard poll as in play; the mouse up for the top of the wheel
+        // (a wave); let go, the sleeper's arm waves, and they answer.
+        {
+            // In sight of one of them: wherever the checkpoint left you may be past where anyone takes in a gesture.
+            Town.Person seen = town.People.Where(q => !q.Dead && !q.Gone && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            if (seen != null && seen.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet)) > 5f)
+            {
+                Vector3 by = place.ToWorld(seen.Pos);
+                Vector3 off = (game.Survivor.WorldFeet - by) with { Y = 0f };
+                foreach (int x in drive.WalkTo(by + (off.LengthSquared() > 0.01f ? off.Normalized() : Vector3.Right) * 3.5f, 0.8f, 20f, sprint: false, dig: false, hop: false)) yield return x;
+                foreach (int x in drive.LookAt(by + Vector3.Up * 1.5f, 10)) yield return x;
+            }
+            int heard = town.Answered;
+            drive.ReleaseAll();
+            game.Keyboard = true;
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Z, Keycode = Key.Z, Pressed = true });
+            for (int i = 0; i < 12; i++)
+            {
+                game.Controls.Look = new Vector2(0f, -30f); // the mouse's movement, as play hands it over
+                yield return 0;
+            }
+            bool open = game.WheelOpen && game.WheelPick == 0;
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Z, Keycode = Key.Z, Pressed = false });
+            float shoulder = game.Figure.ToGlobal(new Vector3(0.27f, 1.38f, 0f)).Y, hand = float.MinValue;
+            for (int i = 0; i < 40; i++)
+            {
+                hand = MathF.Max(hand, Slice.Player.CharacterModel.RightHand(game.Figure).Y);
+                yield return 0;
+            }
+            game.Keyboard = false;
+            foreach (int x in drive.Wait(50)) yield return x;
+            Check(open && game.LastGesture == Wildlife.PlayerGesture.Wave && town.Answered > heard, $"Z held on the keyboard, the wheel opens; up and let go, a wave, and they answer it ({town.LastHeard}, {town.Answered - heard} answered; {town.People.Count(q => !q.Dead && !q.Gone)} out, the nearest {town.People.Where(q => !q.Dead && !q.Gone).Select(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).DefaultIfEmpty(-1f).Min():F1} m off, barricaded {town.Barricaded}; {string.Join(", ", town.People.Where(q => q.Answer != Wildlife.BodyAct.None).GroupBy(q => q.Answer).Select(g => $"{g.Count()} {g.Key}"))})");
+            Check(hand > shoulder + 0.2f, $"and the sleeper's own arm waves: the right hand {hand - shoulder:+0.00;-0.00} m over the shoulder");
+            // A threat costs goodwill, and puts hands up.
+            float stood = town.Standing;
+            game.MakeGesture(Wildlife.PlayerGesture.Threaten);
+            foreach (int x in drive.Wait(60)) yield return x;
+            Check(town.Standing < stood, $"a threat costs the place's goodwill ({stood:F0} to {town.Standing:F0})");
+            // Robbing one of them: possible, and costly.
+            // Robbing one of them: possible, and costly. Covered (looked at down your sights, close), their hands go up.
+            Town.Person mark = town.People.Where(q => !q.Dead && q.Looks != null && !q.Fleeing && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            if (mark != null)
+            {
+                GD.Print("  (TEST: set down 1.8 m from one of them, to rob them)");
+                game.Survivor.PlaceOutside(place.ToWorld(mark.Pos + new Vector3(1.8f, 0.2f, 0f)).ToNumerics());
+                for (int i = 0; i < 150 && mark.Act is not (Wildlife.BodyAct.HandsUp or Wildlife.BodyAct.Cower); i++)
+                {
+                    foreach (int x in drive.LookAt(place.ToWorld(mark.Pos + Vector3.Up * mark.Figure.Height * 0.6f), 1)) yield return x;
+                    if (mark.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet)) > 2.4f) game.Survivor.PlaceOutside(place.ToWorld(mark.Pos + new Vector3(1.8f, 0.2f, 0f)).ToNumerics());
+                }
+                GD.Print($"  (covered, they {mark.Act})");
+                float wasStanding = town.Standing;
+                game.Controls.Tap(Key.E);
+                foreach (int x in drive.Wait(5)) yield return x;
+                Check(game.Robbed >= 1 && town.Robberies >= 1 && town.People.Any(q => q.Robbed) && town.Standing <= wasStanding - 25f, $"E on them and you take what they carry: they remember, the standing falls ({wasStanding:F0} to {town.Standing:F0})");
+                int knew = town.HeardOf;
+                foreach (int x in drive.Wait(600)) yield return x;
+                Check(town.HeardOf >= knew && town.HeardOf >= 1 && town.PriceFactor > 1.2f, $"word spreads ({knew} knew at once, {town.HeardOf} after 10 s), prices rise ({town.PriceFactor:F2}x), gates {(town.GatesShut ? "shut" : "open")}");
+                Check(town.People.Any(q => q.Pursue > 0f || q.Holding) || town.HoldAims > holds || !town.People.Any(q => q.Role == "guard" && !q.Dead), "and the guards who heard come for you");
+            }
+            else GD.Print("  (nobody had their hands up to rob)");
+        }
         // Night sends them in (the clock wound on, printed), morning brings them out.
         GD.Print("  (TEST: the clock wound on to night and back)");
         double morning = game.Zone.Sky.TimeOfDay;
         game.Zone.Sky.TimeOfDay = 0.93;
         foreach (int x in drive.Wait(1500)) yield return x;
-        int inside = town.People.Count(q => q.Indoors), civilians = town.People.Count(q => q.Role != "guard");
-        Check(inside >= civilians / 2 && town.People.Where(q => q.Role == "guard").All(q => !q.Indoors), $"at night {inside} of {civilians} have gone indoors; the guards hold their posts");
+        int inside = town.People.Count(town.AtNight), civilians = town.People.Count(q => q.Role != "guard");
+        Check(inside >= civilians / 2 && town.People.Where(q => q.Role == "guard").All(q => !town.AtNight(q)), $"at night {inside} of {civilians} have gone home; the guards hold their posts");
         game.Zone.Sky.TimeOfDay = morning;
         foreach (int x in drive.Wait(240)) yield return x;
-        Check(town.People.Count(q => q.Indoors) < inside, $"by day they come out again ({town.People.Count(q => q.Indoors)} still in)");
+        Check(town.People.Count(town.AtNight) < inside, $"by day they come out again ({town.People.Count(town.AtNight)} still home)");
         // The wild keeps out; strays are culled.
         Check(game.Zone.Wildlife.Sim.Settlements.Count > 0, $"wildlife keeps out of the town: {game.Zone.Wildlife.Sim.Settlements.Count} settlement in the patch's sim; {town.Culled} strays culled");
+        // The sound direction marker: an option on the escape menu's Sound page, off by default; on, a shot is marked.
+        bool offByDefault = !new Game.AudioSettings().SoundDirection;
+        game.Audio?.SetDirection(true);
+        int marked = game.Visor.CuesMarked;
         // A shot in the town.
         int aims = town.GuardAims;
         foreach (int x in play.ShootAt(() => game.Survivor.WorldEye() + game.Survivor.WorldLook() * 8f + Vector3.Down * 1f)) yield return x;
         Check(place.Memory.Mood == Mood.Hostile, "a shot in a peaceful place turns it hostile");
+        Check(offByDefault && game.Visor.CuesMarked > marked, $"the sound direction marker is off by default, and once on it marks the shot ({game.Visor.CuesMarked - marked} marked)");
+        game.Audio?.SetDirection(false);
+        var reacts = town.People.Where(q => !q.Dead).Select(q => q.ReactAt).ToList();
+        Check(reacts.Count < 3 || reacts.Max() - reacts.Min() > 0.3f && reacts.Select(t => MathF.Round(t * 60f)).Distinct().Count() > reacts.Count / 2, $"nobody reacts on the same instant: they take it in over {(reacts.Count > 0 ? reacts.Max() - reacts.Min() : 0f):F2} s");
         foreach (int x in drive.Wait(300)) yield return x;
-        Check(town.People.Where(q => q.Role != "guard").All(q => q.Indoors || q.Fleeing || q.Dead), $"its people run for cover ({town.People.Count(q => q.Fleeing)} fleeing, {town.People.Count(q => q.Indoors)} indoors)");
+        Check(town.People.Where(q => q.Role != "guard" && !q.Engaged).All(q => q.Fleeing || q.Dead), $"its people run for cover (those armed fight: {town.People.Count(q => q.Engaged)}) ({town.People.Count(q => q.Fleeing)} fleeing)");
         Check(town.GuardShots == 0 || town.GuardAims > aims, $"its guards take aim where you can see it before they fire ({town.GuardAims - aims} aims, {town.GuardShots} shots)");
+        // A silent carrier: nothing shows in company; alone with you it rises a Husk, the same body.
+        GD.Print($"  (TEST: {town.CarriersAtStart} carriers were rolled here; one of those still out is made a carrier, then the rest are sent off)");
+        // (One the worms can take: never a machine.)
+        Town.Person carrier = town.People.Where(q => !q.Dead && !q.Gone && q.Looks.Figure.Stage != Wildlife.LifeStage.Child && Wildlife.Husks.CanTurn(q.Looks))
+            .OrderBy(q => q.Fleeing).FirstOrDefault();
+        if (carrier != null)
+        {
+            carrier.Carrier = true;
+            Check(!carrier.Looks.Husk && !carrier.Figure.Torn && carrier.Figure.Wrongs == Wildlife.Wrong.None, "a carrier looks like anyone else in the place");
+            bool company = town.People.Any(q => q != carrier && !q.Dead && !q.Gone && q.Pos.DistanceTo(carrier.Pos) < game.Zone.Wildlife.Life.Data.Husks.CarrierAlone * 0.8f);
+            game.Survivor.PlaceOutside(place.ToWorld(carrier.Pos + new Vector3(1.2f, 0.2f, 0f)).ToNumerics());
+            foreach (int x in drive.Wait(30)) yield return x;
+            if (company) Check(town.Risen == 0, "beside you in company it gives nothing away");
+            foreach (Town.Person q in town.People) if (q != carrier) q.Gone = true;
+            game.Survivor.PlaceOutside(place.ToWorld(carrier.Pos + new Vector3(1.2f, 0.2f, 0f)).ToNumerics());
+            foreach (int x in drive.Wait(40)) yield return x;
+            Vector3 stood = place.ToWorld(carrier.Pos);
+            Wildlife.Creature risen = game.Zone.Wildlife.Sim.Creatures.FirstOrDefault(c => c.Species.Husk && !c.Removed && Wildlife.WildSim.Flat(game.Zone.Wildlife.WorldOf(c) - stood).Length() < 3f);
+            Check(town.Risen >= 1 && carrier.Gone && risen != null && MathF.Abs(risen.Species.Figure.Height - carrier.Figure.Height) < 0.01f,
+                $"alone with you it rises a Husk where it stood, the same body ({town.Risen} risen{(town.Risen > 0 ? "" : $"; the carrier {carrier.Role}, {(carrier.Fleeing ? "fleeing" : "not fleeing")}, {place.FromWorld(game.Survivor.WorldFeet).DistanceTo(carrier.Pos):F1} m from you")})");
+        }
         game.QueueFree();
         yield return 0;
     }
 
+    /// <summary>
+    /// Someone set in a doorway, and you walking through it into them: when they were pressed
+    /// clear of it (ticks, -1 never), the nearest you came to them, and how far short of the far
+    /// side you ended.
+    /// </summary>
+    /// <summary>
+    /// You walk into one set standing in the middle of the way in. Timed from first touch until they are out of its middle
+    /// or you are past them (a 2 m way has room to slip by one nudged aside); and the most ground they gave, m.
+    /// </summary>
+    float _pushWalked;
+    IEnumerable<int> PushThrough(Game.Game game, Driver drive, Place place, Town town, Town.Person who, Vector3 doorAt, Vector3 outv, Action<int, float, float, float> result, bool keepBraced = false)
+    {
+        who.Pos = doorAt; who.Path = null; who.Wait = 30f; who.ScaredFor = 0f; who.Pursue = 0f;
+        // Anyone else in the way in would part them before you touch them: sent off for the push.
+        var near = town.People.Where(q => q != who && !q.Dead && !q.Gone && new Vector2(q.Pos.X - doorAt.X, q.Pos.Z - doorAt.Z).Length() < 2.5f).ToList();
+        foreach (Town.Person q in near) (q.Pos, q.Path, q.Wait) = (town.SpotAt(q.Home), null, 15f);
+        if (near.Count > 0) GD.Print($"  (TEST: {near.Count} others in the way in sent home for the push)");
+        game.Survivor.PlaceOutside(place.ToWorld(doorAt + outv * 3f + Vector3.Up * 0.3f).ToNumerics());
+        foreach (int x in drive.Wait(10)) yield return x;
+        _pushWalked = 0f;
+        int tick = 0, clear = -1; // ticks since first contact
+        float closest = float.MaxValue, gave = 0f;
+        Vector3 stood = who.Pos;
+        var walking = drive.WalkTo(place.ToWorld(doorAt - outv * 3f), 0.8f, 8f, sprint: false, dig: false, hop: false).GetEnumerator();
+        while (walking.MoveNext())
+        {
+            // Braced: holding you where they stand (as a guard who has stopped someone does), their halt kept up.
+            if (keepBraced) { who.Halt = 1f; who.Pursue = MathF.Max(who.Pursue, 1f); }
+            Vector3 you = place.FromWorld(game.Survivor.WorldFeet);
+            closest = MathF.Min(closest, new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length());
+            if (tick == 1) stood = who.Pos;
+            if (tick > 0) _pushWalked = MathF.Max(_pushWalked, who.Now);
+            if (tick > 0) gave = MathF.Max(gave, new Vector2(who.Pos.X - stood.X, who.Pos.Z - stood.Z).Length());
+            // (Out of the middle of the way, or you past them.)
+            if (clear < 0 && tick > 0 && (new Vector2(who.Pos.X - doorAt.X, who.Pos.Z - doorAt.Z).Length() > 0.4f || (you - who.Pos).Dot(-outv) > 0.3f)) clear = tick;
+            // (Timed from when you first touch them.)
+            if (tick > 0 || new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length() < who.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius + 0.15f) tick++;
+            yield return walking.Current;
+        }
+        result(clear, closest, (place.FromWorld(game.Survivor.WorldFeet) - (doorAt - outv * 3f)).Length(), gave);
+    }
     /// <summary>A door block on a base (set down whole for the test, printed): it opens as you come up, lets you through, shuts behind you; E works it too.</summary>
     IEnumerable<int> BuiltDoors(WorldChoice world)
     {
@@ -938,8 +1248,8 @@ public partial class PlaceTest : Node
                 if (high - low < rise) { rise = high - low; ahead = p; }
             }
         GD.Print($"  (the gate stands where the ground rises {rise:F2} m along the way through)");
-        ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 1f;
-        string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid large\nmode base\ngravity off\nblock -3..-1 0 0 steel\nblock 1..3 0 0 steel\nblock -3..3 1 0 steel\nblock 0 0 0 door\nblock 4 0 0 core\n";
+        ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 0.5f; // its lowest cells' feet on the ground
+        string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid 1m\nmode base\ngravity off\nblock -3..-1 0..1 0 iron-plated\nblock 1..3 0..1 0 iron-plated\nblock -3..3 2 0 iron-plated\nblock 0 0 0 door-1x2x1\nblock 4 0 0 core\n";
         var s = GalHack.Structures.Blueprint.Load(plan, game.Zone.Data.Catalogue, out List<string> errors);
         Check(s != null && errors.Count == 0, $"the gate's blueprint loads {string.Join("; ", errors)}");
         if (s == null) yield break;
@@ -958,7 +1268,7 @@ public partial class PlaceTest : Node
         foreach (int x in drive.WalkTo(door + along * 1.8f, 0.6f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         Vector3 f = game.Survivor.WorldFeet;
         Check((f - door).Dot(along) > 0.5f && game.Doors.Opened >= 1, $"it opens as you walk up (your own structure), and you walk through ({(f - door).Dot(along):F1} m past it)");
-        Check(game.Doors.OpenDoors(game.Places).Any(), "an open door is there to read (a force field's hook)");
+        Check(game.Doors.AnyOpen(gate), "an open door is there to read (its force field's hook)");
         foreach (int x in drive.WalkTo(past, 1f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in drive.Wait(90)) yield return x;
         Vector3 walked = game.Survivor.WorldFeet;
@@ -992,11 +1302,10 @@ public partial class PlaceTest : Node
         game.Zone.Weather.Bridge.Calm = true;
         PoiPlaces places = game.Places;
         var site = game.Bunker.Poi;
-        // Far places are solid on the world layer.
+        // Far places are drawn only: what you can touch stands as a structure.
         Node3D far = null;
         for (int i = 0; i < 600 && (far = game.Zone.Pois.NodeOf(site)) == null; i++) yield return 0;
-        var farBody = far?.GetNodeOrNull<StaticBody3D>("Collision");
-        Check(farBody != null && farBody.CollisionLayer == Layers.World, $"the far drawing of {site.Name} collides on the world layer ({farBody?.CollisionLayer})");
+        Check(far != null && far.GetChildren().OfType<CollisionObject3D>().Any() == false, $"the far drawing of {site.Name} is only a drawing");
         GD.Print($"  (SYSTEMS: the focus is moved to the place by hand, not walked; the warm-up while loading took {places.WarmUpMs:F0} ms)");
         Vector3 centre = game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y, site.Origin.Z), game.Survivor.WorldFeet);
         places.Focus = () => centre + Vector3.Back * 250f;
@@ -1013,9 +1322,37 @@ public partial class PlaceTest : Node
         Check(views < 8.0, $"its creatures and lair marks go in a few a frame: worst {views:F1} ms a frame ({WorstViews(game)})");
         GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  slow steps: {string.Join("; ", places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (a garbage collection)" : "")}"))}");
-        bool farHidden = far.GetChildren().OfType<MeshInstance3D>().Where(m => m.Name.ToString().StartsWith("Chunk")).All(m => !m.Visible) && farBody.ProcessMode == ProcessModeEnum.Disabled;
-        Check(farHidden, "the far drawing's blocks give way to it in the same frame (hidden, its collision off); its lamps and smoke stay");
-        GD.Print($"  doors {p.Doors.Count} ({p.Doors.Count(d => d.Clearance != null)} locked, {p.Doors.Count(d => d.Jammed)} jammed), deco rooms {p.DecoRooms}, caches {p.Memory.Caches.Count}, creatures {p.Memory.Fauna?.Sim?.Creatures.Count}");
+        // Up close the place is drawn in full, and the planet's merged cubes give way to it there and nowhere else.
+        for (int i = 0; i < 180 && p.NearGroups == 0; i++)
+        {
+            Vector3 eye = centre + Vector3.Back * 12f;
+            places.Eye = () => eye;
+            yield return 0;
+        }
+        places.Eye = null;
+        Check(p.NearGroups > 0 && p.NearGroups < p.Groups || p.Groups <= 8, $"the cubes near the eye are drawn in full ({p.NearGroups} of {p.Groups}), the rest stay merged");
+        // A cube drawn as one mesh (Place.MergeCubes) splits back to a mesh a chunk when a block of it goes:
+        // the block is gone from the drawing and the rest of the cube is drawn as it was.
+        for (int i = 0; i < 90; i++) // the near cubes' dissolve over the merged drawing (0.45 s)
+        {
+            Vector3 eye = centre + Vector3.Back * 12f;
+            places.Eye = () => eye;
+            yield return 0;
+        }
+        places.Eye = null;
+        if (Place.MergeCubes && p.MergedCubeWithBlock() is var (key, cell))
+        {
+            var (_, _, before) = p.CubeDrawing(key);
+            p.Inst.Blocks.Set(cell, Block.Air);
+            p.Remesh(new[] { cell });
+            var (merged, chunks, after) = p.CubeDrawing(key);
+            Check(!merged && chunks > 0 && after > 0 && after != before && Math.Abs(after - before) < 64,
+                $"a merged cube splits back to a mesh a chunk when a block of it goes ({chunks} chunk meshes; {before} triangles before, {after} after)");
+        }
+        // (A place with no floor of its own in a merged near cube, a farm's yard, has nothing to break here: on to the rest.)
+        else if (Place.MergeCubes && p.MergedGroups > 0) GD.Print($"  (no floor of {site.Name}'s own in its {p.MergedGroups} merged near cubes: the split is not tried)");
+        else Check(!Place.MergeCubes, $"a near cube of {site.Name} is drawn as one mesh with a block in it to break ({p.MergedGroups} merged of {p.NearGroups} near)");
+        GD.Print($"  doors {p.Doors.Count} ({p.Doors.Count(d => d.Jammed)} jammed), deco rooms {p.DecoRooms}, caches {p.Memory.Caches.Count}, creatures {p.Memory.Fauna?.Sim?.Creatures.Count}");
         game.QueueFree();
         yield return 0;
     }
@@ -1072,7 +1409,7 @@ public partial class PlaceTest : Node
             var fauna = PlaceFauna.Plan(mem, deep);
             mem.Rooms = Decor.Shared?.Plan(mem);
             GD.Print($"{d,6:F0} m  {site.Name} [{site.Family.Id}] {inst.State} {site.Family.Tier}: {layout.Modules.Count} modules, storeys {layout.Modules.Min(m => m.Storey)}..{layout.Modules.Max(m => m.Storey)}, " +
-                     $"{doors} shut doors, {layout.Extras.Locks.Count} locks, {layout.Extras.Keys.Count} keys, {layout.Extras.Secrets.Count} secrets, {ladders} ladder cells, {stairs} stair cells, " +
+                     $"{doors} shut doors, {layout.Extras.Secrets.Count} secrets, {ladders} ladder cells, {stairs} stair cells, " +
                      $"{layout.Extras.Lifts.Count} lifts, {inst.Caches.Count} caches, town {(inst.Townsfolk != null ? $"{inst.Townsfolk.People.Count} people {inst.Mood}" : "none")}, " +
                      $"fauna {(fauna.Silent ? "silent" : string.Join(" ", fauna.Population.Spawns.GroupBy(s => s.Role).Select(g => $"{g.Key}x{g.Count()}")))}");
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Godot;
 using Slice.Game;
 using Slice.Player;
@@ -61,6 +62,24 @@ public partial class GunFeelTest : Node
 
     static int Nodes() => (int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount);
 
+    /// <summary>How many nodes stand under each branch a few levels down (where a count grew).</summary>
+    Dictionary<string, int> Branches()
+    {
+        var map = new Dictionary<string, int>();
+        int Walk(Node n, string path, int depth)
+        {
+            int count = 1;
+            foreach (Node c in n.GetChildren()) count += Walk(c, path + "/" + c.Name, depth + 1);
+            if (depth <= 4) map[path] = count;
+            return count;
+        }
+        Walk(GetTree().Root, "", 0);
+        return map;
+    }
+
+    static string Grown(Dictionary<string, int> a, Dictionary<string, int> b) =>
+        string.Join(", ", b.Where(kv => kv.Value != a.GetValueOrDefault(kv.Key)).OrderByDescending(kv => kv.Key.Count(ch => ch == '/')).ThenByDescending(kv => Math.Abs(kv.Value - a.GetValueOrDefault(kv.Key))).Take(12).Select(kv => $"{kv.Key} {kv.Value - a.GetValueOrDefault(kv.Key):+0;-0}"));
+
     bool AimIsExact() => _game.Camera.GlobalBasis.IsEqualApprox(_game.Survivor.Eye().Basis);
 
     IEnumerable<int> Scenario()
@@ -73,10 +92,10 @@ public partial class GunFeelTest : Node
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = true;
         foreach (int x in _drive.UntilPlaying()) yield return x;
-        // Out of the cryopod, the locker's kit in the bag, then the tool in hand in Shoot mode.
+        // Out of the cryopod, the locker's kit in the bag, then the tool in hand in gather.
         foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
-        foreach (int x in _play.Tool(ToolMode.Shoot)) yield return x;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
         foreach (int x in _drive.LookAt(_game.Survivor.WorldEye() + _game.Survivor.WorldLook() * 8f, 6)) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
 
@@ -85,7 +104,7 @@ public partial class GunFeelTest : Node
         Check(fx.FlashPool >= 8 && fx.FlashesActive == 0, $"the flash pool is built up front ({fx.FlashPool} slots) and idle");
         Check(AimIsExact() && hands.Kick == 0f, "at rest, no kick and the camera is exactly on the aim");
 
-        // ---- The survival tool: a flare, a kick, and everything home again ----
+        // ---- The Sleeper tool: a flare, a shake of the tool in the hand, the view left still ----
         int flashes = fx.Flashes;
         float peakKick, peakTilt;
         hands.ResetPeaks();
@@ -98,12 +117,11 @@ public partial class GunFeelTest : Node
         }
         peakKick = hands.PeakKick;
         peakTilt = hands.PeakTilt;
-        Check(fx.Flashes == flashes + 1, "firing the tool shows one muzzle flare");
-        Check(fx.FlashesActive == 0, "and the flare has cleaned itself up a second later");
-        Check(peakKick > 0.5f && peakTilt > 0.0005f, $"the hand kicked ({peakKick:F2}) and the camera tilted ({Mathf.RadToDeg(peakTilt):F2} degrees)");
-        Check(hands.Kick == 0f && AimIsExact(), "then the recoil returned to rest and the camera aim came back exactly");
+        Check(fx.Flashes == flashes && fx.LightningBolts > 0, "firing the tool throws its bolt from the tip, no muzzle flare to pop on");
+        Check(hands.PeakBuzz > 0.5f && peakKick == 0f && peakTilt == 0f, $"the tool shook in the hand ({hands.PeakBuzz:F2}) and neither kicked ({peakKick:F2}) nor moved the view ({Mathf.RadToDeg(peakTilt):F2} degrees)");
+        Check(hands.Buzz == 0f && AimIsExact(), "then the shake died away and the camera aim is exactly where it was");
 
-        Check(GunFeel.Tool.Colour.R > 0.9f && GunFeel.Tool.Colour.B < 0.4f, $"the shoot bolt and its flash are red ({GunFeel.Tool.Colour})");
+        Check(GunFeel.Tool.Colour.B > 0.9f && GunFeel.Tool.Colour.R < 0.6f && fx.LightningBolts > 0, $"the blast is lightning, its flash blue ({GunFeel.Tool.Colour}, {fx.LightningBolts} bolts)");
 
         // ---- Every kind of fire flashes, lasts a few frames, and clears ----
         Vector3 at = _game.Tool.Muzzle(), dir = _game.Survivor.WorldLook();
@@ -139,6 +157,7 @@ public partial class GunFeelTest : Node
         dir = _game.Survivor.WorldLook();
         foreach (int x in _drive.Wait(240)) yield return x;
         int warm = Nodes();
+        var warmBranches = Branches();
         int flashesBefore = fx.Flashes, maxNodes = warm;
         int shotsBefore = _game.Tool.Shots;
         string[] mix = { "bullet", "plasma", "laser", "rocket" };
@@ -155,24 +174,23 @@ public partial class GunFeelTest : Node
         Check(fx.Flashes - flashesBefore > 100 && _game.Tool.Shots - shotsBefore > 10,
             $"10 s of fire: {_game.Tool.Shots - shotsBefore} tool shots and {fx.Flashes - flashesBefore} flashes");
         Check(fx.FlashPool == 16 && maxNodes - warm <= 40 && after - warm <= 2,
-            $"the pool never grew ({fx.FlashPool} slots) and nodes held steady: {warm} before, at most {maxNodes} during, {after} after");
+            $"the pool never grew ({fx.FlashPool} slots) and nodes held steady: {warm} before, at most {maxNodes} during, {after} after (changed: {Grown(warmBranches, Branches())})");
         Check(AimIsExact(), "and the aim is still exactly where it was");
 
-        // ---- Gather mode: a blue beam while the tool works, gone when it stops ----
+        // ---- Gathering: lightning to the ground with every pulse, gone when it stops ----
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
         foreach (int x in _drive.LookAt(_game.Zone.GroundAt(feet.X + 1.5f, feet.Z + 1.5f), 8)) yield return x;
         foreach (int x in _drive.Wait(20)) yield return x;
-        Check(!fx.BeamShowing, "no beam while the tool is idle");
-        int flashesG = fx.Flashes;
+        Check(fx.SparksShowing == 0, "no lightning while the tool is idle");
+        int boltsG = fx.LightningBolts;
         _game.Controls.Primary = true;
-        bool beamSeen = false;
-        for (int i = 0; i < 40; i++) { yield return 0; beamSeen |= fx.BeamShowing; }
-        Check(beamSeen && fx.Beams >= 1, "gathering shows the blue beam");
-        Check(fx.Flashes == flashesG, "and the gather beam has no muzzle flash");
+        bool seen = false;
+        for (int i = 0; i < 40; i++) { yield return 0; seen |= fx.SparksShowing > 0; }
+        Check(seen && fx.LightningBolts - boltsG >= 2, $"gathering throws lightning at the ground, pulse by pulse ({fx.LightningBolts - boltsG} bolts)");
         _game.Controls.Primary = false;
-        for (int i = 0; i < 10; i++) yield return 0;
-        Check(!fx.BeamShowing, "the beam is gone once the tool stops");
+        for (int i = 0; i < 20; i++) yield return 0;
+        Check(fx.SparksShowing == 0, "the lightning is gone once the tool stops");
 
         // ---- Death: starvation and a creature's hit both kill, movement stops, the banner has its cause, R wakes you at full health ----
         foreach (int x in _drive.Wait(30)) yield return x;

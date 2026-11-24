@@ -34,6 +34,9 @@ public static class Layers
     /// <summary>Crates, creatures and loose cargo.</summary>
     public const uint Props = 1u << 5;
 
+    /// <summary>Trunks, canopies and boulders of a planet's flora: fixed to the planet like the World layer, but apart from it so ground probes (heights, digging, hover) see only the ground.</summary>
+    public const uint Flora = 1u << 6;
+
     // ---- Masks: what each kind of body collides with ------------------------------------
 
     /// <summary>
@@ -41,22 +44,23 @@ public static class Layers
     /// hull's way by themselves (their own move depenetrates them, or the engine pushes them),
     /// so a crate on the deck can never stop a ship lifting off.
     /// </summary>
-    public const uint VesselMask = World | Hull;
+    public const uint VesselMask = World | Hull | Flora;
 
     /// <summary>Wrecks are free rigid bodies: they land on the world, hulls and props.</summary>
-    public const uint WreckMask = World | Hull | Props;
+    public const uint WreckMask = World | Hull | Props | Flora;
 
-    public const uint PlayerMask = World | Hull | Props;
-    public const uint PropMask = World | Hull | Player | Props;
+    public const uint PlayerMask = World | Hull | Props | Flora;
+    public const uint PropMask = World | Hull | Player | Props | Flora;
 
     /// <summary>Hover engines see ground, hulls and water: they ride on a water surface.</summary>
     public const uint ProbeMask = World | Hull | Water;
 
     /// <summary>
     /// Landing legs stand on solid things only. Water is a volume, not a floor: a vessel let down
-    /// onto a lake goes under, and its feet find the bed.
+    /// onto a lake goes under, and its feet find the bed. Flora too: a craft rests on a tree that takes
+    /// its weight, so its feet do (<see cref="PhysicsWorld.Footing"/> looks through the rest).
     /// </summary>
-    public const uint GearMask = World | Hull;
+    public const uint GearMask = World | Hull | Flora;
 
     /// <summary>Everything solid in the main world.</summary>
     public const uint Solid = World | Hull;

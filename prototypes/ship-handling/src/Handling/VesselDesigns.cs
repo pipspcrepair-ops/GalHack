@@ -18,14 +18,6 @@ public static class VesselDesigns
         _ => Capital(t),
     };
 
-    /// <summary>The thruster size the ] key adds, per class: big engines are worth building.</summary>
-    public static string MainEngineSize(VesselClass c) => c switch
-    {
-        VesselClass.Hover => "small",
-        VesselClass.Small => "large",
-        _ => "capital",
-    };
-
     /// <summary>
     /// A light hover rover. The origin is the plane of its hover engines, which ride 1.5 m up;
     /// nothing hangs below it, so ride height is also the clearance under the skirt.
@@ -34,7 +26,7 @@ public static class VesselDesigns
     {
         var v = new VesselLoadout
         {
-            Name = "Sand Flea", Class = VesselClass.Hover, HullMass = 4f, Cockpit = new Vector3(0, 1.75f, -0.5f),
+            Name = "Sand Flea", HoverMode = true, MainEngine = "small", HullMass = 4f, Cockpit = new Vector3(0, 1.75f, -0.5f),
         };
         var b = new Builder(v, t);
 
@@ -73,7 +65,7 @@ public static class VesselDesigns
     {
         var v = new VesselLoadout
         {
-            Name = "Kestrel", Class = VesselClass.Small, HullMass = 14f, Cockpit = new Vector3(0, 1.3f, -2.6f),
+            Name = "Kestrel", MainEngine = "large", HullMass = 14f, Cockpit = new Vector3(0, 1.3f, -2.6f),
         };
         var b = new Builder(v, t);
 
@@ -119,7 +111,7 @@ public static class VesselDesigns
     {
         var v = new VesselLoadout
         {
-            Name = "Atlas", Class = VesselClass.Capital, HullMass = 800f, Cockpit = new Vector3(0, 11.2f, 11.4f),
+            Name = "Atlas", MainEngine = "capital", HullMass = 800f, Cockpit = new Vector3(0, 11.2f, 11.4f),
         };
         var b = new Builder(v, t);
 

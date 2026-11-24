@@ -24,6 +24,26 @@ public enum Biome : byte
 
     // Alien
     CrystalPlain, CrystalSpires, Chalk, GlowMoss, FungalForest, SporeMarsh, Mycelium,
+
+    // Barren (airless): grey regolith, dark mare basalt, bright highland, iron-rich metal ground, frost
+    Regolith, Mare, Highland, Ironstone, Frost,
+}
+
+/// <summary>What a barren world's ground is made of, for its colours (the palette maps each to a colour by its star and its minerals).</summary>
+public enum Mineral { Regolith, Basalt, Highland, IronRich, Icy }
+
+public static class Minerals
+{
+    /// <summary>The mineral a barren biome's ground is, or null for a biome that isn't barren ground.</summary>
+    public static Mineral? Of(Biome b) => b switch
+    {
+        Biome.Regolith => Mineral.Regolith,
+        Biome.Mare => Mineral.Basalt,
+        Biome.Highland => Mineral.Highland,
+        Biome.Ironstone => Mineral.IronRich,
+        Biome.Frost => Mineral.Icy,
+        _ => null,
+    };
 }
 
 /// <summary>Per-cell flags on the world map.</summary>

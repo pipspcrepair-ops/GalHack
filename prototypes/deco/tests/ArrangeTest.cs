@@ -75,7 +75,9 @@ public partial class ArrangeTest : TestBase
         {
             var room = new DecoRoom { Width = 9, Depth = 7, RoomId = roomId, Doors = { new DecoDoor(DecoWall.South, 4.5f, 2f) }, Seed = DecoHash.Fnv(roomId), State = "abandoned" };
             DecoPlan plan = _poi.Dress(room);
-            Check(room.Set == set && plan.Placements.Count >= 2, $"POI room '{roomId}' dresses from '{set}' ({plan.Placements.Count} pieces)");
+            // A room may name a recipe: it furnishes from the recipe's own set.
+            string expect = _arr.Recipes.TryGetValue(set, out DecoSetPlan recipe) ? recipe.Set : set;
+            Check(room.Set == expect && plan.Placements.Count >= 2, $"POI room '{roomId}' dresses from '{set}' ({plan.Placements.Count} pieces)");
         }
         var precursor = new DecoRoom { Width = 9, Depth = 7, RoomId = "lab", Doors = { new DecoDoor(DecoWall.South, 4.5f, 2f) } };
         _poi.Dress(precursor, kit: "precursor");
@@ -153,7 +155,8 @@ public partial class ArrangeTest : TestBase
         DecoRoom room = plan.Room;
         if (room.Doors.Count == 0) return true;
         _paths++;
-        float step = room.Outdoor ? 0.25f : 0.1f, half = room.Agent / 2;
+        // Indoors on a 5 cm grid: it holds every agent spot on the planner's quarter-metre cells, so a corridor exactly an agent wide is found.
+        float step = room.Outdoor ? 0.25f : 0.05f, half = room.Agent / 2;
         var blockers = plan.Placements.Where(p => DecoLayout.Blocks(_forge, p)).Select(p => DecoLayout.Footprint(_forge, p).Shrink(0.01f)).ToList();
         int nx = (int)((room.Width - 2 * half) / step) + 1, nz = (int)((room.Depth - 2 * half) / step) + 1;
         if (nx <= 0 || nz <= 0) return false;
@@ -201,6 +204,8 @@ public partial class ArrangeTest : TestBase
         return room.Doors.Skip(1).All(d => Starts(d).Any(s => seen[s]));
     }
 
+    ulong _print = 14695981039346656037UL;
+
     void TestRooms()
     {
         var sizes = new (float w, float d)[] { (6, 5), (10, 8), (14, 10), (20, 3) };
@@ -215,12 +220,14 @@ public partial class ArrangeTest : TestBase
                             DecoRoom room = MakeRoom(set, recipe, w, d, doors, state, seed * 1000 + (ulong)(w * 10 + d));
                             if (d < 4) room.Doors.RemoveAll(x => x.Wall == DecoWall.North);
                             DecoPlan plan = _poi.Dress(room);
+                            _print = unchecked(_print * 1099511628211UL ^ GalHack.Deco.DecoHash.Fnv(plan.Fingerprint()));
                             _rooms++;
                             _placements += plan.Placements.Count;
                             List<string> bad = Audit(plan);
                             if (bad.Count > 0 && failures++ < 8) foreach (string b in bad.Take(3)) Note($"{room}: {b}");
                             Check(bad.Count == 0, $"{recipe ?? set} {w}x{d} {doors} doors {state} seed {seed}: legal ({bad.Count} problems)");
                         }
+        Note($"every room's plan, one fingerprint: {_print:X16}");
         Note($"{_rooms} rooms dressed and audited, {_placements} placements, {_paths} independent path searches");
     }
 

@@ -77,23 +77,28 @@ public partial class InfraLayer
             // The node puts the mesh's world cells in the tile's frame, the short way round the seams.
             NV at = b.Local(lo.X, shift, lo.Z) - new NV(lo.X, 0, lo.Z);
             string name = $"Under{TileX}_{TileZ}";
-            b.Extra.Add(() =>
+            var place = new Vector3(at.X, at.Y, at.Z);
+            b.Blocks($"{name} dark", place, dark, () => DarkMaterials);
+            b.Blocks($"{name} lit", place, lit, () => Materials.BySurface);
+            // The water standing in its runs: a surface over the floor, never a block. Wet and dark down here,
+            // the game's water where the daylight reaches it.
+            var wetDark = new List<PInt3>();
+            var wetLit = new List<PInt3>();
+            foreach (PInt3 c in built.Water)
             {
-                var node = new Node3D { Name = name, Position = new Vector3(at.X, at.Y, at.Z) };
-                var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
-                node.AddChild(body);
-                void Add(List<ChunkMesh> meshes, Material[] materials)
-                {
-                    foreach (ChunkMesh chunk in meshes)
+                if ((int)Math.Floor(c.X / (double)UnderTown.MeshTile) != TileX || (int)Math.Floor(c.Z / (double)UnderTown.MeshTile) != TileZ) continue;
+                PInt3 cell = new(c.X, c.Y - shift, c.Z);
+                (Outdoors(cell) ? wetLit : wetDark).Add(cell);
+            }
+            foreach (var (wet, down) in new[] { (wetDark, true), (wetLit, false) })
+                if (wet.Count > 0)
+                    b.Extra.Add(() =>
                     {
-                        node.AddChild(new MeshInstance3D { Mesh = MeshBuild.ToMesh(chunk, materials) });
-                        if (chunk.Collision.Count > 0) body.AddChild(new CollisionShape3D { Shape = MeshBuild.ToShape(chunk) });
-                    }
-                }
-                Add(dark, DarkMaterials);
-                Add(lit, Materials.BySurface);
-                return node;
-            });
+                        MeshInstance3D water = MeshBuild.Water(wet, down ? DarkMaterials[3] : MeshBuild.StillWater());
+                        water.Name = $"{name} water{(down ? "" : " lit")}";
+                        water.Position = place;
+                        return water;
+                    });
         }
     }
 

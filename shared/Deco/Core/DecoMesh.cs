@@ -2,16 +2,33 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using GalHack.Items;
 
 namespace GalHack.Deco;
 
-/// <summary>Flat-shaded triangles for one surface: three vertices each, with a face normal and an sRGB colour (alpha for glass).</summary>
+/// <summary>
+/// Flat-shaded triangles for one surface: three vertices each, with a face normal and an sRGB
+/// colour. The colour's alpha carries the part's finish and wear (<see cref="DecoFinishes.Code"/>),
+/// or how clear a pane is on glass. <see cref="Faces"/> places each vertex on its face, in metres,
+/// for the shader's grain, seams and bevels.
+/// </summary>
 public sealed class DecoSurfaceData
 {
     public readonly List<Vector3> Positions = new();
     public readonly List<Vector3> Normals = new();
     public readonly List<Vector4> Colors = new();
+    /// <summary>
+    /// Per vertex: where it lies on its face (u, v in metres) and the face's extent (Lu, Lv): a
+    /// rectangle when both are positive; a negative extent wraps round that way with no edge (a
+    /// cylinder's side, a ball); Lv zero with Lu negative is a disc of radius -Lu centred on (0, 0);
+    /// both zero means no face (the shader works from the position). May run short of the positions
+    /// (a mesh merged from others); the missing ones are no face.
+    /// </summary>
+    public readonly List<Vector4> Faces = new();
     public int Triangles => Positions.Count / 3;
+
+    /// <summary>The face data for vertex <paramref name="i"/> (none if it was never given).</summary>
+    public Vector4 FaceAt(int i) => i < Faces.Count ? Faces[i] : default;
 }
 
 /// <summary>An oriented collision box: centre, three unit axes and half-extents along them.</summary>
@@ -41,11 +58,18 @@ public sealed class DecoMeshData
     public Vector3 CentreOfMass;
     /// <summary>Glows stay lit without power (Precursor and alien pieces).</summary>
     public bool SelfLit;
+    /// <summary>How worn the piece's surfaces are drawn, 0 (new) to 3 (weathered): see <see cref="DecoFinishes.WearOf"/>.</summary>
+    public int Wear;
 
     public int Triangles => Surfaces.Sum(s => s.Triangles);
     public Vector3 Size => Max - Min;
 
-    public void AddTriangle(DecoSurface surface, Vector3 a, Vector3 b, Vector3 c, DecoRgb col, float alpha = 1f)
+    /// <summary>A triangle with no face of its own (marks, leaves, blades): <paramref name="alpha"/> as given (1 draws it plain).</summary>
+    public void AddTriangle(DecoSurface surface, Vector3 a, Vector3 b, Vector3 c, DecoRgb col, float alpha = 1f) =>
+        AddTriangle(surface, a, b, c, col, alpha, default, default, default);
+
+    /// <summary>A triangle and where its corners lie on their face (see <see cref="DecoSurfaceData.Faces"/>).</summary>
+    public void AddTriangle(DecoSurface surface, Vector3 a, Vector3 b, Vector3 c, DecoRgb col, float alpha, Vector4 fa, Vector4 fb, Vector4 fc)
     {
         Vector3 n = Vector3.Cross(b - a, c - a);
         float len = n.Length();
@@ -53,9 +77,12 @@ public sealed class DecoMeshData
         n /= len;
         DecoSurfaceData s = Surfaces[(int)surface];
         var color = new Vector4(col.R, col.G, col.B, alpha);
+        // Faces stay in step with the positions even after triangles merged in without them.
+        while (s.Faces.Count < s.Positions.Count) s.Faces.Add(default);
         s.Positions.Add(a); s.Positions.Add(b); s.Positions.Add(c);
         s.Normals.Add(n); s.Normals.Add(n); s.Normals.Add(n);
         s.Colors.Add(color); s.Colors.Add(color); s.Colors.Add(color);
+        s.Faces.Add(fa); s.Faces.Add(fb); s.Faces.Add(fc);
         Min = Vector3.Min(Min, Vector3.Min(a, Vector3.Min(b, c)));
         Max = Vector3.Max(Max, Vector3.Max(a, Vector3.Max(b, c)));
     }
@@ -151,22 +178,42 @@ public static class DecoEmit
         }
     }
 
-    /// <summary>Emits one part's triangles, coloured by <paramref name="color"/> (given each triangle's centre, normal and slot).</summary>
+    /// <summary>A triangle of a part and where its corners lie on their face (see <see cref="DecoSurfaceData.Faces"/>).</summary>
+    readonly record struct FaceTri(Vector3 A, Vector3 B, Vector3 C, Vector2 Ua, Vector2 Ub, Vector2 Uc, Vector2 L, bool End);
+
+    /// <summary>
+    /// Emits one part's triangles, coloured by <paramref name="color"/> (given each triangle's centre,
+    /// normal and slot), each vertex placed on its face and the part's finish and the mesh's wear
+    /// carried for the shader.
+    /// </summary>
     public static void Part(DecoMeshData mesh, DecoPart p, Func<Vector3, Vector3, DecoSlot, DecoRgb> color, Func<DecoSlot, DecoSurface> surfaceOf, Func<Vector3, Vector3> warp = null)
     {
         DecoSurface surface = surfaceOf(p.Slot);
-        float alpha = surface == DecoSurface.Glass ? 0.42f : 1f;
-        var tris = new List<(Vector3, Vector3, Vector3)>();
+        DecoFinish finish = DecoFinishes.Of(p);
+        var tris = new List<FaceTri>();
+        float lx = new Vector3(p.M.M11, p.M.M12, p.M.M13).Length(), ly = new Vector3(p.M.M21, p.M.M22, p.M.M23).Length(), lz = new Vector3(p.M.M31, p.M.M32, p.M.M33).Length();
         switch (p.Kind)
         {
             case DecoPrim.Hex:
             {
                 var c = new Vector3[8];
                 for (int i = 0; i < 8; i++) c[i] = Vector3.Transform(p.Corners[i], p.M);
-                foreach (int[] f in HexFaces)
+                float longest = MathF.Max(lx, MathF.Max(ly, lz));
+                for (int fi = 0; fi < 6; fi++)
                 {
-                    tris.Add((c[f[0]], c[f[1]], c[f[2]]));
-                    tris.Add((c[f[0]], c[f[2]], c[f[3]]));
+                    int[] f = HexFaces[fi];
+                    Vector3 q0 = c[f[0]], q1 = c[f[1]], q2 = c[f[2]], q3 = c[f[3]];
+                    float l1 = (Vector3.Distance(q0, q1) + Vector3.Distance(q3, q2)) / 2, l2 = (Vector3.Distance(q0, q3) + Vector3.Distance(q1, q2)) / 2;
+                    // u runs along the face's longer side (a board's grain runs along it).
+                    bool swap = l2 > l1;
+                    float lu = swap ? l2 : l1, lv = swap ? l1 : l2;
+                    Vector2 At(float s, float t) => swap ? new Vector2(t * lu, s * lv) : new Vector2(s * lu, t * lv);
+                    // An end face: across the part's long axis (a board's sawn end).
+                    float across = (fi / 2) switch { 0 => lx, 1 => ly, _ => lz };
+                    bool end = across >= longest - 1e-5f && across > 1.3f * lu;
+                    var L = new Vector2(MathF.Max(lu, 1e-4f), MathF.Max(lv, 1e-4f));
+                    tris.Add(new FaceTri(q0, q1, q2, At(0, 0), At(1, 0), At(1, 1), L, end));
+                    tris.Add(new FaceTri(q0, q2, q3, At(0, 0), At(1, 1), At(0, 1), L, end));
                 }
                 break;
             }
@@ -182,13 +229,25 @@ public static class DecoEmit
                     top[i] = Vector3.Transform(new Vector3(MathF.Cos(a) * 0.5f * p.Taper, 0.5f, MathF.Sin(a) * 0.5f * p.Taper), p.M);
                 }
                 Vector3 cb = Vector3.Transform(new Vector3(0, -0.5f, 0), p.M), ct = Vector3.Transform(new Vector3(0, 0.5f, 0), p.M);
+                // The side, unrolled: round it and along it, u along the longer of the two; the ends are discs.
+                float r = (lx + lz) / 4, around = MathF.PI * 2 * r * (1 + p.Taper) / 2, along = MathF.Sqrt(ly * ly + r * r * (1 - p.Taper) * (1 - p.Taper));
+                bool roundU = around > along;
+                Vector2 Side(float s, float t) => roundU ? new Vector2(s * around, t * along) : new Vector2(t * along, s * around);
+                var side = roundU ? new Vector2(-around, along) : new Vector2(along, -around);
+                bool end = ly > 2.6f * r;
+                Vector2 Rim(int i, float k)
+                {
+                    float a = i * MathF.Tau / n + MathF.PI / n;
+                    return new Vector2(MathF.Cos(a), MathF.Sin(a)) * (r * k);
+                }
                 for (int i = 0; i < n; i++)
                 {
                     int j = (i + 1) % n;
-                    tris.Add((bot[i], bot[j], top[j]));
-                    tris.Add((bot[i], top[j], top[i]));
-                    tris.Add((cb, bot[j], bot[i]));
-                    if (p.Taper > 0.001f) tris.Add((ct, top[i], top[j]));
+                    float s0 = (float)i / n, s1 = (float)(i + 1) / n;
+                    tris.Add(new FaceTri(bot[i], bot[j], top[j], Side(s0, 0), Side(s1, 0), Side(s1, 1), side, false));
+                    tris.Add(new FaceTri(bot[i], top[j], top[i], Side(s0, 0), Side(s1, 1), Side(s0, 1), side, false));
+                    tris.Add(new FaceTri(cb, bot[j], bot[i], Vector2.Zero, Rim(j, 1), Rim(i, 1), new Vector2(-r, 0), end));
+                    if (p.Taper > 0.001f) tris.Add(new FaceTri(ct, top[i], top[j], Vector2.Zero, Rim(i, p.Taper), Rim(j, p.Taper), new Vector2(-r * p.Taper, 0), end));
                 }
                 break;
             }
@@ -197,44 +256,59 @@ public static class DecoEmit
                 int seg = p.Segments, rings = Math.Max(2, seg / 4);
                 var v = DomeVerts(seg).Select(x => Vector3.Transform(x, p.M)).ToArray();
                 Vector3 baseC = Vector3.Transform(Vector3.Zero, p.M);
-                for (int r = 0; r < rings; r++)
+                float r = (lx + lz) / 4, around = MathF.Tau * r, meridian = MathF.PI * 0.5f * (r + ly / 2) / 2;
+                Vector2 On(int ring, float i) => new(ring * meridian / rings, i / seg * around);
+                var shell = new Vector2(-meridian, -around);
+                for (int k = 0; k < rings; k++)
                     for (int i = 0; i < seg; i++)
                     {
                         int j = (i + 1) % seg;
-                        tris.Add((v[r * seg + i], v[r * seg + j], v[(r + 1) * seg + j]));
-                        tris.Add((v[r * seg + i], v[(r + 1) * seg + j], v[(r + 1) * seg + i]));
+                        tris.Add(new FaceTri(v[k * seg + i], v[k * seg + j], v[(k + 1) * seg + j], On(k, i), On(k, i + 1), On(k + 1, i + 1), shell, false));
+                        tris.Add(new FaceTri(v[k * seg + i], v[(k + 1) * seg + j], v[(k + 1) * seg + i], On(k, i), On(k + 1, i + 1), On(k + 1, i), shell, false));
                     }
-                for (int i = 0; i < seg; i++) tris.Add((baseC, v[rings * seg + (i + 1) % seg], v[rings * seg + i]));
+                for (int i = 0; i < seg; i++)
+                {
+                    float a0 = i * MathF.Tau / seg, a1 = (i + 1) * MathF.Tau / seg;
+                    tris.Add(new FaceTri(baseC, v[rings * seg + (i + 1) % seg], v[rings * seg + i], Vector2.Zero, new Vector2(MathF.Cos(a1), MathF.Sin(a1)) * r, new Vector2(MathF.Cos(a0), MathF.Sin(a0)) * r, new Vector2(-r, 0), false));
+                }
                 break;
             }
             default:
             {
                 int seg = p.Segments, rings = Math.Max(2, seg / 2);
                 var v = SphereVerts(seg).Select(x => Vector3.Transform(x, p.M)).ToArray();
-                for (int r = 0; r < rings; r++)
+                float r = (lx + lz) / 4, around = MathF.Tau * r, meridian = MathF.PI * (r + ly / 2) / 2;
+                Vector2 On(int ring, float i) => new(ring * meridian / rings, i / seg * around);
+                var shell = new Vector2(-meridian, -around);
+                for (int k = 0; k < rings; k++)
                     for (int i = 0; i < seg; i++)
                     {
                         int j = (i + 1) % seg;
-                        Vector3 a = v[r * seg + i], b = v[r * seg + j], c2 = v[(r + 1) * seg + j], d = v[(r + 1) * seg + i];
-                        tris.Add((a, b, c2));
-                        tris.Add((a, c2, d));
+                        Vector3 a = v[k * seg + i], b = v[k * seg + j], c2 = v[(k + 1) * seg + j], d = v[(k + 1) * seg + i];
+                        tris.Add(new FaceTri(a, b, c2, On(k, i), On(k, i + 1), On(k + 1, i + 1), shell, false));
+                        tris.Add(new FaceTri(a, c2, d, On(k, i), On(k + 1, i + 1), On(k + 1, i), shell, false));
                     }
                 break;
             }
         }
         Vector3 centre = Vector3.Zero;
-        foreach (var (a, b, c) in tris) centre += a + b + c;
+        foreach (FaceTri t in tris) centre += t.A + t.B + t.C;
         centre /= tris.Count * 3;
-        foreach (var (a0, b0, c0) in tris)
+        int wear = mesh.Wear;
+        foreach (FaceTri t in tris)
         {
-            Vector3 a = a0, b = b0, c = c0;
+            Vector3 a = t.A, b = t.B, c = t.C;
+            Vector2 ua = t.Ua, ub = t.Ub, uc = t.Uc;
             if (warp != null) { a = warp(a); b = warp(b); c = warp(c); }
             Vector3 n = Vector3.Cross(b - a, c - a);
             if (n.LengthSquared() < 1e-14f) continue;
             Vector3 mid = (a + b + c) / 3f;
-            if (Vector3.Dot(n, mid - centre) < 0) (b, c) = (c, b);
+            if (Vector3.Dot(n, mid - centre) < 0) { (b, c) = (c, b); (ub, uc) = (uc, ub); }
             n = Vector3.Normalize(Vector3.Cross(b - a, c - a));
-            mesh.AddTriangle(surface, a, b, c, color(mid, n, p.Slot), alpha);
+            // The finish's flag: a board's end grain, or a tyre's tread.
+            bool flag = finish == DecoFinish.Rubber ? p.Is(PartFlags.Tyre) : t.End;
+            float alpha = surface == DecoSurface.Glass ? DecoFinishes.GlassAlpha(wear) : DecoFinishes.Code(finish, wear, flag);
+            mesh.AddTriangle(surface, a, b, c, color(mid, n, p.Slot), alpha, new Vector4(ua, t.L.X, t.L.Y), new Vector4(ub, t.L.X, t.L.Y), new Vector4(uc, t.L.X, t.L.Y));
         }
     }
 
@@ -303,5 +377,67 @@ public static class DecoEmit
             total += v;
         }
         return total > 0 ? sum / total : Vector3.Zero;
+    }
+}
+
+/// <summary>
+/// What each part is made of and how worn it is, as the deco shader reads them: the rule for a
+/// part with no finish of its own, and how a piece's state and age wear its surfaces.
+/// </summary>
+public static class DecoFinishes
+{
+    /// <summary>
+    /// What a part is made of: its model's word, else its flags (a screen, a tyre, a pane), else its
+    /// slot; hay, food and crops are organic whatever their colour, and cushions and cloth painted in
+    /// a body or plastic colour are fabric.
+    /// </summary>
+    public static DecoFinish Of(DecoPart p)
+    {
+        if (p.Finish != DecoFinish.Auto) return p.Finish;
+        if (p.Is(PartFlags.Screen)) return DecoFinish.Screen;
+        if (p.Is(PartFlags.Tyre)) return DecoFinish.Rubber;
+        DecoFinish f = DecoPalette.FinishOf(p.Slot);
+        if (p.Is(PartFlags.Pane) && f is not (DecoFinish.Glass or DecoFinish.Screen)) return DecoFinish.Glass;
+        // Hay, food and crops, whatever colour they are painted.
+        if (p.Is(PartFlags.Perishable) && f is not (DecoFinish.Paper or DecoFinish.Organic)) return DecoFinish.Organic;
+        if (p.Is(PartFlags.Soft) && f is DecoFinish.Paint or DecoFinish.Plastic) return DecoFinish.Fabric;
+        return f;
+    }
+
+    /// <summary>
+    /// How worn a look's surfaces are: 0 new (in use and whole), 1 used (knocked over, sealed under
+    /// dust), 2 old (a century indoors, broken, overgrown), 3 weathered (out in the weather, rusted, burnt).
+    /// </summary>
+    public static int WearOf(DecoState state, DecoAge age, bool exposed, bool outdoor)
+    {
+        int w = state switch
+        {
+            DecoState.Burnt or DecoState.Rusted => 3,
+            DecoState.Broken or DecoState.Overgrown or DecoState.Buried => 2,
+            DecoState.Open => outdoor ? 2 : 1,
+            DecoState.Knocked => 1,
+            _ => 0,
+        };
+        if (age == DecoAge.Preserved) w = Math.Max(w, 1);
+        if (age == DecoAge.OldWorld) w = Math.Max(w, exposed || outdoor ? 3 : 2);
+        return w;
+    }
+
+    /// <summary>
+    /// The finish, wear and flag (a board's end grain, a tyre's tread) packed into the colour's alpha
+    /// for the opaque materials. Coded values stay below 128, so an alpha of 1 (a triangle drawn by
+    /// other code) reads as plain.
+    /// </summary>
+    public static float Code(DecoFinish f, int wear, bool flag) => (((int)f & 15) | (Math.Clamp(wear, 0, 3) << 4) | (flag ? 64 : 0)) / 255f;
+
+    /// <summary>Glass carries only its wear, in how clear it is: a dirtier pane is less see-through.</summary>
+    public static float GlassAlpha(int wear) => 0.36f + 0.04f * Math.Clamp(wear, 0, 3);
+
+    /// <summary>Unpacks a colour alpha made by <see cref="Code"/> (null if it isn't one).</summary>
+    public static (DecoFinish Finish, int Wear, bool Flag)? Decode(float alpha)
+    {
+        int code = (int)MathF.Round(alpha * 255f);
+        if (code >= 128) return null;
+        return ((DecoFinish)(code & 15), (code >> 4) & 3, (code & 64) != 0);
     }
 }

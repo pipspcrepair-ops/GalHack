@@ -80,7 +80,7 @@ public static class Selection
 
 /// <summary>
 /// Drawing and handling inventory slots, shared by every grid on the menu (the bag and toolbar,
-/// a core's storage, an opened container, a body, a backpack). Each stack is drawn as a small 3D icon
+/// a core's storage, an opened container, a body, a bag). Each stack is drawn as a small 3D icon
 /// (rendered once) with its short name, and its full details in the tooltip.
 ///
 /// Moving: drag a stack to move it (onto a slot, a storage tab, or out of the window to set it
@@ -139,7 +139,7 @@ public static class Slots
         bool picked = Selection.Has(grid, index);
         if (g.Drawing)
         {
-            g.Fill(r, new Color(C.Glass, 0.9f));
+            g.Fill(r, g.Back(new Color(C.Glass, 0.9f)));
             if (picked) g.Fill(r, new Color(C.Holo, 0.22f));
             g.Outline(r, selected ? C.Accent : picked ? C.Holo : new Color(C.Rule, 0.9f), selected || picked ? 3 : 1.5f);
             if (!s.IsEmpty) DrawStack(g, r, shown, tone, label, count);
@@ -179,7 +179,6 @@ public static class Slots
         }
         g.TextIn(label, new Rect2(r.Position + new Vector2(2, 14), new Vector2(r.Size.X - 4, 22)), new Color(C.Text, alpha), 12, HorizontalAlignment.Center);
         g.TextIn(count, new Rect2(r.Position + new Vector2(2, r.Size.Y - 22), new Vector2(r.Size.X - 6, 20)), new Color(C.Accent2, alpha), 14, HorizontalAlignment.Right, UiTheme.Mono);
-        if (item?.IsBlock == true) g.TextIn(item.SmallGrid ? "S" : "L", new Rect2(r.Position + new Vector2(4, r.Size.Y - 22), new Vector2(20, 20)), C.Dim, 11);
     }
 
     // ---- Clicks -----------------------------------------------------------------------------------
@@ -226,7 +225,7 @@ public static class Slots
             moved += ItemGrid.QuickMove(from, i, to, amount);
         }
         if (moved < wanted)
-            game.Say(moved == 0 ? $"{to.Name} is full: nothing moved, it all stays in {from.Name}" : $"{to.Name} is full: {moved} of {wanted} moved, the rest stays in {from.Name}", Tones.Caution);
+            game.Say($"{to.Name.ToUpperInvariant()} FULL · {moved}/{wanted} MOVED", Tones.Caution);
         return moved;
     }
 
@@ -251,7 +250,7 @@ public static class Slots
         int want = Math.Min(from.Amount, from.Grid[from.Index].Count);
         int moved = ItemGrid.Move(from.Grid, from.Index, grid, index, from.Amount);
         if (from.Grid != grid && moved < want)
-            game.Say(moved == 0 ? $"{grid.Name} has no room for that" : $"{grid.Name} is full: {moved} of {want} moved, the rest stays", Tones.Caution);
+            game.Say($"{grid.Name.ToUpperInvariant()} FULL · {moved}/{want} MOVED", Tones.Caution);
         Selection.Clear();
     }
 
@@ -289,6 +288,75 @@ public static class Slots
 }
 
 /// <summary>
+/// A recipe's inputs along a row: each its item's icon (the one the bag shows) with the count one run takes
+/// beside it, the name and the stock on hover. Every slot is one width, so the inputs line up in columns down
+/// a list. A count that can't be covered now is amber, red when nothing there makes it either; with more
+/// inputs than the room holds, the last slot shows how many more.
+/// </summary>
+public static class Ingredients
+{
+    static Palette C => UiTheme.Colors;
+
+    /// <summary>The counts' type size, and the gap after each slot.</summary>
+    public const int CountSize = 13;
+    public const float Gap = 8;
+
+    /// <summary>An icon's side in a row of this height.</summary>
+    public static float Side(float rowH) => rowH - 4;
+
+    /// <summary>One slot's width in rows of this height: room for the longest count any of these recipes takes.</summary>
+    public static float Slot(float rowH, IEnumerable<ItemDef> made)
+    {
+        int digits = 1;
+        foreach (ItemDef i in made)
+            if (i.Recipe != null)
+                foreach (var (_, n) in i.Recipe.Inputs) digits = Math.Max(digits, n.ToString().Length);
+        return Side(rowH) + 3 + CountW(digits) + Gap;
+    }
+
+    static float CountW(int digits) => Paint.TextWidth(UiTheme.Mono, CountSize, new string('8', digits)) + 1;
+
+    /// <summary>The room a row of the most inputs any of these recipes takes needs.</summary>
+    public static float Room(float slot, IEnumerable<ItemDef> made) =>
+        Math.Max(1, made.Select(i => i.Recipe?.Inputs.Count ?? 0).DefaultIfEmpty(0).Max()) * slot - Gap;
+
+    /// <summary>
+    /// The inputs in <paramref name="r"/>, from its left: <paramref name="have"/> is how many are there to use,
+    /// <paramref name="made"/> (if given) whether what is short is made there too.
+    /// </summary>
+    public static void Draw(Gui g, Game.Game game, Rect2 r, IReadOnlyList<(ItemDef Item, int Count)> inputs, float slot, Func<ItemDef, int> have, Func<ItemDef, bool> made = null, float alpha = 1f)
+    {
+        if (inputs == null || inputs.Count == 0) return;
+        float side = Side(r.Size.Y);
+        int fit = Math.Max(0, (int)((r.Size.X + Gap) / slot));
+        int shown = inputs.Count <= fit ? inputs.Count : Math.Max(0, fit - 1);
+        Color Tone(ItemDef item, int need) => have(item) >= need ? C.Text : made == null || made(item) ? C.Warn : C.Danger;
+        for (int k = 0; k < shown; k++)
+        {
+            var (item, need) = inputs[k];
+            float x = r.Position.X + k * slot;
+            var box = new Rect2(x, r.Position.Y + (r.Size.Y - side) / 2f, side, side);
+            if (ItemIcons.Shared?.Get(item) is Texture2D icon) g.Image(icon, box, new Color(1, 1, 1, alpha));
+            else g.Fill(box, new Color(new Color(Rarities.Color(item.Rarity) << 8 | 0xff), 0.3f * alpha)); // not rendered yet, or a headless run
+            Color tone = Tone(item, need);
+            g.TextIn($"{need}", new Rect2(box.End.X + 3, r.Position.Y, slot - side - 3 - Gap, r.Size.Y), new Color(tone, alpha), CountSize, HorizontalAlignment.Left, UiTheme.Mono);
+            g.SetTip(new Rect2(x, r.Position.Y, slot - Gap / 2, r.Size.Y), () =>
+            {
+                List<(string Text, Color Colour)> tip = Tooltips.For(game, item, 0);
+                tip.Insert(1, ($"HAVE {have(item)} · NEED {need}", have(item) >= need ? C.Good : tone));
+                return tip;
+            });
+        }
+        if (shown == inputs.Count || fit == 0) return;
+        float rx = r.Position.X + shown * slot;
+        var rest = new Rect2(rx, r.Position.Y, r.End.X - rx, r.Size.Y);
+        bool short_ = inputs.Skip(shown).Any(i => have(i.Item) < i.Count);
+        g.TextIn($"+{inputs.Count - shown}", rest, new Color(short_ ? C.Warn : C.Dim, alpha), CountSize, HorizontalAlignment.Left, UiTheme.Mono);
+        g.SetTip(rest, () => inputs.Skip(shown).Select(i => ($"{i.Count} {i.Item.Name}  (HAVE {have(i.Item)})", Tone(i.Item, i.Count))).ToList());
+    }
+}
+
+/// <summary>
 /// The filter bar every grid and recipe list has: a live text box (click it, or press / on the
 /// menu; Escape clears it, then closes the menu), quick category toggles and a sort button. On an
 /// in-world screen, which has no keyboard, the text shows read-only.
@@ -319,7 +387,7 @@ public static class FilterBar
         float sortW = sort ? 170 : 0;
         var box = new Rect2(r.Position, new Vector2(r.Size.X - sortW - (sort ? 8 : 0), 28));
         bool focused = ItemViews.Focused == key;
-        if (g.TextBox($"{key}:filter", box, view.Text, readOnly ? "filter (Tab menu)" : "filter: type a name or category", focused, readOnly))
+        if (g.TextBox($"{key}:filter", box, view.Text, readOnly ? "FILTER" : "FILTER [/]", focused, readOnly))
             ItemViews.Focused = key;
         if (sort && g.Button($"{key}:sort", new Rect2(box.End.X + 8, r.Position.Y, sortW, 28), $"SORT: {ItemView.SortName(view.Sort)}", C.Holo, size: 13))
             view.NextSort();
@@ -343,8 +411,8 @@ public static class FilterBar
 /// <summary>
 /// An item's tooltip, the same everywhere (grids, storages, recipe lists, loot, in-world screens):
 /// its name in its rarity's colour and its category; mass and volume each and for the stack; how
-/// it is made (inputs, constructor, time) or where it is found; its stack size, and for a block the
-/// grid and classes of structure it goes on; whether the tech tree has it locked; what it is for.
+/// it is made (inputs, constructor, time) or where it is found; its stack size, and for a block its
+/// size in metres; whether the tech tree has it locked; what it is for.
 /// </summary>
 public static class Tooltips
 {
@@ -357,21 +425,22 @@ public static class Tooltips
         {
             (item.Name, new Color(Rarities.Color(item.Rarity) << 8 | 0xff)),
             ($"{Kind(item)} · {Rarities.Name(item.Rarity)}", C.Dim),
-            ($"{item.MassKg:0.##} kg · {item.VolumeSu:0.##} SU each{(count > 1 ? $"   stack of {count}: {item.MassKg * count:0.#} kg · {item.VolumeSu * count:0.#} SU" : "")}", C.Text),
+            ($"{item.MassKg:0.##} kg · {item.VolumeSu:0.##} SU{(count > 1 ? $"   ×{count} · {item.MassKg * count:0.#} kg · {item.VolumeSu * count:0.#} SU" : "")}", C.Text),
         };
         if (item.Recipe != null)
         {
-            lines.Add(($"Made from {items.Describe(item.Recipe.InputsFor(1), 4)}{(item.Recipe.Count > 1 ? $" (makes {item.Recipe.Count})" : "")}", C.Text));
-            lines.Add(($"{Maker(items, item.Recipe.Tier)} · {item.Recipe.Seconds:0.#} s a run", C.Text));
+            lines.Add(($"RECIPE · {items.Describe(item.Recipe.InputsFor(1), 4)}{(item.Recipe.Count > 1 ? $" · MAKES {item.Recipe.Count}" : "")}", C.Text));
+            lines.Add(($"{Maker(items, item.Recipe.Tier)} · {item.Recipe.Seconds:0.#} s", C.Text));
         }
         else lines.Add((Found(item), C.Text));
-        string fits = item.IsBlock ? $" · {(item.SmallGrid ? "small" : "large")} grid" : "";
-        lines.Add(($"Stacks to {item.StackSize}{fits}", C.Text));
+        GalHack.Structures.Catalogue blocks = game.Zone.Data.Catalogue;
+        string fits = item.IsBlock && blocks.TryGetType(item.BlockId, out GalHack.Structures.BlockType type) ? $" · {GalHack.Structures.Footprint.Label(type, blocks.Grid.CellSize)}" : "";
+        lines.Add(($"STACK {item.StackSize}{fits}", C.Text));
         Progress p = game.Progress;
         if (item.Unlock != null)
         {
             bool open = p == null || p.ItemAllowed(item);
-            lines.Add((open ? $"Unlocked (tech tree, level {item.Unlock.Level})" : $"Locked: level {item.Unlock.Level}, {item.Unlock.Cost} point{(item.Unlock.Cost == 1 ? "" : "s")} in the tech tree",
+            lines.Add((open ? $"UNLOCKED · LV {item.Unlock.Level}" : $"LOCKED · LV {item.Unlock.Level} · {item.Unlock.Cost} PT",
                 open ? C.Good : C.Warn));
         }
         if (!string.IsNullOrEmpty(item.Uses)) lines.Add((item.Uses, C.Dim));
@@ -382,27 +451,27 @@ public static class Tooltips
     {
         ItemCategory.Block => item.Family switch
         {
-            BlockFamily.Armour => "Block family · any shape",
+            BlockFamily.Armour => "Block · any shape",
             BlockFamily.Deco => $"Deco piece{(item.Group != null ? $" · {item.Group}" : "")}",
-            _ => PlayerInventory.CoreItems.Contains(item.Id) ? "Core · founds a structure" : "Device block",
+            _ => item.Id == PlayerInventory.Core ? "Core" : "Device block",
         },
         ItemCategory.Raw => "Raw",
         ItemCategory.Unique => "Unique find",
-        ItemCategory.Component when PlayerInventory.CoreItems.Contains(item.Id) => "Core · founds a structure",
+        ItemCategory.Component when item.Id == PlayerInventory.Core => "Core",
         _ => item.Category.ToString(),
     };
 
-    static string Maker(ItemCatalogue items, int tier) => tier < 0 ? "Suit fabricator" : $"{Capital(items.Machines.TierName(tier))} constructor or better";
+    static string Maker(ItemCatalogue items, int tier) => tier < 0 ? "Suit fabricator" : $"{Capital(items.Machines.TierName(tier))} constructor+";
 
     static string Capital(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     static string Found(ItemDef item) =>
-        !string.IsNullOrEmpty(item.Where) ? $"Found: {item.Where}" : item.Source switch
+        !string.IsNullOrEmpty(item.Where) ? $"SOURCE · {item.Where.ToUpperInvariant()}" : item.Source switch
         {
-            ItemSource.Mined => "Mined from ore deposits",
-            ItemSource.Dug => "Dug from any rock",
-            ItemSource.Harvested => "Harvested from plants and creatures",
-            ItemSource.Found => "Found only in ruins, wrecks and derelicts",
-            _ => "Not crafted",
+            ItemSource.Mined => "SOURCE · ORE DEPOSITS",
+            ItemSource.Dug => "SOURCE · ANY ROCK",
+            ItemSource.Harvested => "SOURCE · PLANTS, CREATURES",
+            ItemSource.Found => "SOURCE · RUINS, WRECKS, DERELICTS",
+            _ => "NOT CRAFTED",
         };
 }

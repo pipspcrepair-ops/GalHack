@@ -18,7 +18,8 @@ namespace CapitalBase.Tests;
 /// Views: descent (Bastion 7 coming down on its lift jets, gear out), landed (settled on its legs on
 /// uneven ground), anchored (a base, built onto and into the ground, dug round, Prospector 3 parked
 /// on the pad, the core console showing), farm (Prospector drilling beside the base, sending it
-/// Home), liftoff (cut free, the ground crumbling as it rises).
+/// Home), liftoff (cut free, the ground crumbling as it rises), far (high up outside the landed Bastion's voxel square,
+/// looking back across it to the far ground rings and the horizon).
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -61,7 +62,7 @@ public partial class Screenshot : Node
     void Setup()
     {
         _spot = W.Spots[0];
-        W.SpawnBase("outpost", "outpost.gbp", W.Spots[3].Flat, 0.6f);
+        W.SpawnBase("outpost", "prototypes/slice/data/blueprints/outpost.gbp", W.Spots[3].Flat, 0.6f);
         float height = _view == "descent" ? 30f : 13f;
         W.SpawnFlying("bastion", "bastion.gbp", new N.Vector3(_spot.X, _spot.Ground + height, _spot.Z), 0f);
         W.Spawn("prospector", "prospector.gbp", N.Vector3.Zero, N.Quaternion.Identity);
@@ -89,7 +90,7 @@ public partial class Screenshot : Node
                 break;
             case 1:
                 b.Flight.Input = PilotInput.LetGo;
-                if (_view == "landed")
+                if (_view is "landed" or "far")
                 {
                     _captureAt = _tick + 30;
                     _phase = 9;
@@ -116,7 +117,7 @@ public partial class Screenshot : Node
                     _phase = 3;
                     break;
                 }
-                W.SwitchMode(b, CoreMode.Capital);
+                W.SwitchMode(b, CoreMode.Flight);
                 W.LiftOffFrom(b);
                 Caption("Lift-off. The stair and pylon the player built are part of Bastion 7 and lift off with it;\n" +
                         "the ground they reached into is cut free and crumbles.", panels: false);
@@ -234,6 +235,10 @@ public partial class Screenshot : Node
             case "farm":
                 eye = t.Origin + new Vector3(44f, 9f, -40f);
                 at = t.Origin + new Vector3(14f, -5f, -12f);
+                break;
+            case "far":
+                eye = t.Origin + new Vector3(170f, 110f, 170f); // outside the 224 m voxel square, looking back across it
+                at = t.Origin + new Vector3(-80f, -10f, -80f);
                 break;
             default: // liftoff: low over the stair's foot, where the ground is cut
                 eye = t.Origin + new Vector3(-30f, 1f, -24f);

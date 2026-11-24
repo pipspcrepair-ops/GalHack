@@ -20,9 +20,9 @@ public partial class BuildController : Node
     /// <summary>Hotbar slots 1-9. Pressing a slot's key again cycles its variants.</summary>
     public static readonly string[][] Slots =
     {
-        new[] { "steel" }, new[] { "hardened" }, new[] { "combat" }, new[] { "glass", "concrete" },
-        new[] { "thruster", "generator", "fueltank" }, new[] { "chair", "light", "turret" },
-        new[] { "container", "cpuext" }, new[] { "door", "ladder" }, new[] { "core" },
+        new[] { "iron-plated", "base-block" }, new[] { "hardened-plated" }, new[] { "combat-plated" }, new[] { "glass-plated", "window-block", "concrete-plated" },
+        new[] { "thruster-t1", "thruster-t2", "generator-t1" }, new[] { "command-chair", "cockpit-t1", "light", "turret" },
+        new[] { "container-t1", "container-t4" }, new[] { "door-1x2x1", "door-2x2x1", "ladder" }, new[] { "core" },
     };
 
     /// <summary>The sprayer's colours: a 1970s paperback palette.</summary>
@@ -46,7 +46,6 @@ public partial class BuildController : Node
     public int Rot;
     public Symmetry Symmetry;
     public readonly int[] SymmetryState = new int[3]; // 0 off, 1 through the core's cell, 2 between cells
-    public GridSize NewCoreGrid = GridSize.Large;
     public bool OverlayOn;
 
     /// <summary>Ghost, outline, planes and hints. Off for clean screenshots.</summary>
@@ -59,7 +58,9 @@ public partial class BuildController : Node
 
     public int PaintBase, PaintAccent = 6, Grime, Stencil = -1;
     public Pattern PaintPattern = Pattern.None;
-    public FaceTexture PaintTexture = FaceTexture.Panel;
+    /// <summary>Glowing paint (L cycles the shape, Shift+L the mode): lit in the base colour, drifting to the accent colour in Fade.</summary>
+    public LampShape PaintLamp = LampShape.None;
+    public LightAnim PaintLampAnim = LightAnim.Steady;
 
     /// <summary>What the crosshair is on. Updated every physics tick.</summary>
     public struct AimInfo
@@ -88,7 +89,9 @@ public partial class BuildController : Node
 
     public BlockType SelectedType => Main.Catalogue.Type(Slots[Slot][Variant[Slot] % Slots[Slot].Length]);
     public ShapeDef SelectedShape => SelectedType.IsArmor ? Main.Catalogue.Shapes[ShapeIndex] : null;
-    public Paint CurrentPaint => new(PaintColors[PaintBase], PaintColors[PaintAccent], PaintPattern, PaintTexture,
+    public Paint CurrentPaint => PaintLamp != LampShape.None
+        ? Paint.Lit(PaintLamp, LightSettings.Make(PaintColors[PaintBase], PaintLampAnim, 0.5f, 0, PaintColors[PaintAccent]))
+        : new(PaintColors[PaintBase], PaintColors[PaintAccent], PaintPattern,
         Stencil < 0 ? (byte)0 : (byte)('0' + Stencil), (byte)Grime);
 
     public override void _Ready()
@@ -159,8 +162,9 @@ public partial class BuildController : Node
             case Key.R when Mode == Tool.Build: Turn(1, shift); break;
             case Key.T when Mode == Tool.Build: Turn(0, shift); break;
             case Key.Y when Mode == Tool.Build: Turn(2, shift); break;
-            case Key.R when Mode == Tool.Paint:
-                PaintTexture = (FaceTexture)(((int)PaintTexture + 1) % 4);
+            case Key.L when Mode == Tool.Paint:
+                if (shift) PaintLampAnim = (LightAnim)(((int)PaintLampAnim + 1) % 5);
+                else PaintLamp = (LampShape)(((int)PaintLamp + 1) % 5);
                 Sfx.PlayUi("click");
                 break;
             case Key.X: ToggleSymmetry(0); break;
@@ -174,11 +178,6 @@ public partial class BuildController : Node
             case Key.E: Interact(); break;
             case Key.O: ToggleOverlay(); break;
             case Key.K: Blast(); break;
-            case Key.G:
-                NewCoreGrid = NewCoreGrid == GridSize.Large ? GridSize.Small : GridSize.Large;
-                Hud.Toast($"New cores start a {(NewCoreGrid == GridSize.Large ? "large-grid (2 m) base or capital ship" : "small-grid (0.5 m) vessel")}", Hud.Info);
-                Sfx.PlayUi("toggle");
-                break;
             case Key.B: ToggleCoreMode(); break;
             case Key.P:
                 Mode = Mode == Tool.Build ? Tool.Paint : Tool.Build;
@@ -336,7 +335,8 @@ public partial class BuildController : Node
         BlockType type = SelectedType;
         int rot = AutoOrient(type, face, Rot);
         Block block = Building.Make(s, type, SelectedShape, rot);
-        var copies = Building.MirrorCopies(s, cell, block, Symmetry);
+        // A block spanning several cells grows out from the face it's built on.
+        var copies = Building.MirrorCopies(s, Footprint.AnchorFor(type, rot, cell, face), block, Symmetry);
         var result = new List<(Int3, Block, PlaceError)>();
         foreach (Placement c in copies)
             result.Add((c.Pos, c.Block, Building.Check(s, c.Pos, c.Block)));
@@ -351,24 +351,13 @@ public partial class BuildController : Node
         bool blocked = InPlayer(aim.View, cell);
         PlaceError first = candidates[0].error;
 
-        double addCpu = candidates.Where(c => c.error == PlaceError.None).Sum(c => (double)s.StatsOf(c.block).Cpu);
-        StructureStats st = aim.View.Stats;
-        string warning = null;
-        if (st != null && st.CpuLimit > 0 && first == PlaceError.None && st.CpuUsed + addCpu > st.CpuLimit)
-        {
-            double after = StructureStats.EfficiencyFor(st.CpuUsed + addCpu, st.CpuLimit);
-            warning = st.CpuUsed <= st.CpuLimit
-                ? $"Crosses the T{st.Tier} CPU limit ({st.CpuLimit:N0}): components drop to {after:P0}"
-                : $"Over CPU: efficiency {st.Efficiency:P0} → {after:P0}. Add a CPU extender (7).";
-        }
-
-        Color tint = blocked || first != PlaceError.None ? GhostPreview.Invalid : warning != null ? GhostPreview.Warning : GhostPreview.Valid;
+        Color tint = blocked || first != PlaceError.None ? GhostPreview.Invalid : GhostPreview.Valid;
         var ghosts = candidates.Select(c => (c.cell, c.block, c.error == PlaceError.None && !blocked ? tint : GhostPreview.Invalid)).ToList();
         _ghost.ShowGhosts(aim.View.GlobalTransform, s, ghosts);
+        if (SelectedType.Multi) _ghost.ShowBlocked(aim.View.GlobalTransform, s, candidates.SelectMany(c => Building.Blocked(s, c.cell, c.block)).ToList());
 
         if (blocked) SetHint("You're standing there", GhostPreview.Invalid);
         else if (first != PlaceError.None) SetHint(Explain(first, s), GhostPreview.Invalid);
-        else if (warning != null) SetHint(warning, GhostPreview.Warning);
         else if (Building.IsDamaged(s, aim.Cell)) SetHint("Damaged block: U to repair", GhostPreview.Warning);
     }
 
@@ -379,11 +368,10 @@ public partial class BuildController : Node
             SetHint("Blocks attach to a structure. Start one with a core (9).", new Color(1f, 0.85f, 0.6f));
             return;
         }
-        GridDef grid = Main.Catalogue.Grid(NewCoreGrid);
-        var scratch = new Structure(Main.Catalogue, grid);
-        _ghost.ShowGhosts(GroundFrame(aim.Point, grid), scratch,
+        var scratch = new Structure(Main.Catalogue);
+        _ghost.ShowGhosts(GroundFrame(aim.Point, Main.Catalogue.Grid), scratch,
             new[] { (Int3.Zero, Building.Make(scratch, SelectedType), GhostPreview.Valid) });
-        SetHint($"Place a {(grid.Size == GridSize.Large ? "large" : "small")}-grid starter core (G switches grid)", GhostPreview.Valid);
+        SetHint("Place a starter core", GhostPreview.Valid);
     }
 
     /// <summary>Where a starter core sits on the ground: snapped to the grid, resting on the surface.</summary>
@@ -452,15 +440,13 @@ public partial class BuildController : Node
         AimInfo aim = Aim;
         if (aim.OnGround && SelectedType.IsCore)
         {
-            GridDef grid = Main.Catalogue.Grid(NewCoreGrid);
-            var s = new Structure(Main.Catalogue, grid) { Name = NewCoreGrid == GridSize.Large ? "New base" : "New vessel", Mode = CoreMode.Base };
-            if (NewCoreGrid == GridSize.Small) s.Mode = CoreMode.Capital;
+            var s = new Structure(Main.Catalogue) { Name = "New base", Mode = CoreMode.Base };
             Building.Place(s, Int3.Zero, Building.Make(s, SelectedType));
-            Transform3D frame = GroundFrame(aim.Point, grid);
+            Transform3D frame = GroundFrame(aim.Point, s.Grid);
             StructureView view = Main.AddStructure(s, frame);
             SetActive(view);
             Feedback(view, Int3.Zero, "place");
-            Hud.Toast($"Started a {(grid.Size == GridSize.Large ? "large" : "small")}-grid structure. Build onto the core.", Hud.Good);
+            Hud.Toast("Started a structure. Build onto the core.", Hud.Good);
             return;
         }
         if (!aim.OnBlock)
@@ -479,7 +465,7 @@ public partial class BuildController : Node
         BlockType type = SelectedType;
         Block block = Building.Make(st, type, SelectedShape, AutoOrient(type, aim.Face, Rot));
         bool claiming = type.IsCore && st.IsWreck;
-        var results = Building.PlaceSymmetric(st, cell, block, Symmetry, Inventory);
+        var results = Building.PlaceSymmetric(st, Footprint.AnchorFor(type, block.Rot, cell, aim.Face), block, Symmetry, Inventory);
         if (results[0].error != PlaceError.None)
         {
             Refuse(Explain(results[0].error, st));
@@ -509,8 +495,8 @@ public partial class BuildController : Node
         Structure s = view.Structure;
 
         var cells = new List<Int3> { aim.Cell };
-        if (Symmetry.Any)
-            foreach (Placement c in Building.MirrorCopies(s, aim.Cell, s.Get(aim.Cell), Symmetry).Skip(1))
+        if (Symmetry.Any && s.TryGetBlock(aim.Cell, out Int3 anchor, out Block aimed))
+            foreach (Placement c in Building.MirrorCopies(s, anchor, aimed, Symmetry).Skip(1))
                 if (s.Has(c.Pos)) cells.Add(c.Pos);
 
         if (s.Core == aim.Cell && s.Count > 1)
@@ -653,10 +639,9 @@ public partial class BuildController : Node
         Sfx.Play("upgrade", view.CellToGlobal(s.Core.Value), 0.7f);
         Hud.Toast(s.Mode switch
         {
-            CoreMode.Base => "Core set to BASE MODE: every block stays, it just won't fly",
-            CoreMode.Capital => "Core set to CAPITAL MODE: same blocks, thrusters live",
-            CoreMode.Hover => "Core set to HOVER MODE: hover plates lift, thrusters only push it along",
-            _ => "Core set to VESSEL MODE: thrusters fly it, hover plates idle",
+            CoreMode.Base => "BASE MODE",
+            CoreMode.Hover => "HOVER MODE",
+            _ => "FLIGHT MODE",
         }, Hud.Good);
     }
 
@@ -702,7 +687,8 @@ public partial class BuildController : Node
         PaintBase = Nearest(p.Base);
         PaintAccent = Nearest(p.Accent);
         PaintPattern = p.Pattern;
-        PaintTexture = p.Texture;
+        PaintLamp = p.IsLamp ? p.Shape : LampShape.None;
+        if (p.IsLamp) PaintLampAnim = p.Lamp.Value.Anim;
         Stencil = p.Stencil == 0 ? -1 : p.Stencil - '0';
         Grime = p.Grime;
         Sfx.PlayUi("click", 1.3f);
@@ -799,8 +785,7 @@ public partial class BuildController : Node
     {
         Structure s = view.Structure;
         Vector3 local = view.GlobalTransform.AffineInverse() * point / view.CellSize;
-        float radius = view.CellSize < 1f ? 3.5f : 1.7f;
-        DamageReport report = Damage.Blast(s, new System.Numerics.Vector3(local.X, local.Y, local.Z), radius, DamageType.Explosive, 1800f * s.Grid.HpScale);
+        DamageReport report = Damage.Blast(s, new System.Numerics.Vector3(local.X, local.Y, local.Z), 2.5f, DamageType.Explosive, 570f);
         foreach (var (pos, block) in report.Destroyed)
             Effects.Debris(view.CellToGlobal(pos), view.CellSize, BlockColor(s, block), 8, 7f);
         view.Sync();

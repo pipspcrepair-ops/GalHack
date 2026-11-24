@@ -2,31 +2,32 @@
 // built from the unlock fields on items and blocks (shared/Items data, and data/items.json here).
 //
 //   levels         experience needed to reach each level, from level 2 up to the cap (level 1 is
-//                  where everyone starts, with 0). Tuned so an experienced player playing the
-//                  loop (gather, craft the foothold base, build it) reaches level 5, the small
-//                  vessel's gate, in about 30 to 40 minutes, when its base can make the vessel's parts
-//   points         unlock points granted on reaching each level, from level 2 up
-//   startPoints    unlock points a new character starts with: enough for the Small Core and the hover
-//                  plate at level 1, with one to spare
+//                  where everyone starts, with 0). A curve: each level takes 1.1 times as long as
+//                  the one before, about 17 minutes for level 2 and 25 hours of play to the cap
+//                  (owner, 14 Nov), at about 0.95 experience a minute once "gain" is applied
+//   points         unlock points granted on reaching each level, from level 2 up: with startPoints
+//                  they pay for the whole tree (deco included) by the cap and not before, so each
+//                  level up is a choice (BuildTest checks both)
+//   startPoints    unlock points a new character starts with
 //   pastCap        past the cap, one more point for every this much experience
-//   xp             what each thing done is worth
+//   xp             what each thing done is worth; "gain" scales all of it (0.05: a twentieth of the
+//                  values below, one dial for the whole pace of levelling)
 {
   "schema": "galhack.progress",
   "version": 1,
-  "levels": [ 80, 220, 420, 680, 980, 1340, 1760, 2240, 2780, 3380, 4040, 4760, 5540, 6380, 7280,
-              8240, 9260, 10340, 11480, 12680, 13940, 15260, 16640, 18080 ],
-  "points": [ 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6 ],
+  "levels": [ 16, 34, 53, 75, 98, 124, 153, 184, 219, 257, 298, 344, 395, 450, 512, 579,
+              653, 734, 824, 922, 1031, 1150, 1281, 1425 ],
+  "points": [ 2, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 10, 10, 10 ],
   "startPoints": 3,
-  "pastCap": 1500,
+  "pastCap": 75,
   "xp": {
+    "gain": 0.05,
     // Gathering: per 1 m cell of ore dug, per plant cut.
     "oreCell": 3,
     "plant": 2,
     // Crafting: per finished run, a point per this many recipe seconds (at least one).
     "craftSecondsPerXp": 3,
-    // Building: per block placed (large blocks take more work than small ones).
-    "blockLarge": 3,
-    "blockSmall": 1,
+    // Building: per block placed, each block's own (shared/Items blocks.json "xp").
     // Exploring: the first time you come within 30 m of a deposit; the first of a species you meet.
     "deposit": 15,
     "species": 10,

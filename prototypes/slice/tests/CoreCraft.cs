@@ -1,9 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
 using Slice.Game;
+using Slice.Surface;
 using Slice.Vessels;
 using N = System.Numerics;
 using Structure = GalHack.Structures.Structure;
@@ -21,7 +23,7 @@ public static class CoreCraft
         throw new InvalidOperationException("no rotation points a thruster up");
     }
 
-    /// <summary>The Skiff: thrusters, a chair, gyro and legs, no hover plates. Its blueprint is old, so it loads in Vessel Mode.</summary>
+    /// <summary>The Skiff: thrusters, a chair, gyro and legs, no hover plates. Its blueprint is old, so it loads in Flight Mode.</summary>
     public static Structure Skiff(GameData data) => data.Blueprint(data.Rules.Build.StarterBlueprint);
 
     /// <summary>Fits hover plates under the outermost cells of a craft's belly: four of them, spread out, one block each.</summary>
@@ -47,13 +49,27 @@ public static class CoreCraft
         return done;
     }
 
+    /// <summary>A landed base at <paramref name="at"/> with a working weather forecast block (the weather warnings show only in reach of one), and the block's cell. The caller stands in its area.</summary>
+    public static (Vessel vessel, Int3 forecast) ForecastBase(SurfaceZone zone, Vector3 at)
+    {
+        Structure s = Ship(zone.Data.Catalogue, false, _ => true);
+        var cell = new Int3(2, 1, 2);
+        foreach (var (at2, id) in new[] { (cell, "weather-forecast"), (new Int3(1, 1, 2), "container-t1") }) // the container: core storage, for its generator's fuel
+            if (Building.Place(s, at2, Building.Make(s, zone.Data.Catalogue.Type(id))) is var e && e != PlaceError.None)
+                throw new InvalidOperationException($"the forecast base's {id} can't go at {at2}: {e}");
+        Vessel v = Vessel.Spawn(zone, s, (at + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        v.Storage.Add("biofuel", 40);
+        v.Settle();
+        return (v, cell);
+    }
+
     /// <summary>
     /// A small Big Core structure: a steel deck with its core, a generator, a chair, a gyro and
     /// enough thrusters pushing up to lift it, in Base Mode. With no thrusters when asked: it can't fly.
     /// </summary>
     public static Structure Ship(Catalogue blocks, bool thrusters, Func<Structure, bool> enough)
     {
-        var s = new Structure(blocks, blocks.Grid(GridSize.Large)) { Name = "Test ship", Mode = CoreMode.Base, GravityOn = true };
+        var s = new Structure(blocks) { Name = "Test ship", Mode = CoreMode.Base, GravityOn = true };
         Building.Place(s, Int3.Zero, Building.Make(s, blocks.CoreType));
         for (int x = -2; x <= 2; x++)
             for (int z = -2; z <= 2; z++)
@@ -75,12 +91,67 @@ public static class CoreCraft
         return s;
     }
 
+    /// <summary>
+    /// A large hover structure (a hover tank, a land carrier): a solid steel hull 7 by 11 cells,
+    /// deepened a layer at a time until it weighs <paramref name="tonnes"/>, with a chair, a
+    /// generator and a gyro on its deck, thrusters pushing forward and back, and hover plates spread
+    /// under its belly (its four corners at least) until they lift half again its weight here. Set in Hover Mode.
+    /// </summary>
+    public static Structure HoverTank(Catalogue blocks, float tonnes, float gravity)
+    {
+        var s = new Structure(blocks) { Name = "Hover tank", Mode = CoreMode.Hover, GravityOn = true };
+        Building.Place(s, Int3.Zero, Building.Make(s, blocks.CoreType));
+        BlockType steel = blocks.Type("steel");
+        for (int y = 0; y > -8 && (y == 0 || StructureStats.Compute(s).Mass < tonnes); y--)
+        {
+            // A block goes on only where it touches one already placed: sweep the layer until it is full.
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                for (int x = -3; x <= 3; x++)
+                    for (int z = -5; z <= 5; z++)
+                        grew |= !s.Has(new Int3(x, y, z)) && Building.Place(s, new Int3(x, y, z), Building.Make(s, steel)) == PlaceError.None;
+            }
+        }
+        var (low, _) = s.Bounds();
+        int belly = low.Y - 1;
+        Building.Place(s, new Int3(0, 1, 0), Building.Make(s, blocks.Type("chair")));
+        Building.Place(s, new Int3(1, 1, 0), Building.Make(s, blocks.Type("generator")));
+        Building.Place(s, new Int3(-1, 1, 0), Building.Make(s, blocks.Type("gyro")));
+        int back = Facing(Dir.PosZ);
+        foreach (int x in new[] { -2, 2 })
+        {
+            Building.Place(s, new Int3(x, 1, -4), Building.Make(s, blocks.Type("thruster")));
+            Building.Place(s, new Int3(x, 1, 4), Building.Make(s, blocks.Type("thruster"), rot: back));
+        }
+        BlockType plate = blocks.Type("hover");
+        // The corners first, then the middles of the sides, then down the middle.
+        var spots = new (int x, int z)[] { (-3, -5), (3, -5), (-3, 5), (3, 5), (-3, 0), (3, 0), (0, -5), (0, 5), (0, 0), (-3, -3), (3, -3), (-3, 3), (3, 3), (0, -3), (0, 3) };
+        for (int i = 0; i < spots.Length; i++)
+        {
+            float lift = s.Blocks().Where(b => s.TypeOf(b.block).Function == "hover").Sum(b => s.TypeOf(b.block).Lift);
+            if (i >= 4 && lift >= 1.5f * StructureStats.Compute(s).Mass * gravity) break;
+            Building.Place(s, new Int3(spots[i].x, belly, spots[i].z), Building.Make(s, plate));
+        }
+        return s;
+    }
+
+    /// <summary>A rotation that points a thruster's push along <paramref name="push"/>.</summary>
+    static int Facing(Dir push)
+    {
+        for (int r = 0; r < 24; r++)
+            if (Orientations.ToWorld(r, Dir.NegZ) == push && Orientations.ToWorld(r, Dir.PosY) == Dir.PosY) return r;
+        throw new InvalidOperationException($"no upright rotation pushes {push}");
+    }
+
     /// <summary>The ground under a point, whatever has been built near it.</summary>
     public static float GroundY(Slice.Surface.SurfaceZone zone, Vector3 at) => zone.GroundAt(at.X, at.Z).Y;
 
     /// <summary>Every block of a structure, for checking that a switch rebuilt nothing.</summary>
     public static Dictionary<Int3, Block> Blocks(Structure s) => s.Blocks().ToDictionary(b => b.pos, b => b.block);
 
-    public static bool SameBlocks(Structure s, Dictionary<Int3, Block> before) =>
-        s.Count == before.Count && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
+    public static bool SameBlocks(Structure s, Dictionary<Int3, Block> before) => s.BlockCount == before.Count && Changed(s, before) == 0;
+
+    /// <summary>How many of the blocks before are gone or not as they were (worn, turned).</summary>
+    public static int Changed(Structure s, Dictionary<Int3, Block> before) => before.Count(kv => !s.TryGet(kv.Key, out Block b) || !b.SameAs(kv.Value));
 }

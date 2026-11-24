@@ -18,10 +18,16 @@ public enum Surface
 
     /// <summary>Something solid that isn't registered (a static prop, a base that never moves).</summary>
     Static,
+
+    /// <summary>A planet's trunks, crowns and boulders (the flora layer): fixed like the ground, but a structure can break a tree (<see cref="IFloraField"/>).</summary>
+    Flora,
 }
 
-/// <summary>One contact as a mover found it. The normal points out of what was hit, toward the body.</summary>
-public readonly record struct Contact(Vector3 Point, Vector3 Normal, Body Other, Surface Surface);
+/// <summary>
+/// One contact as a mover found it. The normal points out of what was hit, toward the body. <see cref="Part"/> is the
+/// engine's own handle on what was hit, for the field that owns it (a flora contact's shape, for <see cref="IFloraField"/>).
+/// </summary>
+public readonly record struct Contact(Vector3 Point, Vector3 Normal, Body Other, Surface Surface, object Part = null);
 
 /// <summary>
 /// One collision, as the rest of the game hears about it. <see cref="Other"/> is null for the

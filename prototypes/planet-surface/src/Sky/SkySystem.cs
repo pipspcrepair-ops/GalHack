@@ -32,12 +32,11 @@ public sealed record SkyBody
 /// A world's place in its system, as far as the sky is concerned: the star it circles, the air it
 /// breathes, and what else hangs overhead. Derived deterministically from the planet spec, so
 /// every player sees the same sky, and the sky follows the place:
-/// - <b>Star</b>: its class sets the sunlight's colour and how big and bright the sun is. A red
-///   dwarf's world has orange light and a muted teal-grey sky; a blue-white star bleaches it.
-/// - <b>Air</b>: Rayleigh scattering of that starlight gives the clear-sky colour (blue under a
-///   yellow star), then dust, ash, sulfur or exotic chemistry tint and thicken it. Earth-like
-///   worlds read Earth-like; dusty worlds read dusty; only exotic air (or a nebula behind it)
-///   earns pastel and neon colours.
+/// - <b>Star</b>: its class sets the sunlight's colour (Planck's law at its temperature) and how
+///   big and bright the sun is. A red dwarf's world has orange light under a grey-gold sky.
+/// - <b>Air</b>: its kind and thickness, through the world's palette (<see cref="WorldPalette"/>):
+///   Rayleigh scattering of that starlight gives the clear sky (blue under a yellow star), its trace
+///   gas, dust, ash and sulfur colour and thicken it, and the art direction makes it bold.
 /// - <b>Bodies</b>: moons, a neighbouring gas giant (ringed if the planet's RingedSky modifier
 ///   says the system has one), and sometimes a nebula backdrop, sized and placed to make sense.
 /// </summary>
@@ -45,21 +44,27 @@ public sealed record SkySystem
 {
     public StarClass Star { get; init; }
     public Rgb StarColor { get; init; }
-    public float SunRadius { get; init; }        // angular radius, radians
     public float SunEnergy { get; init; }
     public AirKind Air { get; init; }
-    public float Density { get; init; }          // 0.3 thin .. 2 thick: haze, horizon brightness, sunset strength
+    /// <summary>How thick its air is, from the world's size (<see cref="PlanetSpec.AirThickness"/>): 0 in vacuum, 0.5 thin to 2 dense.</summary>
+    public float Thickness { get; init; }
+    /// <summary>Its air kind's own density at that thickness: haze, horizon brightness, sunset strength, the air shell seen from space.</summary>
+    public float Density { get; init; }
     public Rgb Zenith { get; init; }             // clear midday sky straight up
     public Rgb Horizon { get; init; }            // clear midday sky at the horizon
     public Rgb Sunset { get; init; }             // the glow toward a low sun
     public Rgb Haze { get; init; }               // aerosol colour: what fog and distance fade to
     public Rgb NightZenith { get; init; }
     public Rgb CloudTint { get; init; } = new(1f, 1f, 1f);   // what the clouds are made of: water white, ash brown, spores olive
+    /// <summary>What lights the ground in shadow: the sky's own colour, or with no air a deep colour opposite its star's.</summary>
+    public Rgb Shade { get; init; }
     public float StarsByDay { get; init; }       // thin air shows stars even in daylight
     public bool Nebula { get; init; }
     public Rgb NebulaA { get; init; }
     public Rgb NebulaB { get; init; }
     public IReadOnlyList<SkyBody> Bodies { get; init; } = Array.Empty<SkyBody>();
+    /// <summary>The world's natural colours: this sky's are read from it, and so are the ground's, the water's, the plants' and the globe's.</summary>
+    public WorldPalette Palette { get; init; }
     public float DayMinutes { get; init; } = 24f; // a full day-night cycle, real minutes
     public string Summary { get; init; } = "";
 
@@ -72,86 +77,50 @@ public sealed record SkySystem
         }
     }
 
-    public static SkySystem For(PlanetSpec spec)
+    /// <summary>Tests and shots: every world rolled from here on circles this star (null: its own).</summary>
+    public static StarClass? ForceStar;
+
+    /// <summary>The real skies: every world's palette in the game is its sky's, made with its own star and air (a generator alone has none).</summary>
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void UseRealSkies() => WorldPalette.Of = spec => For(spec).Palette;
+
+    /// <param name="star">the star it really circles, where that isn't the one its own spec would pick (a moon in another world's system)</param>
+    public static SkySystem For(PlanetSpec spec, StarClass? star = null)
     {
         var rng = new Rng(Hash.Of(spec.Seed, 0x534B59, (long)spec.Archetype, spec.Variant));
-        StarClass star = PickStar(spec, ref rng);
-        Rgb starColor = StarColorOf(star);
+        bool today = WorldPalette.IsToday(spec);
+        StarClass picked = PickStar(spec, ref rng);
+        StarClass sun = star ?? ForceStar ?? picked;
         AirKind air = AirOf(spec);
-
-        // Clear sky: starlight scattered as 1/lambda^4 (red, green, blue at 680, 550, 440 nm).
-        Rgb rayleigh = Normalize(starColor * new Rgb(0.21f, 0.5f, 1f));
         float density = air switch
         {
             AirKind.Thin => 0.45f, AirKind.Breathable => 1f, AirKind.Humid => 1.35f, AirKind.Dusty => 1.1f,
             AirKind.Ash => 1.7f, AirKind.Sulfurous => 1.5f, _ => 1.2f,
-        };
-        Rgb zenith = rayleigh * 0.62f, horizon = Rgb.Lerp(rayleigh, starColor, 0.55f) * 0.95f;
-        Rgb haze = Rgb.Lerp(horizon, starColor, 0.3f);
-        Rgb sunset = Rgb.Lerp(starColor, new Rgb(1f, 0.42f, 0.16f), 0.65f);
-        float hue = rng.NextFloat();
+        } * spec.AirThickness;
 
-        switch (air)
+        // Every natural colour from one model: this star's light through this air onto this ground (WorldPalette).
+        // The gas column is the air's density; its particles by kind, thicker in thicker air: clean air's sea salt
+        // and sulfate, humid air's water haze, the ground's own dust in dry and thin air (Mars), ash over lava,
+        // sulfuric acid and sulfur gas in sulfurous air (Venus).
+        (Particles particles, float aerosol) = air switch
         {
-            case AirKind.Thin:
-                // Little air to scatter light: a deep, dark zenith over a pale horizon.
-                zenith = zenith * 0.45f;
-                horizon = Rgb.Lerp(horizon, starColor, 0.35f) * 0.85f;
-                break;
-            case AirKind.Humid:
-                zenith = Rgb.Lerp(zenith, horizon, 0.3f);
-                horizon = Rgb.Lerp(horizon, new Rgb(0.9f, 0.92f, 0.9f), 0.45f);
-                haze = Rgb.Lerp(haze, new Rgb(0.82f, 0.86f, 0.84f), 0.6f);
-                break;
-            case AirKind.Dusty:
-                // Fine dust scatters warm: an ochre horizon fading to a dusty blue.
-                Rgb dust = Rgb.Lerp(new Rgb(0.86f, 0.62f, 0.38f), new Rgb(0.8f, 0.5f, 0.3f), hue);
-                zenith = Rgb.Lerp(zenith, dust * 0.55f, 0.35f);
-                horizon = Rgb.Lerp(horizon, dust, 0.75f);
-                haze = dust;
-                sunset = Rgb.Lerp(sunset, new Rgb(0.95f, 0.45f, 0.2f), 0.5f);
-                break;
-            case AirKind.Ash:
-                // Volcanic ash: a dark, brown-grey lid, lit red from below by lava.
-                zenith = new Rgb(0.16f, 0.13f, 0.13f);
-                horizon = new Rgb(0.44f, 0.27f, 0.2f);
-                haze = new Rgb(0.32f, 0.22f, 0.19f);
-                sunset = new Rgb(1f, 0.35f, 0.1f);
-                break;
-            case AirKind.Sulfurous:
-                zenith = new Rgb(0.42f, 0.36f, 0.2f);
-                horizon = new Rgb(0.92f, 0.66f, 0.3f);
-                haze = new Rgb(0.8f, 0.58f, 0.3f);
-                sunset = new Rgb(1f, 0.38f, 0.12f);
-                break;
-            case AirKind.Exotic:
-                (zenith, horizon, haze, sunset) = ExoticAir(spec, hue);
-                break;
-        }
-
-        Rgb cloudTint = air switch
-        {
-            AirKind.Dusty => Rgb.Hex("e8d8c0"),
-            AirKind.Ash => Rgb.Hex("5a4e4a"),
-            AirKind.Sulfurous => Rgb.Hex("d8c890"),
-            AirKind.Exotic => Rgb.Lerp(Rgb.Hex("f0f0f0"), horizon, 0.35f),
-            _ => Rgb.Hex("ffffff"),
+            AirKind.Humid => (Particles.Haze, 0.12f), AirKind.Dusty => (Particles.Dust, 0.25f), AirKind.Thin => (Particles.Dust, 0.3f),
+            AirKind.Ash => (Particles.Ash, 2.5f), AirKind.Sulfurous => (Particles.Sulfate, 1.2f),
+            AirKind.Exotic when spec.Variant == 1 => (Particles.Haze, 0.15f), // a fungal world's spores
+            _ => (Particles.Clean, 0.04f),
         };
+        AirMix mix = spec.Airless ? AirMix.None : new AirMix(density, particles, aerosol * spec.AirThickness, air is AirKind.Breathable or AirKind.Humid);
+        WorldPalette palette = WorldPalette.Make(spec, WorldPalette.Kelvins[(int)sun], mix);
+        float hue = rng.NextFloat(); // a dusty or exotic sky's own shade in today's look
+        if (palette.Today) palette = TodaySky(palette, sun, air, hue, spec.Variant);
+        Rgb starColor = palette.Star;
+        Rgb zenith = palette.Zenith, horizon = palette.Horizon, haze = palette.Haze, sunset = palette.Sunset, cloudTint = palette.CloudTint;
         bool nebula = rng.NextFloat() < (spec.Archetype == Archetype.Alien ? 0.75f : 0.18f) || spec.Has(Modifier.GlowingNights);
         float nh = rng.NextFloat();
         Rgb nebulaA = HueColor(nh, 0.75f), nebulaB = HueColor(Frac(nh + 0.18f + 0.3f * rng.NextFloat()), 0.65f);
-        if (nebula && air != AirKind.Exotic && spec.Archetype == Archetype.Alien)
-        {
-            // A nebula washing the sky: its glow tints the haze a little even by day.
-            horizon = Rgb.Lerp(horizon, nebulaA, 0.25f);
-        }
 
-        var bodies = MakeBodies(spec, ref rng, air);
-        float sunRadius = star switch
-        {
-            StarClass.RedDwarf => 0.028f, StarClass.Orange => 0.016f, StarClass.Yellow => 0.0095f, StarClass.White => 0.008f, _ => 0.006f,
-        };
-        float energy = star switch
+        var bodies = MakeBodies(spec, ref rng, air, today);
+        float energy = sun switch
         {
             StarClass.RedDwarf => 1.1f, StarClass.Orange => 1.25f, StarClass.Yellow => 1.35f, StarClass.White => 1.5f, _ => 1.6f,
         };
@@ -160,17 +129,41 @@ public sealed record SkySystem
         string body = bodies.Count == 0 ? "no moons" : string.Join(", ", bodies.ConvertAll(b => b.Name));
         return new SkySystem
         {
-            Star = star, StarColor = starColor, SunRadius = sunRadius, SunEnergy = energy,
-            Air = air, Density = density, Zenith = zenith, Horizon = horizon, Sunset = sunset, Haze = haze,
+            Star = sun, StarColor = starColor, SunEnergy = energy, Palette = palette, // its disc's size is the system's (StarSystem.SunAngular)
+            Air = air, Thickness = spec.AirThickness, Density = density, Zenith = zenith, Horizon = horizon, Sunset = sunset, Haze = haze,
             NightZenith = Rgb.Lerp(new Rgb(0.01f, 0.012f, 0.025f), zenith * 0.05f, 0.5f),
-            CloudTint = cloudTint,
+            CloudTint = cloudTint, Shade = palette.Shade,
             StarsByDay = air == AirKind.Thin ? 0.35f : 0f,
             Nebula = nebula, NebulaA = nebulaA, NebulaB = nebulaB, Bodies = bodies,
             DayMinutes = 18f + rng.NextFloat() * 14f,
-            Summary = $"{StarName(star)} star · {AirName(air)} air · {body}{(nebula ? " · nebula" : "")}",
+            Summary = $"{StarName(sun)} star · {AirName(air)} air · {body}{(nebula ? " · nebula" : "")}",
         };
     }
 
+    /// <summary>
+    /// A body with no air under a system's star: nothing scatters the light, so the sky is black by
+    /// day as by night, the stars out in daylight, no haze, no clouds, no sunset glow. Its grey rock
+    /// takes its colour from its light: the starlight's own on the sunlit faces, and in shadow a deep
+    /// colour across the hue circle from it, held to blue, violet and magenta, the stronger the further the star is from white (a grey lit by a warm light
+    /// reads cool in its shadows, the simultaneous contrast painters exaggerate; owner, 23 Nov: "deep grey
+    /// moons, but saturated").
+    /// </summary>
+    public static SkySystem Vacuum(SkySystem star)
+    {
+        var black = new Rgb(0.004f, 0.004f, 0.006f);
+        Oklab light = Oklab.Of(star.StarColor);
+        float hue = light.Hue + MathF.PI, low = 250f * MathF.PI / 180f, high = 330f * MathF.PI / 180f;
+        hue = (hue % MathF.Tau + MathF.Tau) % MathF.Tau;
+        if (hue < low || hue > high) hue = Oklab.HueGap(hue, low) < Oklab.HueGap(hue, high) ? low : high;
+        return star with
+        {
+            Air = AirKind.Thin, Thickness = 0f, Density = 0.02f, Zenith = black, Horizon = black, Haze = black, Sunset = black,
+            NightZenith = black, StarsByDay = 1f, Nebula = star.Nebula, Shade = Oklab.Lch(0.55f, Math.Clamp(0.06f + 2f * light.Chroma, 0.06f, 0.17f), hue).ToRgb(),
+            Summary = $"{StarName(star.Star)} star · no air",
+        };
+    }
+
+    /// <summary>The star a world circles: its system's first roll, as it always was, so the palette never changes what a seed makes.</summary>
     static StarClass PickStar(PlanetSpec spec, ref Rng rng)
     {
         float r = rng.NextFloat();
@@ -184,14 +177,61 @@ public sealed record SkySystem
         };
     }
 
-    static Rgb StarColorOf(StarClass s) => s switch
+
+    /// <summary>
+    /// Today's look (<see cref="WorldPalette.IsToday"/>): the hand-made sky the game had before the palette. The starlight's colour
+    /// by class; the clear sky its Rayleigh scattering (1/lambda^4 at 680, 550 and 440 nm); then each kind of air's own colours:
+    /// thin air's dark zenith, humid air's paler horizon, a dusty world's ochre, ash's brown-grey lid, sulfur's gold, exotic air's
+    /// fluorescing or spore-hazed families.
+    /// </summary>
+    static WorldPalette TodaySky(WorldPalette p, StarClass star, AirKind air, float hue, int variant)
     {
-        StarClass.RedDwarf => Rgb.Hex("ff9050"),
-        StarClass.Orange => Rgb.Hex("ffc488"),
-        StarClass.Yellow => Rgb.Hex("fff1dc"),
-        StarClass.White => Rgb.Hex("f4f6ff"),
-        _ => Rgb.Hex("c8dcff"),
-    };
+        Rgb starColor = Rgb.Hex(star switch { StarClass.RedDwarf => "ff9050", StarClass.Orange => "ffc488", StarClass.Yellow => "fff1dc", StarClass.White => "f4f6ff", _ => "c8dcff" });
+        Rgb rayleigh = starColor * new Rgb(0.21f, 0.5f, 1f);
+        rayleigh *= 1f / MathF.Max(rayleigh.R, MathF.Max(rayleigh.G, rayleigh.B));
+        Rgb zenith = rayleigh * 0.62f, horizon = Rgb.Lerp(rayleigh, starColor, 0.55f) * 0.95f;
+        Rgb haze = Rgb.Lerp(horizon, starColor, 0.3f);
+        Rgb sunset = Rgb.Lerp(starColor, new Rgb(1f, 0.42f, 0.16f), 0.65f);
+        switch (air)
+        {
+            case AirKind.Thin:
+                zenith = zenith * 0.45f;
+                horizon = Rgb.Lerp(horizon, starColor, 0.35f) * 0.85f;
+                break;
+            case AirKind.Humid:
+                zenith = Rgb.Lerp(zenith, horizon, 0.3f);
+                horizon = Rgb.Lerp(horizon, new Rgb(0.9f, 0.92f, 0.9f), 0.45f);
+                haze = Rgb.Lerp(haze, new Rgb(0.82f, 0.86f, 0.84f), 0.6f);
+                break;
+            case AirKind.Dusty:
+                Rgb dust = Rgb.Lerp(new Rgb(0.86f, 0.62f, 0.38f), new Rgb(0.8f, 0.5f, 0.3f), hue);
+                zenith = Rgb.Lerp(zenith, dust * 0.55f, 0.35f);
+                horizon = Rgb.Lerp(horizon, dust, 0.75f);
+                haze = dust;
+                sunset = Rgb.Lerp(sunset, new Rgb(0.95f, 0.45f, 0.2f), 0.5f);
+                break;
+            case AirKind.Ash:
+                (zenith, horizon, haze, sunset) = (new Rgb(0.16f, 0.13f, 0.13f), new Rgb(0.44f, 0.27f, 0.2f), new Rgb(0.32f, 0.22f, 0.19f), new Rgb(1f, 0.35f, 0.1f));
+                break;
+            case AirKind.Sulfurous:
+                (zenith, horizon, haze, sunset) = (new Rgb(0.42f, 0.36f, 0.2f), new Rgb(0.92f, 0.66f, 0.3f), new Rgb(0.8f, 0.58f, 0.3f), new Rgb(1f, 0.38f, 0.12f));
+                break;
+            case AirKind.Exotic when variant == 0: // crystal worlds: a fluorescing upper air, deep violet to teal and rose
+                (zenith, horizon) = (Rgb.Lerp(Rgb.Hex("2a1a5e"), Rgb.Hex("1a2c66"), hue), Rgb.Lerp(Rgb.Hex("7fd8c8"), Rgb.Hex("e0a0d0"), hue));
+                (haze, sunset) = (Rgb.Lerp(horizon, Rgb.Hex("b0a0d0"), 0.4f), Rgb.Hex("ff70b0"));
+                break;
+            case AirKind.Exotic: // fungal worlds: spore haze, olive and lime over a warm amber horizon
+                (zenith, horizon) = (Rgb.Lerp(Rgb.Hex("3a4a2a"), Rgb.Hex("2a3c3a"), hue), Rgb.Lerp(Rgb.Hex("cfd88a"), Rgb.Hex("e0c070"), hue));
+                (haze, sunset) = (Rgb.Lerp(horizon, Rgb.Hex("a0a070"), 0.4f), Rgb.Hex("ff9a40"));
+                break;
+        }
+        Rgb cloud = air switch
+        {
+            AirKind.Dusty => Rgb.Hex("e8d8c0"), AirKind.Ash => Rgb.Hex("5a4e4a"), AirKind.Sulfurous => Rgb.Hex("d8c890"),
+            AirKind.Exotic => Rgb.Lerp(Rgb.Hex("f0f0f0"), horizon, 0.35f), _ => Rgb.Hex("ffffff"),
+        };
+        return p with { Star = starColor, Disc = starColor, Zenith = zenith, Horizon = horizon, Band = horizon, Haze = haze, Sunset = sunset, CloudTint = cloud, Shade = zenith };
+    }
 
     static AirKind AirOf(PlanetSpec spec) => (spec.Archetype, spec.Variant) switch
     {
@@ -205,23 +245,7 @@ public sealed record SkySystem
         _ => AirKind.Exotic,
     };
 
-    /// <summary>Alien chemistry: the colours a strange atmosphere earns, a family per variant with seeded drift.</summary>
-    static (Rgb zenith, Rgb horizon, Rgb haze, Rgb sunset) ExoticAir(PlanetSpec spec, float hue)
-    {
-        if (spec.Variant == 0)
-        {
-            // Crystal worlds: a fluorescing upper atmosphere, deep violet to teal and rose.
-            Rgb zenith = Rgb.Lerp(Rgb.Hex("2a1a5e"), Rgb.Hex("1a2c66"), hue);
-            Rgb horizon = Rgb.Lerp(Rgb.Hex("7fd8c8"), Rgb.Hex("e0a0d0"), hue);
-            return (zenith, horizon, Rgb.Lerp(horizon, Rgb.Hex("b0a0d0"), 0.4f), Rgb.Hex("ff70b0"));
-        }
-        // Fungal worlds: spore haze, olive and lime over a warm amber horizon.
-        Rgb z = Rgb.Lerp(Rgb.Hex("3a4a2a"), Rgb.Hex("2a3c3a"), hue);
-        Rgb h = Rgb.Lerp(Rgb.Hex("cfd88a"), Rgb.Hex("e0c070"), hue);
-        return (z, h, Rgb.Lerp(h, Rgb.Hex("a0a070"), 0.4f), Rgb.Hex("ff9a40"));
-    }
-
-    static List<SkyBody> MakeBodies(PlanetSpec spec, ref Rng rng, AirKind air)
+    static List<SkyBody> MakeBodies(PlanetSpec spec, ref Rng rng, AirKind air, bool today)
     {
         var list = new List<SkyBody>();
         // A neighbouring giant: certain when the planet's modifiers say the sky has rings, likely on
@@ -231,14 +255,15 @@ public sealed record SkySystem
         {
             bool rings = spec.Has(Modifier.RingedSky) || rng.NextFloat() < 0.35f;
             float h = rng.NextFloat();
-            // Exotic systems get any hue; elsewhere one of the familiar giant looks (a lerp between two
-            // of them would land on grey), shaded a little either way so no two are quite alike.
-            Rgb color = air == AirKind.Exotic ? HueColor(h, 0.45f)
-                : Rgb.Lerp(GiantLooks[(int)(h * GiantLooks.Length) % GiantLooks.Length], Rgb.Hex("b0a898"), Frac(h * 7f) * 0.25f);
+            // Today's look keeps its old giants: any hue in exotic systems, elsewhere one of five familiar looks shaded a little.
+            var (color, band) = !today ? Giant(h, h < 0.4f)
+                : air == AirKind.Exotic ? Old(HueColor(h, 0.45f))
+                : Old(Rgb.Lerp(Rgb.Hex(new[] { "d6ab78", "e3cd96", "8fb4d8", "86c4b4", "c98f6a" }[(int)(h * 5f) % 5]), Rgb.Hex("b0a898"), Frac(h * 7f) * 0.25f));
+            static (Rgb, Rgb) Old(Rgb c) => (c, Rgb.Lerp(c, Rgb.Hex("5a4a3a"), 0.45f));
             list.Add(new SkyBody
             {
                 Kind = BodyKind.GasGiant, Name = rings ? "a ringed giant" : "a gas giant",
-                Color = color, Band = Rgb.Lerp(color, Rgb.Hex("5a4a3a"), 0.45f),
+                Color = color, Band = band,
                 Radius = 0.09f + rng.NextFloat() * 0.1f,
                 Azimuth = rng.NextFloat() * MathF.Tau, Inclination = 0.25f + rng.NextFloat() * 0.4f,
                 Period = 3f + rng.NextFloat() * 4f, Phase0 = 0.15f + rng.NextFloat() * 0.25f,
@@ -261,23 +286,20 @@ public sealed record SkySystem
         return list;
     }
 
-    static Rgb Normalize(Rgb c)
-    {
-        float m = MathF.Max(c.R, MathF.Max(c.G, c.B));
-        return m > 0f ? c * (1f / m) : c;
-    }
-
     static float Frac(float v) => v - MathF.Floor(v);
 
-    /// <summary>A soft colour from a hue in [0, 1).</summary>
-    static readonly Rgb[] GiantLooks =
+    /// <summary>
+    /// A giant's cloud tops and its darker belts, by what colours them (<paramref name="tone"/> 0..1 picks): ammonia ice
+    /// (cream), tholins (orange), the red chromophores of Jupiter's Great Red Spot (crimson), sulfur (gold), ammonium
+    /// hydrosulfide (brown); an ice giant's methane drinking the red (azure, teal, deep blue, aquamarine, violet-blue under a
+    /// high haze). The belts are another of the same kind, deeper: cream and brown giants as well as crimson and azure ones.
+    /// </summary>
+    public static (Rgb Color, Rgb Band) Giant(float tone, bool ice)
     {
-        Rgb.Hex("d6ab78"),   // banded ochre
-        Rgb.Hex("e3cd96"),   // pale gold
-        Rgb.Hex("8fb4d8"),   // ice blue
-        Rgb.Hex("86c4b4"),   // methane teal
-        Rgb.Hex("c98f6a"),   // rust
-    };
+        string[] tops = ice ? new[] { "3a9ae8", "2ab8b0", "2a50d0", "60d0c0", "6a60e0" } : new[] { "f2dca0", "e07a3a", "c83a3a", "e8b83a", "a8683a" };
+        int i = Math.Clamp((int)(tone * tops.Length), 0, tops.Length - 1);
+        return (Rgb.Hex(tops[i]), Oklab.Vivid(Rgb.Hex(tops[(i + 2) % tops.Length]), 1f, 0f, 0.72f));
+    }
 
     static Rgb HueColor(float h, float saturation)
     {

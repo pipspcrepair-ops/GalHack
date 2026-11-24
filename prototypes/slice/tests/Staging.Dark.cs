@@ -205,19 +205,19 @@ public sealed partial class Staging
         // A vessel's own dark, with the field off as it is in orbit: the same sealed box, lit by its own bake or not at all.
         Vector3 shell = _game.Bunker.Ahead(34f);
         shell.Y = zone.GroundAt(shell.X, shell.Z).Y + 8f;
-        var plan = new System.Text.StringBuilder("schema galhack.blueprint\nversion 1\nname \"Shell\"\ngrid large\nmode base\ngravity off\n");
-        for (int y = 0; y <= 3; y++)
+        var plan = new System.Text.StringBuilder("schema galhack.blueprint\nversion 1\nname \"Shell\"\ngrid 1m\nmode base\ngravity off\n");
+        for (int y = 0; y <= 4; y++)
         for (int z = -3; z <= 3; z++)
         for (int bx = -3; bx <= 3; bx++)
-            if (y == 0 || y == 3 || Math.Abs(bx) == 3 || Math.Abs(z) == 3) plan.Append($"block {bx} {y} {z} {(y == 2 && z == -3 && bx == 0 ? "glass" : "steel")}\n");
+            if (y == 0 || y == 4 || Math.Abs(bx) == 3 || Math.Abs(z) == 3) plan.Append($"block {bx} {y} {z} {(y == 2 && z == -3 && bx == 0 ? "glass-plated" : "iron-plated")}\n");
         plan.Append("block 2 1 2 core\n");
         var built = GalHack.Structures.Blueprint.Load(plan.ToString(), zone.Data.Catalogue, out List<string> planErrors);
         if (built == null) GD.Print($"DARK shell: {string.Join("; ", planErrors)}");
         else
         {
             var box = Slice.Vessels.Vessel.SpawnBase(zone, built, shell.ToNumerics(), 0f);
-            Vector3 inside = box.ToWorld(new System.Numerics.Vector3(0f, 3.2f, 3f));
-            foreach (int x in DarkAt(inside, box.ToWorld(new System.Numerics.Vector3(0f, 4f, -6f)))) yield return x;
+            Vector3 inside = box.ToWorld(new System.Numerics.Vector3(0f, 1.6f, 1.5f));
+            foreach (int x in DarkAt(inside, box.ToWorld(new System.Numerics.Vector3(0f, 2f, -3f)))) yield return x;
             zone.Light.Active = false;
             foreach (int x in _drive.Wait(30)) yield return x;
             DarkShot("vessel-own-dark-field-off");

@@ -16,6 +16,8 @@ public enum ImpactKind { Ground, Block, Creature, Nothing }
 public partial class ShotFx : Node3D
 {
     const float BoltSpeed = 240f, BoltLength = 1.6f, ScorchLife = 30f;
+    /// <summary>Scorches kept at once: held fire lays ten a second, and past this the oldest goes.</summary>
+    const int MostScorches = 64;
 
     sealed class Bolt
     {
@@ -32,6 +34,9 @@ public partial class ShotFx : Node3D
     StandardMaterial3D _boltMaterial;
     CylinderMesh _boltMesh;
     ImageTexture _scorchTexture;
+    /// <summary>The sparks' shape, and their look by kind (blood, hot metal): one each, shared by every impact.</summary>
+    readonly BoxMesh _sparkMesh = new() { Size = new Vector3(0.03f, 0.03f, 0.08f) };
+    readonly Dictionary<Color, StandardMaterial3D> _sparkLooks = new();
 
     /// <summary>For tests and screenshots: bolts fired, impacts shown, and the last impact.</summary>
     public int Bolts { get; private set; }
@@ -57,6 +62,20 @@ public partial class ShotFx : Node3D
         _coneMesh = new CylinderMesh { TopRadius = 0f, BottomRadius = 0.22f, Height = 1f, RadialSegments = 10, Rings = 1 };
         _quad = new QuadMesh { Size = Vector2.One };
         for (int i = 0; i < PoolSize; i++) _slots.Add(MakeSlot(i));
+    }
+
+    /// <summary>
+    /// A muzzle flash of a kind and every kind of impact made once, at a point nothing sees, the scorch taken straight back
+    /// and the counts put back: their first making happens here (<see cref="Slice.Arms.ArmsHost"/>'s warm-up), not in the first shot.
+    /// </summary>
+    public void Warm(string feel, Vector3 at)
+    {
+        Muzzle(feel, at, Vector3.Down);
+        foreach (ImpactKind kind in new[] { ImpactKind.Ground, ImpactKind.Creature })
+            Impact(at, Vector3.Up, kind);
+        foreach (var (decal, _) in _scorches) decal.QueueFree();
+        _scorches.Clear();
+        (Impacts, LastImpact, Flashes, LastFeel) = (0, default, 0, "");
     }
 
     // ---- Muzzle flashes ------------------------------------------------------------------------
@@ -131,7 +150,9 @@ public partial class ShotFx : Node3D
     /// <summary>
     /// A muzzle flash at the muzzle for a kind of fire (<see cref="GunFeel"/>): a flash that lasts a few
     /// frames with a short light, and smoke if the kind has it. A vessel gun passes a larger
-    /// <paramref name="scale"/> for its calibre. Nodes come from a fixed pool, so nothing is allocated.
+    /// <paramref name="scale"/> for its calibre, someone else's gun one for how far off it is
+    /// (<see cref="SeenScale"/>); a scaled-up flash holds a frame or two longer so it reads. Nodes
+    /// come from a fixed pool, so nothing is allocated.
     /// </summary>
     public void Muzzle(string feel, Vector3 at, Vector3 dir, Color colour = default, float scale = 1f, Func<Vector3?> follow = null)
     {
@@ -148,10 +169,12 @@ public partial class ShotFx : Node3D
         }
         s.Age = ++_fired;
         s.Follow = follow;
-        // Held fire doesn't strobe: a shot hard on the last one's heels is dimmer.
+        // Held fire in your own hands doesn't strobe: a shot hard on the last one's heels is dimmer.
+        // Someone else's (scaled up to be seen) flashes full every time: each round is seen leaving.
         double now = Time.GetTicksMsec() / 1000.0;
-        float dim = now - _lastFlash < GunFeel.RepeatWindow ? GunFeel.RepeatDim : 1f;
-        _lastFlash = now;
+        bool own = scale <= 1.2f;
+        float dim = own && now - _lastFlash < GunFeel.RepeatWindow ? GunFeel.RepeatDim : 1f;
+        if (own) _lastFlash = now;
         Color col = colour != default && f.Style is FlashStyle.Bloom ? colour : f.Colour;
         float size = f.Size * scale * GunFeel.FlashScale;
         s.Root.Visible = true;
@@ -179,7 +202,7 @@ public partial class ShotFx : Node3D
         s.Light.LightEnergy = s.LightEnergy;
         s.Light.OmniRange = f.LightRange * MathF.Sqrt(scale);
         s.Light.Visible = true;
-        s.FramesLeft = s.TotalFrames = f.Frames;
+        s.FramesLeft = s.TotalFrames = scale > 1.2f ? Math.Max(f.Frames, SeenFrames) : f.Frames;
 
         s.SmokeLeft = 0f;
         if (f.Smoke > 0f)
@@ -195,6 +218,15 @@ public partial class ShotFx : Node3D
             s.SmokeLeft = f.SmokeLife + 0.1f;
         }
     }
+
+    /// <summary>How many frames at least a scaled-up flash shows.</summary>
+    public const int SeenFrames = 4;
+
+    /// <summary>
+    /// The scale for a flash on someone else's gun this far from the eye: it never shrinks below a
+    /// readable size on screen, so a shot fired at you from across a fight is seen.
+    /// </summary>
+    public static float SeenScale(float metres) => Mathf.Clamp(metres / 5f, 2.5f, 6f);
 
     void TickFlashes(float dt)
     {
@@ -217,7 +249,7 @@ public partial class ShotFx : Node3D
     }
 
     /// <summary>A four-point star with small diagonal spikes (or a soft round bloom), white-hot in the middle, drawn into a texture.</summary>
-    static ImageTexture FlashTexture(bool star)
+    public static ImageTexture FlashTexture(bool star)
     {
         const int n = 96;
         var image = Image.CreateEmpty(n, n, false, Image.Format.Rgba8);
@@ -251,6 +283,7 @@ public partial class ShotFx : Node3D
     /// <summary>Fires a bolt from the muzzle to where the shot lands; the impact shows when it gets there.</summary>
     public void Fire(Vector3 muzzle, Vector3 end, Color colour, Action arrived, string feel = null, Func<Vector3?> follow = null)
     {
+        Slice.Game.SoundCues.Cue(muzzle, 1f);
         Bolts++;
         var mesh = new MeshInstance3D { Mesh = _boltMesh, MaterialOverride = _boltMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         if (colour != default)
@@ -295,7 +328,7 @@ public partial class ShotFx : Node3D
     public int Beams { get; private set; }
 
     /// <summary>
-    /// The survival tool's gather and deconstruct beam, from the barrel tip to the point being worked:
+    /// The plating gun's beam, from the barrel tip to the block being plated:
     /// one pooled cylinder, called every frame the tool works, and it goes out a frame or two after the
     /// last call. No flash, no smoke.
     /// </summary>
@@ -344,8 +377,8 @@ public partial class ShotFx : Node3D
 
     public static readonly Color BeamColour = new(0.3f, 0.6f, 1f);
 
-    /// <summary>The impact where a shot landed: sparks, a flash, and a scorch on ground or blocks (on a structure, riding its node).</summary>
-    public void Impact(Vector3 at, Vector3 normal, ImpactKind kind, Node3D onto = null)
+    /// <summary>The impact where a shot landed: sparks, a flash, and a scorch on ground or blocks (on a structure, riding its node). Without <paramref name="lit"/> no flash of its own (lightning brings its own light, rising and fading).</summary>
+    public void Impact(Vector3 at, Vector3 normal, ImpactKind kind, Node3D onto = null, bool lit = true)
     {
         if (kind == ImpactKind.Nothing) return;
         Impacts++;
@@ -354,20 +387,22 @@ public partial class ShotFx : Node3D
         var burst = new CpuParticles3D
         {
             Emitting = true, OneShot = true, Explosiveness = 1f, Amount = kind == ImpactKind.Creature ? 18 : 28, Lifetime = 0.45f,
-            Mesh = new BoxMesh { Size = new Vector3(0.03f, 0.03f, 0.08f) },
+            Mesh = _sparkMesh,
             Direction = normal == Vector3.Zero ? Vector3.Up : normal, Spread = 55f,
             InitialVelocityMin = 3f, InitialVelocityMax = 8f, Gravity = new Vector3(0, -9.8f, 0),
             ScaleAmountMin = 0.6f, ScaleAmountMax = 1.3f, Color = spark,
         };
-        burst.MaterialOverride = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, VertexColorUseAsAlbedo = true,
-            EmissionEnabled = true, Emission = spark, EmissionEnergyMultiplier = 3f,
-        };
+        if (!_sparkLooks.TryGetValue(spark, out StandardMaterial3D look))
+            _sparkLooks[spark] = look = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, VertexColorUseAsAlbedo = true,
+                EmissionEnabled = true, Emission = spark, EmissionEnergyMultiplier = 3f,
+            };
+        burst.MaterialOverride = look;
         AddChild(burst);
         burst.GlobalPosition = at + normal * 0.05f;
         GetTree().CreateTimer(1.2).Timeout += burst.QueueFree;
-        Flash(at + normal * 0.2f, spark, kind == ImpactKind.Creature ? 1.2f : 3f, 0.12f);
+        if (lit) Flash(at + normal * 0.2f, spark, kind == ImpactKind.Creature ? 1.2f : 3f, 0.12f);
         if (kind == ImpactKind.Creature) return;
 
         var scorch = new Decal
@@ -382,6 +417,11 @@ public partial class ShotFx : Node3D
         Vector3 side = MathF.Abs(n.Dot(Vector3.Forward)) > 0.9f ? Vector3.Right : Vector3.Forward;
         Vector3 x = side.Cross(n).Normalized();
         scorch.GlobalTransform = new Transform3D(new Basis(x, n, x.Cross(n)), at);
+        if (_scorches.Count >= MostScorches)
+        {
+            if (IsInstanceValid(_scorches[0].decal)) _scorches[0].decal.QueueFree();
+            _scorches.RemoveAt(0);
+        }
         _scorches.Add((scorch, 0f));
     }
 
@@ -416,6 +456,7 @@ public partial class ShotFx : Node3D
             Place(b);
         }
         TickFlashes(dt);
+        TickLightning(dt);
         if (_beam != null && _beam.Visible)
         {
             _beamAge += dt;
@@ -443,7 +484,7 @@ public partial class ShotFx : Node3D
                 _scorches.RemoveAt(i);
                 continue;
             }
-            decal.Modulate = new Color(1, 1, 1, 0.95f * Mathf.Clamp((ScorchLife - age) / 6f, 0f, 1f));
+            if (age > ScorchLife - 6f) decal.Modulate = new Color(1, 1, 1, 0.95f * (ScorchLife - age) / 6f);
             _scorches[i] = (decal, age);
         }
     }

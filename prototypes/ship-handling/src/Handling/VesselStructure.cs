@@ -4,9 +4,6 @@ using Godot;
 
 namespace ShipHandling.Handling;
 
-/// <summary>The three handling classes. Each has its own top speeds in the tunables file.</summary>
-public enum VesselClass { Hover, Small, Capital }
-
 /// <summary>
 /// A thruster. It pushes the ship along <see cref="Facing"/> (its exhaust points the other
 /// way). Where it sits never matters to handling: placement adds no torque.
@@ -39,7 +36,9 @@ public readonly record struct HullBlock(Vector3 Center, Vector3 Size, string Col
 public interface IVesselStructure
 {
     string Name { get; }
-    VesselClass Class { get; }
+
+    /// <summary>In Hover Mode: it rides its hover plates near the ground instead of flying on its thrusters.</summary>
+    bool HoverMode { get; }
     float HullMass { get; }
     float CargoMass { get; }
     IReadOnlyList<ThrusterSpec> Thrusters { get; }
@@ -62,7 +61,10 @@ public interface IVesselStructure
 public sealed class VesselLoadout : IVesselStructure
 {
     public string Name { get; init; } = "Vessel";
-    public VesselClass Class { get; init; }
+    public bool HoverMode { get; init; }
+
+    /// <summary>The thruster size the ] key adds: big engines are worth building.</summary>
+    public string MainEngine { get; init; } = "large";
     public float HullMass { get; set; }
     public float CargoMass { get; private set; }
     public Vector3 Cockpit { get; init; }
@@ -141,7 +143,7 @@ public sealed class VesselLoadout : IVesselStructure
 
     public VesselLoadout Clone()
     {
-        var copy = new VesselLoadout { Name = Name, Class = Class, HullMass = HullMass, Cockpit = Cockpit };
+        var copy = new VesselLoadout { Name = Name, HoverMode = HoverMode, MainEngine = MainEngine, HullMass = HullMass, Cockpit = Cockpit };
         copy.CargoMass = CargoMass;
         copy.Lopsided = Lopsided;
         copy.ThrusterList.AddRange(ThrusterList);

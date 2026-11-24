@@ -31,7 +31,7 @@ namespace CapitalBase.World;
 ///
 /// The playable scene, the tests and the screenshots all build on this; it has no camera, HUD or input.
 /// </summary>
-public partial class CapitalWorld : Node3D
+public partial class CapitalWorld : Node3D, ILiftGround
 {
     /// <summary>False in headless tests: colliders and physics only.</summary>
     public bool Visuals = true;
@@ -90,7 +90,7 @@ public partial class CapitalWorld : Node3D
         PhysicsRules = PhysicsRules.FromJson(File.ReadAllText(Paths.Repo("shared", "Physics", "physics.json")));
         Handling = Tunables.FromJson(File.ReadAllText(Paths.Repo("prototypes", "ship-handling", "data", "handling.json")));
         Catalogue = StructureBridge.LoadCatalogue(Paths.Repo("prototypes", "building", "data"),
-            Paths.Repo("prototypes", "physics-sandbox", "data", "vessel-parts.json"));
+            Paths.Repo("prototypes", "physics-sandbox", "data", "vessel-parts.json"), Paths.Repo("shared", "Items", "data", "building-parts.json"));
         WeatherData weather = WeatherData.Parse(File.ReadAllText(Paths.Repo("prototypes", "weather", "data", "weather.json")));
 
         // The planet, built the way planet-surface builds it (no POIs here: nothing anchors the ground).
@@ -215,7 +215,7 @@ public partial class CapitalWorld : Node3D
         Declare(0, s.Count);
         Craft c = Adopt(id, s, new N.Vector3(at.X, mean + half, at.Y), MathX.Yaw(heading));
         c.Anchor();
-        ClearGroundInside(c, c.Structure.Blocks().Select(b => b.pos));
+        ClearGroundInside(c, c.Structure.Cells().Select(b => b.pos));
         UpdateWind(c);
         return c;
     }
@@ -262,14 +262,13 @@ public partial class CapitalWorld : Node3D
     // ==== The core console ========================================================================
 
     /// <summary>
-    /// Switches a large core between base and capital mode. One field changes; no block, item or
+    /// Switches a core between base and flight mode. One field changes; no block, item or
     /// pose does. Base mode needs the ship down (landed on its gear or its own blocks): it is then
-    /// anchored where it stands. Capital mode lets it fly again; if it is keyed into the ground it
+    /// anchored where it stands. Flight mode lets it fly again; if it is keyed into the ground it
     /// stays held until lift-off cuts it free.
     /// </summary>
     public string SwitchMode(Craft c, CoreMode mode)
     {
-        if (!c.IsLarge) return Reply("A small-grid core is always a vessel.");
         if (c.Structure.Mode == mode) return Reply($"{c.Name} is already in {Label(mode)} mode.");
         if (_liftoffs.ContainsKey(c)) return Reply("Lift-off in progress.");
 
@@ -278,35 +277,35 @@ public partial class CapitalWorld : Node3D
             if (c.State == CraftState.Flying)
                 return Reply($"BASE MODE REFUSED: {c.Name} is flying. Land first: a base can't hang in the air.");
             if (c.State == CraftState.Docked) return Reply($"BASE MODE REFUSED: {c.Name} is parked on another structure.");
-            ToggleMode(c);
+            SetMode(c, mode);
             if (c.Pin == null) c.Anchor();
             UpdateWind(c);
             return Reply($"BASE MODE: {c.Name} is anchored where it stands. It can't fly and no wind moves it; storage, power and life support carry on.");
         }
 
-        ToggleMode(c);
+        SetMode(c, mode);
         CutPlan plan = PlanCut(c);
         if (plan.Cells.Count > 0 || plan.Refused.Count > 0)
         {
             UpdateWind(c);
-            return Reply($"CAPITAL MODE: {c.Name} is keyed into the ground ({plan.Cells.Count + plan.Refused.Count} m³ hold it). Lift-off cuts it free.");
+            return Reply($"FLIGHT MODE: {c.Name} is keyed into the ground ({plan.Cells.Count + plan.Refused.Count} m³ hold it). Lift-off cuts it free.");
         }
         Ground.ReleaseAll(c.Body.Id); // nothing holds it: any block that only touched the ground lets go of it
         c.Release();
         UpdateWind(c);
-        return Reply($"CAPITAL MODE: {c.Name} can fly. Ready to lift off.");
+        return Reply($"FLIGHT MODE: {c.Name} can fly. Ready to lift off.");
     }
 
-    /// <summary>Flips the core's mode. Building marks the core's chunk dirty for it; its look doesn't change, so nothing is remeshed.</summary>
-    static void ToggleMode(Craft c)
+    /// <summary>Sets the core's mode. Building marks the core's chunk dirty for it; its look doesn't change, so nothing is remeshed.</summary>
+    static void SetMode(Craft c, CoreMode mode)
     {
         var dirty = new HashSet<SInt3>(c.Structure.DirtyChunks);
-        Building.ToggleCoreMode(c.Structure);
+        Building.SetCoreMode(c.Structure, mode);
         c.Structure.DirtyChunks.Clear();
         c.Structure.DirtyChunks.UnionWith(dirty);
     }
 
-    static string Label(CoreMode m) => m == CoreMode.Base ? "base" : "capital";
+    static string Label(CoreMode m) => m.ToString().ToLowerInvariant();
 
     string Reply(string message)
     {
@@ -315,6 +314,11 @@ public partial class CapitalWorld : Node3D
     }
 
     /// <summary>The wind rules: bases and parked or keyed hulls are never pushed; anything flying or simply landed is.</summary>
+    int ILiftGround.Pending => Patch.Pending;
+    float ILiftGround.ClimbSpeed => Rules.Liftoff.ClimbSpeed;
+    float ILiftGround.TopSpeed(ILiftHull hull) => hull.Flight.Stats?.TopSpeed ?? Handling.Speeds.Flight.TopSpeedAir;
+    void ILiftGround.Settle(ILiftHull hull) => UpdateWind((Craft)hull);
+
     public void UpdateWind(Craft c)
     {
         if (c.Pin == null) Weather.Track(c.Body);
@@ -354,7 +358,7 @@ public partial class CapitalWorld : Node3D
     public string LiftOffFrom(Craft c)
     {
         if (_liftoffs.ContainsKey(c)) return Reply("Lift-off in progress.");
-        if (c.IsBase) return Reply($"LIFT-OFF REFUSED: {c.Name} is a base. Switch the core to capital mode first.");
+        if (c.IsBase) return Reply($"LIFT-OFF REFUSED: {c.Name} is a base. Switch the core to flight mode first.");
         if (c.State == CraftState.Flying) return Reply($"{c.Name} is already flying.");
         if (c.State == CraftState.Docked) return Reply($"{c.Name} is parked on another structure: just fly off.");
         if (!c.Stats.Powered) return Reply($"LIFT-OFF REFUSED: {c.Name} has no power.");
@@ -387,10 +391,9 @@ public partial class CapitalWorld : Node3D
     public LiftOff LiftOffOf(Craft c) => _liftoffs.TryGetValue(c, out LiftOff run) ? run : null;
     public bool IsLiftingOff(Craft c) => _liftoffs.ContainsKey(c);
 
-    /// <summary>Flags exactly one base or capital ship as Home. A new flag clears the old one.</summary>
+    /// <summary>Flags exactly one structure as Home. A new flag clears the old one.</summary>
     public string FlagHome(Craft c)
     {
-        if (!c.IsLarge) return Reply("HOME REFUSED: only a base or a capital ship can be Home.");
         string old = Home.Flag(c.Id);
         Craft was = old == null ? null : CraftById(old);
         return Reply(was != null ? $"HOME: {c.Name} (was {was.Name})." : $"HOME: {c.Name}.");
@@ -424,7 +427,7 @@ public partial class CapitalWorld : Node3D
             Say("Can't build there: bedrock fills that space.");
             return (PlaceError.Occupied, 0);
         }
-        Dictionary<string, int> cost = c.Structure.Catalogue.CostOf(block, c.Structure.Grid);
+        Dictionary<string, int> cost = c.Structure.Catalogue.CostOf(block);
         bool paid = !Inventory.Creative;
         PlaceError error = Building.Place(c.Structure, cell, block, Inventory, c.Structure.Owner ?? Building.DefaultOwner);
         if (error != PlaceError.None) return (error, 0);
@@ -602,7 +605,7 @@ public partial class CapitalWorld : Node3D
         N.Vector3 from = c.Body.CenterOfMassPosition;
         if (!Physics.Query.Ray(from, from - N.Vector3.UnitY * 12f, Layers.Hull, c.Body, out RayHit hit)) return;
         Craft host = CraftOf(hit.Body);
-        if (host == null || host == c || !host.IsLarge || host.Pin is { Docked: true }) return;
+        if (host == null || host == c || host.Pin is { Docked: true }) return;
         Dock(c, host);
     }
 
@@ -639,8 +642,8 @@ public partial class CapitalWorld : Node3D
             run.Step(this, dt);
             if (run.Phase == LiftOffPhase.Done)
             {
-                _liftoffs.Remove(run.Craft);
-                Say($"{run.Craft.Name} is clear of the ground: {run.Climbed:F1} m up, {run.Edit.Removed.Count} cells cut, top climb speed {run.TopRise:F2} m/s.");
+                _liftoffs.Remove((Craft)run.Hull);
+                Say($"{((Craft)run.Hull).Name} is clear of the ground: {run.Climbed:F1} m up, {run.Edit.Removed.Count} cells cut, top climb speed {run.TopRise:F2} m/s.");
             }
         }
 
@@ -649,7 +652,7 @@ public partial class CapitalWorld : Node3D
         {
             _transmitTimer = 0f;
             foreach (Craft c in Crafts)
-                if (!c.IsLarge) Pump(c);
+                Pump(c);
         }
     }
 
@@ -666,7 +669,7 @@ public partial class CapitalWorld : Node3D
     {
         c.AnchorAt(position, rotation);
         // Its blocks in the ground meet it flush again (their cells came back with the terrain's edits).
-        ClearGroundInside(c, c.Structure.Blocks().Select(b => b.pos));
+        ClearGroundInside(c, c.Structure.Cells().Select(b => b.pos));
         UpdateWind(c);
     }
 

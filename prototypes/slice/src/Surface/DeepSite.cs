@@ -24,6 +24,11 @@ public partial class DeepSite : Node3D
     /// <summary>The player in this sim's frame.</summary>
     public FrameTarget Player { get; private set; }
 
+    /// <summary>The place's own people (its town: squatters, a gang, keepers), hunted by its creatures as anyone is: each in this sim's frame.</summary>
+    public Slice.Places.Town Town;
+    readonly Dictionary<Slice.Places.Town.Person, HostFrame> _people = new();
+    Vector3 _at;
+
     /// <summary>Tells shown so far (tests).</summary>
     public int TellsShown { get; private set; }
     public event Action<TellEvent> Told;
@@ -43,8 +48,39 @@ public partial class DeepSite : Node3D
     public double WorstPauseMs { get; private set; }
     public string WorstPauseNote { get; private set; } = "";
 
-    public float FarDistance = 120f, NearDistance = 40f;
+    public float FarDistance = 90f, NearDistance = 40f;
+
+    /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
+    public float SleepDistance = 100f;
+
+    /// <summary>Unseen, a creature with nothing to deal with steps only within this of the eye, m: a little past where its small sounds carry through a wall (<see cref="Quiet.ThroughWall"/>).</summary>
+    const float WakeReach = Quiet.ThroughWall + 6f;
+
+    /// <summary>Tests: the unseen step wherever they are within <see cref="SleepDistance"/> (the old way, for an A/B).</summary>
+    public static bool AllAwake;
+
+    /// <summary>
+    /// Whether it heard a loud sound (a shot, a blast) in the last second, through the walls and floors on the way (asleep it still
+    /// listens: <see cref="WildSim.Hears"/>), or it is within <see cref="WakeReach"/> of one of the place's people (who live on out of your sight, and it with them).
+    /// </summary>
+    bool Stirring(Creature c)
+    {
+        if (Sim.Time - c.HeardAt <= 1f) return true;
+        foreach (Vector3 p in _peopleAt)
+            if ((p - c.Position).LengthSquared() <= WakeReach * WakeReach) return true;
+        return false;
+    }
+
+    /// <summary>Where the place's living people are this frame, in this sim's frame.</summary>
+    readonly List<Vector3> _peopleAt = new();
+
+    /// <summary>The harmless (<see cref="Importance.Ambient"/>: a room's insects) are drawn within this of the eye, m, and of them in sight only the nearest few step.</summary>
+    public float AmbientReach = 25f;
+    const int AmbientBudget = 8;
+    readonly List<(Creature C, float D)> _ambient = new();
+    readonly HashSet<Creature> _awake = new();
     const double BudgetMs = 1.2;
+    double _allow;
 
     readonly Dictionary<Creature, CreatureView> _views = new();
     readonly List<Creature> _gone = new();
@@ -52,14 +88,19 @@ public partial class DeepSite : Node3D
     const int SightEvery = 6;
     int _sightFrame;
     Node3D _creatures, _lairs;
-    int _lairNext;
     TimeSpan _pausedAtLastFrame;
     int _built;
     double _buildMs;
+    readonly Dictionary<int, LairView> _lairViews = new();
+    int _lairFrame;
+
+    /// <summary>Lair marks stand within this of the eye.</summary>
+    const float LairReach = 50f;
 
     public static DeepSite Create(WildlifePatch patch, WildSim sim, string name)
     {
         var site = new DeepSite { Name = name, Patch = patch, Sim = sim };
+        patch.Rule(sim);
         site._creatures = new Node3D { Name = "Creatures" };
         site.AddChild(site._creatures);
         site._lairs = new Node3D { Name = "Lairs" };
@@ -80,7 +121,11 @@ public partial class DeepSite : Node3D
         Sim.Telegraph += OnTelegraph;
         Sim.Warned += OnWarned;
         Sim.Attacked += OnAttacked;
+        Sim.Turned += Patch.RaiseTurned;
         Sim.Died += OnDied;
+        Sim.Seized += OnSeized;
+        Sim.LetGo += OnLetGo;
+        Sim.Murmured += OnMurmured;
         Patch.Sites.Add(this);
     }
 
@@ -91,7 +136,12 @@ public partial class DeepSite : Node3D
         Sim.Warned -= OnWarned;
         Sim.Attacked -= OnAttacked;
         Sim.Died -= OnDied;
+        Sim.Seized -= OnSeized;
+        Sim.LetGo -= OnLetGo;
+        Sim.Murmured -= OnMurmured;
         Sim.Targets.Remove(Player);
+        foreach (HostFrame t in _people.Values) Sim.Targets.Remove(t);
+        _people.Clear();
         Sim.SightLine = null;
         Patch.Sites.Remove(this);
     }
@@ -114,21 +164,92 @@ public partial class DeepSite : Node3D
     void OnAttacked(AttackEvent e)
     {
         if (e.Target == Player) Patch.RaiseAttacked(e);
+        else if (e.Target is HostFrame { Inner: var who }) Patch.RaiseBitten(e with { Target = who });
     }
 
-    void OnDied(Creature c, ITarget killer) => Patch.RaiseDied(c, killer == Player ? Patch.Player : killer);
+    void OnDied(Creature c, ITarget killer) => Patch.RaiseDied(c, killer is FrameTarget f ? f.Inner : killer);
+
+    /// <summary>Whoever did something, as this sim sees them: you, one of the place's people, one of its creatures; null if none of those.</summary>
+    public ITarget Frame(object who) => who switch
+    {
+        null => Player,
+        Creature c => Sim.Creatures.Contains(c) ? c.AsTarget : null,
+        Slice.Places.Town.Person p when p.Town == Town => FrameOf(p),
+        _ => who == Patch.Player ? Player : null,
+    };
+
+    /// <summary>One of the place's people as its creatures see them (put in the first time they're asked for).</summary>
+    public HostFrame FrameOf(Slice.Places.Town.Person p)
+    {
+        if (_people.TryGetValue(p, out HostFrame t)) return t;
+        _people[p] = t = new HostFrame(p, () => _at, () => p.Town.World(p.Pos));
+        Sim.Targets.Add(t);
+        return t;
+    }
+
+    /// <summary>The place's people as its creatures see them: the living put in, the dead and the taken let go (now and then).</summary>
+    void SeePeople()
+    {
+        if (Town == null || Sim.Frame % 30 != 0) return;
+        foreach (Slice.Places.Town.Person p in Town.People)
+        {
+            if (!p.Dead && !p.Gone) FrameOf(p);
+            else if (_people.Remove(p, out HostFrame gone)) Sim.Targets.Remove(gone);
+        }
+    }
+
+    // A Husk of this place seizing the player is the game's to settle, as one outside is.
+    void OnSeized(SeizeEvent e)
+    {
+        if (e.Victim == Player) Patch.RaiseSeized(e, Sim);
+    }
+
+    void OnLetGo(SeizeEvent e)
+    {
+        if (e.Victim == Player) Patch.RaiseLetGo(e);
+    }
+
+    void OnMurmured(Creature c) => Patch.Sound(GlobalPosition, a => a.Murmur(c));
 
     public Vector3 Local(Vector3 world) => world - GlobalPosition;
     public Vector3 World(Vector3 local) => local + GlobalPosition;
 
     public CreatureView ViewOf(Creature c) => _views.GetValueOrDefault(c);
 
+    /// <summary>Bodies drawn at the last sync (measurements).</summary>
+    public int DrawnCount { get; private set; }
+
     public override void _PhysicsProcess(double delta)
     {
         Sim.Clock.Time01 = (float)Patch.Zone.Sky.TimeOfDay;
         Sim.Frozen = Patch.Frozen;
+        _at = GlobalPosition;
+        SeePeople();
+        long start = Stopwatch.GetTimestamp();
         Sim.Step((float)delta);
+        long stepped = Stopwatch.GetTimestamp();
+        LastStepMs = (stepped - start) * 1000.0 / Stopwatch.Frequency;
+        StepMs += LastStepMs;
+        // What lives here keeps quiet; what it's doing out of sight gives it away.
+        _quiet.Clear();
+        Quiet.Step(Sim, Player, (float)delta, _quiet);
+        foreach (QuietSound q in _quiet) Patch.Sound(GlobalPosition, a => a.Quiet(q));
+        QuietSounds += _quiet.Count;
+        QuietMs += Stopwatch.GetElapsedTime(stepped).TotalMilliseconds;
     }
+
+    readonly List<QuietSound> _quiet = new();
+
+    /// <summary>The last tick's step of this site's sim, ms (measurements).</summary>
+    public double LastStepMs { get; private set; }
+
+    /// <summary>This site's sim steps and its quiet sounds (physics ticks), and its bodies' syncing (frames), ms in all so far (measurements).</summary>
+    public double StepMs { get; private set; }
+    public double QuietMs { get; private set; }
+    public double ViewMs { get; private set; }
+
+    /// <summary>Small sounds made so far (tests).</summary>
+    public int QuietSounds { get; private set; }
 
     public override void _Process(double delta)
     {
@@ -141,43 +262,70 @@ public partial class DeepSite : Node3D
             GCMemoryInfo gc = GC.GetGCMemoryInfo(GCKind.Any);
             WorstPauseNote = $"gen{gc.Generation} {(gc.Concurrent ? "background" : "blocking")}{(gc.Compacted ? ", compacted" : "")}, {gc.PromotedBytes / 1e6:F0} MB promoted, heap {gc.HeapSizeBytes / 1e6:F0} MB";
         }
-        // The lair marks (cracks, moss and scraps, nests), a handful at a time: wildlife's own
-        // lair view, each drawing a share of them (they keep scaling with the nests and food).
-        int lairs = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
-        int lairsBefore = _lairNext;
-        while (_lairNext < lairs && clock.Elapsed.TotalMilliseconds < BudgetMs) BuildLairs(2);
+        // This frame's share of the loading allowance, shared with the places and the other sites (bodies, lair marks, masses made).
+        _allow = PlanetSurface.Fx.LoadBudget.Left(BudgetMs);
+        Vector3? eye = Patch.Zone.Camera != null ? Local(Patch.Zone.Camera.GlobalPosition) : null;
+        if (eye is Vector3 lairEye) TickLairs(lairEye, clock);
         double lairMs = clock.Elapsed.TotalMilliseconds;
         _built = 0;
         _buildMs = 0;
-        if (Patch.Zone.Camera != null) SyncViews(Local(Patch.Zone.Camera.GlobalPosition), clock);
+        if (eye is Vector3 at) SyncViews(at, clock);
+        SyncMasses((float)delta, clock);
         _pausedAtLastFrame = GC.GetTotalPauseDuration();
+        PlanetSurface.Fx.LoadBudget.Spend(lairMs + _buildMs);
         double all = clock.Elapsed.TotalMilliseconds, stopped = (_pausedAtLastFrame - paused).TotalMilliseconds, ms = all - stopped;
+        ViewMs += all;
         if (ms > WorstViewMs)
         {
             WorstViewMs = ms;
-            WorstViewNote = $"{lairMs:F1} ms on {_lairNext - lairsBefore} lair marks, {_buildMs:F1} ms on {_built} views, {all - lairMs - _buildMs:F1} ms on the rest, with {stopped:F1} ms of collector pauses left out";
+            WorstViewNote = $"{lairMs:F1} ms on lair marks, {_buildMs:F1} ms on {_built} views, {all - lairMs - _buildMs:F1} ms on the rest, with {stopped:F1} ms of collector pauses left out";
         }
     }
 
-    void BuildLairs(int count)
+    /// <summary>
+    /// The lair marks (cracks, moss and scraps, nests) round the eye, a few at a time: wildlife's own
+    /// lair view, each drawing one (they keep scaling with the nests and food). A large place has
+    /// thousands, so only those in reach stand.
+    /// </summary>
+    void TickLairs(Vector3 eye, Stopwatch clock)
+    {
+        if (++_lairFrame % 20 != 0) return;
+        int count = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
+        for (int k = 0; k < count && clock.Elapsed.TotalMilliseconds < _allow; k++)
+        {
+            float d = (MarkAt(k) - eye).Length();
+            if (d < LairReach && !_lairViews.ContainsKey(k)) _lairViews[k] = BuildLair(k);
+            else if (d > LairReach * 1.4f && _lairViews.Remove(k, out LairView view)) view.QueueFree();
+        }
+    }
+
+    Vector3 MarkAt(int k)
+    {
+        if (k < Sim.Cracks.Count) return Sim.Cracks[k].Position;
+        if ((k -= Sim.Cracks.Count) < Sim.Food.Count) return Sim.Food[k].Position;
+        return Sim.Nests[k - Sim.Food.Count].Position;
+    }
+
+    LairView BuildLair(int k)
     {
         var part = new WildSim(Sim.Data, Sim.Terrain, Sim.Nav);
-        for (int i = 0; i < count && _lairNext < Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count; i++, _lairNext++)
-        {
-            int k = _lairNext;
-            if (k < Sim.Cracks.Count) part.Cracks.Add(Sim.Cracks[k]);
-            else if ((k -= Sim.Cracks.Count) < Sim.Food.Count) part.Food.Add(Sim.Food[k]);
-            else part.Nests.Add(Sim.Nests[k - Sim.Food.Count]);
-        }
+        if (k < Sim.Cracks.Count) part.Cracks.Add(Sim.Cracks[k]);
+        else if ((k -= Sim.Cracks.Count) < Sim.Food.Count) part.Food.Add(Sim.Food[k]);
+        else part.Nests.Add(Sim.Nests[k - Sim.Food.Count]);
         var view = new LairView { Name = "Lair" };
         _lairs.AddChild(view);
         view.Build(part);
+        return view;
     }
 
     /// <summary>Wildlife's creature views for the creatures in sight range (new ones within the frame's budget), rigged as often as their distance warrants.</summary>
     void SyncViews(Vector3 camera, Stopwatch clock)
     {
         _sightFrame++;
+        _peopleAt.Clear();
+        if (Town != null) foreach (Slice.Places.Town.Person p in Town.People) if (!p.Dead && !p.Gone) _peopleAt.Add(Local(Town.World(p.Pos)));
+        DrawnCount = 0;
+        _gone.Clear();
         foreach (Creature c in Sim.Creatures)
         {
             if (c.Removed) continue;
@@ -185,17 +333,37 @@ public partial class DeepSite : Node3D
             // Set for every creature, drawn or not: a place holds hundreds, and one left at the default
             // re-posed its body every tick though nobody could see it (the patch's own views go to 12 too).
             c.RigInterval = d < NearDistance ? 1 : d < FarDistance * 0.6f ? 2 : d < FarDistance ? 4 : 12;
+            // The harmless (a room's insects) are drawn and about only near you, the nearest few of them in sight.
+            bool ambient = c.Species.Importance == Importance.Ambient, stirred = Sim.Time - c.ProvokedAt <= 10f || c.Falling; // (a fall is stepped through, never slept in)
+            float far = ambient ? AmbientReach : FarDistance;
             // Behind a wall from the eye it needs no more than the far rate: a full place is hundreds of
             // bodies within a few rooms. (Looked at again every few frames, so turning a corner shows it moving.)
-            if ((_sightFrame + c.Id) % SightEvery == 0 && d < FarDistance)
+            if ((_sightFrame + c.Id) % SightEvery == 0 && d < far)
             {
                 if (Sees(c, camera)) _unseen.Remove(c);
                 else _unseen.Add(c);
             }
-            if (c.RigInterval < 4 && _unseen.Contains(c)) c.RigInterval = 4;
+            bool seen = !_unseen.Contains(c);
+            if (ambient && d < far && seen) _ambient.Add((c, d));
+            bool about = !ambient || stirred || MustDraw(c, d) || d < far && seen && _awake.Contains(c);
+            // Out of sight and out of reach, it sleeps where it is: a large place's far rooms cost nothing. So does one
+            // unseen and past where its small sounds carry (another storey of a tower, the far side of a wall), unless
+            // it has something to deal with (it has sensed someone, is chasing, fleeing or fighting, or just heard a
+            // shot, or one of the place's people is near it): what can't be seen or heard holds still, and what is coming for you keeps coming.
+            bool engaged = stirred || c.Attacking || Brain.Busy(c) || Stirring(c);
+            bool offAWay = !AllAwake && (c.Position - camera).LengthSquared() > WakeReach * WakeReach;
+            c.Dormant = ambient ? !about : !engaged && (d > SleepDistance || !seen && offAWay);
+            // Awake out of sight and off a way (it heard a shot, it is after one of the place's people), it is stepped
+            // less often with the time it missed: it comes on as fast, for a half or a third of the work.
+            c.StepEvery = seen && d < far || !offAWay || stirred ? 1 : d < NearDistance ? 2 : 3;
+            // Past the near ring nothing casts a line through the world's collision for it.
+            c.NoRays = ambient || d > NearDistance;
+            if (c.RigInterval < 4 && !seen) c.RigInterval = 4;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
-                if (d > FarDistance || clock.Elapsed.TotalMilliseconds > BudgetMs) continue;
+                c.Shown = false;
+                // One that can reach you is built at once, whatever the frame's budget (no unseen attacker).
+                if (d > far || !about || !MustDraw(c, d) && (clock.Elapsed.TotalMilliseconds > _allow || !CreatureView.Ready(c))) continue;
                 double before = clock.Elapsed.TotalMilliseconds;
                 view = new CreatureView();
                 _creatures.AddChild(view);
@@ -204,9 +372,25 @@ public partial class DeepSite : Node3D
                 _built++;
                 _buildMs += clock.Elapsed.TotalMilliseconds - before;
             }
-            bool visible = d < FarDistance;
+            // Behind a wall from the eye it isn't drawn at all (it is looked at again every few frames).
+            bool visible = MustDraw(c, d) || d < far && seen && about;
             if (view.Visible != visible) view.Visible = visible;
+            c.Shown = visible;
+            if (visible) DrawnCount++;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
+            else if (d > FarDistance * 1.5f) _gone.Add(c);
+        }
+        // The harmless about next frame: the nearest few in sight.
+        _awake.Clear();
+        _ambient.Sort(static (a, b) => a.D.CompareTo(b.D));
+        for (int i = 0; i < _ambient.Count && i < AmbientBudget; i++) _awake.Add(_ambient[i].C);
+        _ambient.Clear();
+        // Well out of sight, its body goes too (it is made again when you come back).
+        foreach (Creature c in _gone)
+        {
+            _views[c].QueueFree();
+            _views.Remove(c);
+            _unseen.Remove(c);
         }
         _gone.Clear();
         foreach (var (c, v) in _views)
@@ -222,6 +406,54 @@ public partial class DeepSite : Node3D
         }
     }
 
+    readonly List<WormMassView> _massViews = new();
+    Node3D _masses;
+    VeinView _veins;
+
+    /// <summary>Veins drawn (tests).</summary>
+    public int VeinsDrawn => _veins == null ? 0 : Sim.Veins.Count;
+
+    /// <summary>Views of a den's worm masses (built a few at a time within the frame's budget), stirred every frame.</summary>
+    void SyncMasses(float dt, Stopwatch clock)
+    {
+        // The veins round them: one mesh for the whole place, made once.
+        if (_veins == null && Sim.Veins.Count > 0)
+        {
+            AddChild(_veins = new VeinView());
+            _veins.Build(Sim.Veins);
+        }
+        if (Sim.Masses.Count == 0) return;
+        if (_masses == null) AddChild(_masses = new Node3D { Name = "WormMasses" });
+        while (_massViews.Count < Sim.Masses.Count && clock.Elapsed.TotalMilliseconds < _allow)
+        {
+            var view = new WormMassView();
+            _masses.AddChild(view);
+            view.Build(Sim.Masses[_massViews.Count]);
+            _massViews.Add(view);
+        }
+        foreach (WormMassView v in _massViews) v.Sync(dt);
+        // Those alight: flame and smoke off them until they're gone.
+        if ((_flameIn -= dt) > 0f) return;
+        _flameIn = 0.12f;
+        foreach (WormMass m in Sim.Masses)
+        {
+            if (m.Dead || m.Burning <= 0f) continue;
+            Vector3 at = World(m.Middle), up = m.Normal;
+            Patch.Zone.Dust?.Sparks(at, up, new Color(1f, 0.55f, 0.18f));
+            Patch.Zone.Dust?.Puff(at + up * m.Size * 0.3f, new Color(0.12f, 0.1f, 0.09f, 0.7f), 0.6f + m.Size * 0.5f);
+        }
+    }
+
+    float _flameIn;
+
+    /// <summary>Worm masses drawn so far (tests).</summary>
+    public int MassesDrawn => _massViews.Count;
+
+    /// <summary>Near you or mid-attack: its body is always built and drawn, never held back by a frame's budget or a wall's say-so (what hurts you is seen to).</summary>
+    public static bool MustDraw(Creature c, float distance) => distance < DrawNear || c.Attacking;
+
+    const float DrawNear = 14f;
+
     /// <summary>Whether a line from the eye reaches a creature living in solid space: cell by cell, half a metre at a time, up to a metre short of it (it lies against a wall).</summary>
     static bool Sees(Creature c, Vector3 eye)
     {
@@ -236,7 +468,7 @@ public partial class DeepSite : Node3D
 }
 
 /// <summary>A target seen from another sim's frame: the same body, its position moved into that frame.</summary>
-public sealed class FrameTarget : ITarget
+public class FrameTarget : ITarget
 {
     readonly ITarget _inner;
     readonly Func<Vector3> _origin, _world;
@@ -257,4 +489,12 @@ public sealed class FrameTarget : ITarget
     public bool Attackable => _inner is Slice.Game.PlayerTarget p ? p.OnFoot : _inner.Attackable;
     public float ThreatScale => _inner.ThreatScale;
     public bool Crouched => _inner.Crouched;
+}
+
+/// <summary>One of a place's people seen from its creatures' frame: hunted, seized and turned as they would be out in the open.</summary>
+public sealed class HostFrame : FrameTarget, IHost
+{
+    public HostFrame(IHost inner, Func<Vector3> origin, Func<Vector3> world) : base(inner, origin, world) { }
+    public Species Body => ((IHost)Inner).Body;
+    public void Taken() => ((IHost)Inner).Taken();
 }

@@ -29,7 +29,7 @@ public static class Steps
         for (int i = 0; i < character.GetSlideCollisionCount() && !blocked; i++)
         {
             Vector3 n = character.GetSlideCollision(i).GetNormal();
-            blocked = n.Dot(up) < 0.3f && dir.Dot(-n) > 0.3f;
+            blocked = Blocks(character, n, up) && dir.Dot(-n) > 0.3f;
         }
         if (!blocked) return false;
 
@@ -50,4 +50,13 @@ public static class Steps
         character.Velocity = along; // on at the walking speed, nothing into the step
         return true;
     }
+
+    /// <summary>
+    /// Whether a contact stops the walk: steeper than the controller walks up. A capsule meets a low
+    /// edge on its rounded foot, so a kerb or a lip a hand or two tall pushes back at an angle
+    /// between floor and wall (a 0.2 m edge against a 0.35 m foot: about 65 degrees). That is too
+    /// steep to walk up, so it must count as a step, or anything from about 0.13 to 0.25 m tall
+    /// stops the walker dead.
+    /// </summary>
+    public static bool Blocks(CharacterBody3D character, Vector3 normal, Vector3 up) => normal.Dot(up) < Mathf.Cos(character.FloorMaxAngle) - 0.01f;
 }

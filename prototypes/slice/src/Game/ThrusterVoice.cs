@@ -83,7 +83,7 @@ public readonly record struct VoiceProfile
 /// <see cref="Thrust"/>, <see cref="On"/> and <see cref="Air"/> from anywhere; call
 /// <see cref="Render"/> from one thread.
 /// </summary>
-public sealed class ThrusterVoice
+public sealed class ThrusterVoice : ISynth
 {
     public const int Rate = 22050;
 

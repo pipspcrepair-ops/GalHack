@@ -50,8 +50,13 @@ public sealed class TerrainModel
     readonly Fractal _detail, _canyon, _canyonWarp, _dune, _spire, _special, _rain, _patches;
     readonly Fractal _ranges, _plateau, _plateauWarp, _jag, _region, _meander;
     readonly Fractal _swell, _badland, _tower, _lakes, _fjord, _fjordWarp, _coast, _duneField, _duneWander, _summits;
+    readonly Fractal _rille, _rilleWarp, _wrinkle;
     readonly Noise _deltaNoise;
-    readonly FeatureGrid _volcanoGrid, _craterGrid, _coneGrid, _ringGrid;
+    readonly FeatureGrid _volcanoGrid, _coneGrid, _ringGrid;
+    /// <summary>Impact craters, one grid per size, the biggest first (none on a world that doesn't keep them).</summary>
+    readonly FeatureGrid[] _craterGrids;
+    /// <summary>No air and no water: nothing lies under the waterline (<see cref="PlanetGenerator.BareFloor"/>).</summary>
+    readonly bool _bare;
     readonly float[] _volcanoPresence, _conePresence, _ringHeight;
     readonly int _duneA, _duneB;
     readonly double _duneWave;
@@ -79,7 +84,7 @@ public sealed class TerrainModel
         _continent = new Fractal(Salt(3), continent, 6, 0.5f);
         _islands = new Fractal(Salt(4), continent * 0.3, 5, 0.5f);
         _mountains = new Fractal(Salt(5), def.MountainWavelength * 0.7, def.MountainOctaves, 0.5f);
-        _hills = new Fractal(Salt(6), def.HillWavelength, 7, 0.45f);
+        _hills = new Fractal(Salt(6), def.HillWavelength, def.HillOctaves, 0.45f);
         _selector = new Fractal(Salt(7), 2600, 3, 0.5f);
         _detail = new Fractal(Salt(8), 72, 6, 0.5f);
         _canyon = new Fractal(Salt(9), def.CanyonWavelength, 3, 0.4f);
@@ -105,9 +110,18 @@ public sealed class TerrainModel
         _duneField = new Fractal(Salt(31), 1300, 2, 0.5f);
         _duneWander = new Fractal(Salt(33), 420, 2, 0.5f);
         _summits = new Fractal(Salt(34), 2600, 2, 0.5f);
+        _rille = new Fractal(Salt(35), def.RilleWavelength, 2, 0.45f);
+        _rilleWarp = new Fractal(Salt(36), def.RilleWavelength * 0.6, 2, 0.5f);
+        _wrinkle = new Fractal(Salt(37), WrinkleWavelength, 2, 0.45f);
         _deltaNoise = new Noise(Salt(32));
         _volcanoGrid = new FeatureGrid(Width, Height, def.VolcanoSpacing, _seed, 21, 0.75f);
-        _craterGrid = new FeatureGrid(Width, Height, def.CraterSpacing, _seed, 22, 0.7f);
+        _bare = spec.Airless;
+        // Crater sizes from the biggest down to a few metres across, each a step smaller: the small ones far
+        // the commonest (every surface saturated with them), the big ones a few to a world.
+        var craters = new System.Collections.Generic.List<FeatureGrid>();
+        for (double c = def.CraterSpacing; def.CraterSpacing > 0 && c >= CraterFinest; c /= CraterStep)
+            craters.Add(new FeatureGrid(Width, Height, c, _seed, 22 + 1000 * craters.Count, (craters.Count == 0 ? 0.75f : 0.96f) * def.CraterCover));
+        _craterGrids = craters.ToArray();
         _coneGrid = new FeatureGrid(Width, Height, 900, _seed, 23, 0.8f);
         _ringGrid = new FeatureGrid(Width, Height, 2300, _seed, 24, 0.8f);
 
@@ -242,7 +256,6 @@ public sealed class TerrainModel
 
         special = 0f;
         if (Def.VolcanoSpacing > 0) h += Volcanoes(x, y, out special);
-        if (Def.CraterSpacing > 0) h += Craters(x, y);
         if (Def.VolcanoSpacing <= 0) special = Mathx.Smooth(0.15f, 0.65f, _special.Fbm(p, spacing));
         return h;
     }
@@ -284,6 +297,8 @@ public sealed class TerrainModel
     float ShapeWith(float raw, double x, double y, double spacing, in P4 p, in LandformRelief r, float coast, float baseLevel)
     {
         float e = raw - SeaOffset;
+        // The open plains: a barren body's old lava or ice flows (its mare), where rilles and wrinkle ridges run and craters lie buried.
+        float plain = Mathx.Smooth(0.5f, 0.8f, r.Compress);
 
         if (e > 0f)
         {
@@ -388,6 +403,10 @@ public sealed class TerrainModel
             if (r.Cone > 0.01f) e += Cones(x, y) * Mathx.Smooth(0f, 6f, e);
             if (r.Ring > 0.5f) e += Rings(x, y, spacing) * inland;
 
+            // Rilles and wrinkle ridges lie on the open plains (the old lava basins, an ice moon's sheets).
+            if (plain > 0f && Def.RilleDepth > 0f) e -= Rilles(p, spacing) * plain;
+            if (plain > 0f && Def.WrinkleHeight > 0f) e += Wrinkles(p, spacing) * plain;
+
             if (r.Lake > 0.2f && r.LakeOn > 0.01f)
             {
                 float on = Math.Min(1f, r.LakeOn);
@@ -412,7 +431,13 @@ public sealed class TerrainModel
 
         if (r.Delta > 0.01f) e = Delta(e, x, y, r.Delta);
 
-        e += _detail.Fbm(p, spacing) * r.Roughness * (e > 0f ? 1f : 0.4f);
+        // Impacts land on whatever the land became: plains, hills and ranges alike, never flattened away.
+        float ejecta = 0f;
+        if (_craterGrids.Length > 0) e += Craters(x, y, spacing, plain * Def.MareBury, out ejecta);
+        // A fresh crater's ejecta blanket lies hummocky over the land, rougher than the ground round it (on a saturated surface: a young one's few craters barely roughen it).
+        e += _detail.Fbm(p, spacing) * r.Roughness * (e > 0f ? 1f : 0.4f) * (1f + EjectaRough * ejecta * Def.CraterCover);
+        // No air, no water: no basin ever filled, so nothing lies under the waterline (the map and the ground under the player alike).
+        if (_bare) e = Math.Max(e, 0f) + PlanetGenerator.BareFloor;
         return Ceiling(e);
     }
 
@@ -651,24 +676,180 @@ public sealed class TerrainModel
         return result;
     }
 
-    /// <summary>Bowl craters with raised rims, summed so young craters overprint old ones.</summary>
-    float Craters(double x, double y)
+    /// <summary>The smallest craters' spacing, m: 6 to 16 m across, under the player's feet (smaller ones the 1 m ground can't draw).</summary>
+    const double CraterFinest = 20;
+    /// <summary>How much smaller each size of crater is than the one before.</summary>
+    const double CraterStep = 2.0;
+    /// <summary>How many craters each cell of a size's grid holds at most: two, so every size is about as thick as saturation allows, for one cell's hash.</summary>
+    const int CratersPerCell = 2;
+    /// <summary>How much rougher the land is under a fresh ejecta blanket than round it.</summary>
+    const float EjectaRough = 4f;
+    /// <summary>Over these radii, m, a crater slumps into a complex one: a flat floor, a central peak, shallower for its size.</summary>
+    const float ComplexFrom = 220f, ComplexBy = 520f;
+    /// <summary>
+    /// The most a crater's radius is of its grid's spacing, and the farthest its ejecta falls past its rim, in radii. Together
+    /// small enough that no crater reaches 0.65 of a cell from its centre: a feature stands at least that far from the half
+    /// of the next cell away from it, so a point need only look in the four cells nearest it (<see cref="FeatureGrid.Near"/>).
+    /// </summary>
+    const float CraterMost = 0.3f, EjectaMost = 0.85f;
+
+    /// <summary>The farthest any crater reaches from its centre, in its grid's cells: its lobes, its rim and its ejecta.</summary>
+    const float CraterReach = (1f + EjectaMost) * 1.11f * CraterMost;
+
+    /// <summary>A fresh crater's depth for its radius: a simple bowl a fifth as deep as it is wide, a big complex one under a tenth.</summary>
+    float CraterDepth(float radius) => radius * Mathx.Lerp(0.4f, 0.18f, Mathx.Smooth(ComplexFrom, ComplexBy, radius)) * Def.CraterRelief;
+
+    /// <summary>The deepest a crater sinks, m: the biggest and freshest one's floor.</summary>
+    internal float CraterDepthMost => _craterGrids.Length == 0 ? 0f : CraterDepth((float)_craterGrids[0].Spacing * CraterMost);
+
+    /// <summary>
+    /// Impact craters at every size (<see cref="GalHack.Terrain.CraterShape"/>, the shape a war's craters have too), summed so the
+    /// young overprint the old: each is worn by its age, the oldest shallow with a rounded rim, the youngest sharp-rimmed with a
+    /// long hummocky ejecta fall (<paramref name="ejecta"/>: how fresh a blanket lies here, 0..1). The big ones are complex: flat
+    /// floors, central peaks and terraced walls. No rim is a ruled circle. On a body's mare (<paramref name="mare"/>, its share
+    /// buried) the flows buried all but the youngest big ones, and small ones cover it again. Sizes too small to show at this spacing are left out, fading in as a
+    /// fractal's fine octaves do.
+    /// </summary>
+    float Craters(double x, double y, double spacing, float mare, out float ejecta)
     {
         float result = 0f;
-        _craterGrid.Cell(x, y, out int ix, out int iy);
-        for (int dy = -1; dy <= 1; dy++)
-        for (int dx = -1; dx <= 1; dx++)
+        ejecta = 0f;
+        x = Mathx.WrapX(x, Width);
+        y = Mathx.Wrap(y, Height);
+        foreach (FeatureGrid grid in _craterGrids)
         {
-            if (!_craterGrid.Feature(ix + dx, iy + dy, out double fx, out double fy, out ulong h)) continue;
-            float radius = Def.CraterSpacing * Mathx.Lerp(0.1f, 0.42f, MathF.Pow(Hash.Unit(h, 3), 2f));
-            float t = (float)Distance(x, y, fx, fy) / radius;
-            if (t >= 1.8f) continue;
-            float bowl = t < 1f ? (t * t - 1f) * radius * 0.24f : 0f;
-            float rim = radius * 0.09f * MathF.Exp(-(t - 1f) * (t - 1f) / 0.05f);
-            result += bowl + rim;
+            float seen = Mathx.Smooth((float)spacing * 0.75f, (float)spacing * 2f, (float)grid.Spacing * 0.2f);
+            if (seen <= 0f) break;
+            grid.Near(x, y, out int ix, out int iy, out float cu, out float cv);
+            float most = CraterReach * (float)grid.Spacing;
+            for (int dy = 0; dy <= 1; dy++)
+            for (int dx = 0; dx <= 1; dx++)
+            {
+                if (!FeatureGrid.Within(dx, dy, cu, cv, CraterReach)) continue;
+                ulong cell = grid.CraterCell(ix + dx, iy + dy);
+                for (int k = 0; k < CratersPerCell; k++)
+                {
+                    if (!grid.Crater(cell, ix + dx, iy + dy, k, out double fx, out double fy, out ulong h)) continue;
+                    float ddx = (float)(x - fx), ddy = (float)(y - fy);
+                    if (ddx * ddx + ddy * ddy >= most * most) continue;
+                    var (radius, fresh) = Impact(grid, h);
+                    float reach = Mathx.Lerp(0.45f, EjectaMost, fresh);
+                    float far = (1f + reach) * 1.11f * radius; // its lobes reach out a ninth further at most
+                    if (ddx * ddx + ddy * ddy >= far * far) continue;
+                    // Flows bury what was there before them; the small craters since have saturated them again.
+                    float kept = 1f - mare * Mathx.Smooth(0.88f, 0.7f, fresh) * Mathx.Smooth(15f, 120f, radius);
+                    if (kept <= 0.01f) continue;
+                    float d = MathF.Sqrt(ddx * ddx + ddy * ddy), t = d / radius;
+                    // A lobed outline: impacts come in at an angle and land on uneven ground. Three lobes and two, each
+                    // turned its own way, from the way out (c, s) by the multiple-angle identities, no trigonometry.
+                    float c = d > 0f ? ddx / d : 1f, s = d > 0f ? ddy / d : 0f;
+                    float c2 = c * c - s * s, s2 = 2f * s * c, c3 = c * (4f * c * c - 3f), s3 = s * (3f - 4f * s * s);
+                    float u = Hash.Unit(h, 5) * 2f - 1f, w = Hash.Unit(h, 7) * 2f - 1f;
+                    t /= 1f + 0.07f * (s3 * u + c3 * w) + 0.04f * (c2 * w - s2 * u);
+                    float complex = Mathx.Smooth(ComplexFrom, ComplexBy, radius);
+                    float depth = CraterDepth(radius) * fresh, rim = radius * Mathx.Lerp(0.08f, 0.045f, complex) * fresh * Def.CraterRelief;
+                    float peak = Hash.Unit(h, 6) < 0.75f ? depth * 0.55f * complex : 0f;
+                    // Age rounds the crest off (on the oldest a soft corner wider than the rim is high); a fresh one's is a knife edge.
+                    float worn = rim * 2.5f * (1f - fresh);
+                    result += GalHack.Terrain.CraterShape.Profile(t, depth, rim, reach, 0.45f * complex, peak, ease: true, terraces: complex * fresh, soft: worn) * seen * kept;
+                    if (t > 0.9f && t < 1f + reach)
+                        ejecta = MathF.Max(ejecta, Square(Mathx.Smooth(0.6f, 1f, fresh)) * (1f - Mathx.Smooth(0.2f, 1f, (t - 1f) / reach)) * seen * kept);
+                }
+            }
         }
         return result;
     }
+
+    /// <summary>A crater's radius, m, and how fresh it is (0.3 worn by everything since, 1 sharp), from its grid and its hash.</summary>
+    static (float Radius, float Fresh) Impact(in FeatureGrid grid, ulong h) =>
+        ((float)grid.Spacing * Mathx.Lerp(0.12f, CraterMost, FeatureGrid.Bits(h, 48)), Mathx.Lerp(0.3f, 1f, Hash.Unit(h, 4)));
+
+    static float Square(float v) => v * v;
+
+    /// <summary>
+    /// The blocks a fresh impact threw out, at a point: how thickly they lie (0..1; most on and just past the rim, thinning out
+    /// over the ejecta, a few on the walls) and how big they are against a plain boulder (bigger from bigger craters). The
+    /// ground's rock scatter lays them (planet-surface's FarBuilder). Only craters big enough to dig out blocks throw any.
+    /// </summary>
+    public float Thrown(double x, double y, out float size)
+    {
+        float most = 0f;
+        size = 1f;
+        x = Mathx.WrapX(x, Width);
+        y = Mathx.Wrap(y, Height);
+        foreach (FeatureGrid grid in _craterGrids)
+        {
+            if (grid.Spacing * CraterMost < BlockCrater) break;
+            grid.Near(x, y, out int ix, out int iy, out float cu, out float cv);
+            for (int dy = 0; dy <= 1; dy++)
+            for (int dx = 0; dx <= 1; dx++)
+            for (int k = 0; k < CratersPerCell && FeatureGrid.Within(dx, dy, cu, cv, CraterReach); k++)
+            {
+                if (!grid.Crater(grid.CraterCell(ix + dx, iy + dy), ix + dx, iy + dy, k, out double fx, out double fy, out ulong h)) continue;
+                var (radius, fresh) = Impact(grid, h);
+                if (radius < BlockCrater || fresh < 0.65f) continue;
+                float reach = Mathx.Lerp(0.45f, EjectaMost, fresh);
+                float t = MathF.Sqrt((float)((x - fx) * (x - fx) + (y - fy) * (y - fy))) / radius;
+                if (t >= 1f + reach) continue;
+                float lie = Mathx.Smooth(0.65f, 0.95f, fresh) * (t < 1f ? 0.45f * Mathx.Smooth(0.55f, 0.95f, t) : 1f - Mathx.Smooth(0.05f, 1f, (t - 1f) / reach));
+                if (lie <= most) continue;
+                most = lie;
+                size = Math.Clamp(0.5f + radius / 150f, 0.5f, 1.8f);
+            }
+        }
+        return most;
+    }
+
+    /// <summary>The smallest crater radius, m, that digs out blocks big enough to see.</summary>
+    const float BlockCrater = 7f;
+
+    /// <summary>Every impact crater of at least this radius (its centre, radius and freshness), the biggest sizes first: where views and tests find them.</summary>
+    public System.Collections.Generic.IEnumerable<(double X, double Y, float Radius, float Fresh)> CratersOver(float radius)
+    {
+        foreach (FeatureGrid grid in _craterGrids)
+        {
+            if (grid.Spacing * CraterMost < radius) yield break;
+            for (int c = 0; c < grid.Cells; c++)
+            for (int k = 0; k < CratersPerCell; k++)
+            {
+                if (!grid.Crater(grid.CraterCell(c % grid.Nx, c / grid.Nx), c % grid.Nx, c / grid.Nx, k, out double fx, out double fy, out ulong h)) continue;
+                var (r, fresh) = Impact(grid, h);
+                if (r >= radius) yield return (Mathx.WrapX(fx, Width), Mathx.Wrap(fy, Height), r, fresh);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rilles: narrow winding channels, steep-walled with a rounded floor, coming and going across the plains; with little
+    /// warp (an ice sheet's) they run near straight, its cracks. They follow a noise field's zero line, metres off it read from its slope.
+    /// </summary>
+    float Rilles(in P4 p, double spacing)
+    {
+        // The warp field says where they run too: a rille only where it leans one way.
+        float w = _rilleWarp.Fbm(p, spacing);
+        float on = Mathx.Smooth(-0.1f, 0.2f, w) * Mathx.Smooth(Def.RilleWidth, Def.RilleWidth * 0.4f, (float)spacing);
+        if (on <= 0f) return 0f;
+        double warp = Def.RilleWavelength * 0.35 * Def.RilleWarp;
+        var q = new P4(p.X + w * warp, p.Y - w * warp, p.Z + w * warp * 0.6, p.W - w * warp * 0.5);
+        float off = MathF.Abs(_rille.Fbm(q, spacing)) * Def.RilleWavelength * LineMetres;
+        float half = Def.RilleWidth * 0.5f;
+        float inside = 1f - Mathx.Smooth(half * 0.45f, half, off);
+        return Def.RilleDepth * inside * inside * (3f - 2f * inside) * on;
+    }
+
+    /// <summary>Low rounded ridges, wrinkles a few hundred metres wide winding over the plains, rising and dying along their length.</summary>
+    float Wrinkles(in P4 p, double spacing)
+    {
+        float along = Mathx.Smooth(-0.3f, 0.4f, _wrinkle.Fbm(p.Swap, spacing));
+        if (along <= 0f) return 0f;
+        float off = MathF.Abs(_wrinkle.Fbm(p, spacing)) * WrinkleWavelength * LineMetres;
+        float ridge = 1f - Mathx.Smooth(0f, 150f, off);
+        return Def.WrinkleHeight * ridge * ridge * (3f - 2f * ridge) * along;
+    }
+
+    const float WrinkleWavelength = 2400f;
+    /// <summary>About how far a fractal's value is from its zero line, in wavelengths per unit of value (its slope there).</summary>
+    const float LineMetres = 0.4f;
 
     /// <summary>
     /// Feature points on a jittered grid, at most one per cell. The grid has a whole number of
@@ -679,7 +860,7 @@ public sealed class TerrainModel
         readonly int _nx, _ny, _salt;
         readonly double _width, _height, _cw, _ch;
         readonly float _presence;
-        readonly ulong _seed;
+        readonly ulong _seed, _key;
 
         public FeatureGrid(double width, double height, double spacing, ulong seed, int salt, float presence)
         {
@@ -693,10 +874,16 @@ public sealed class TerrainModel
             _seed = seed;
             _salt = salt;
             _presence = presence;
+            _key = Hash.Of(seed, salt, 0x435241);
         }
 
         public int Nx => _nx;
         public int Cells => _nx * _ny;
+        /// <summary>A cell's shorter side, m: about the spacing asked for, rounded to fit the planet both ways.</summary>
+        public double Spacing => Math.Min(_cw, _ch);
+
+        /// <summary>A cell's index wrapped onto the planet one way: a compare for the cells beside the map, a division only past them.</summary>
+        static int Around(int i, int n) => (uint)i < (uint)n ? i : i < 0 && i >= -n ? i + n : i >= n && i < 2 * n ? i - n : (i % n + n) % n;
 
         /// <summary>The index of a cell, wrapped onto the planet.</summary>
         public int Wrapped(int ix, int iy) => ((iy % _ny + _ny) % _ny) * _nx + (ix % _nx + _nx) % _nx;
@@ -707,18 +894,68 @@ public sealed class TerrainModel
             iy = (int)Math.Floor(Mathx.Wrap(y, _height) / _ch);
         }
 
+        /// <summary>
+        /// The first of the two by two cells nearest a point on the map (wrapped onto it): its own and the neighbours on the sides of it
+        /// it is nearest; and where the point lies from that cell's corner, in cells (<paramref name="u"/>, <paramref name="v"/>, each 0.5
+        /// to 1.5). Their features lie within two cells of it unwrapped (<see cref="Feature(int, int, int, out double, out double, out ulong)"/>),
+        /// so the way to one needs no wrapping either.
+        /// </summary>
+        public void Near(double x, double y, out int ix, out int iy, out float u, out float v)
+        {
+            double cx = x / _cw - 0.5, cy = y / _ch - 0.5;
+            ix = (int)Math.Floor(cx);
+            iy = (int)Math.Floor(cy);
+            u = (float)(cx - ix) + 0.5f;
+            v = (float)(cy - iy) + 0.5f;
+        }
+
+        /// <summary>
+        /// Whether any feature of the cell (<paramref name="dx"/>, <paramref name="dy"/>) of the two by two from <see cref="Near"/> can come
+        /// within <paramref name="reach"/> cells of the point at (<paramref name="u"/>, <paramref name="v"/>) there, wherever its jitter put it:
+        /// most cells can't, and need no hash.
+        /// </summary>
+        public static bool Within(int dx, int dy, float u, float v, float reach)
+        {
+            float gx = MathF.Max(0f, MathF.Max(dx + 0.15f - u, u - dx - 0.85f)), gy = MathF.Max(0f, MathF.Max(dy + 0.15f - v, v - dy - 0.85f));
+            return gx * gx + gy * gy < reach * reach;
+        }
+
         public bool Feature(int ix, int iy, out double fx, out double fy, out ulong hash)
         {
             // The feature's position stays in the unwrapped cell (beside the query point across
             // a seam), but its hash comes from the wrapped cell, so both sides see one feature.
             fx = fy = 0;
-            int wx = (ix % _nx + _nx) % _nx, wy = (iy % _ny + _ny) % _ny;
-            hash = Hash.Of(_seed, wx, wy, _salt);
+            hash = CellHash(ix, iy);
             if (Hash.Unit(hash, 0) > _presence) return false;
             fx = (ix + 0.15 + 0.7 * Hash.Unit(hash, 1)) * _cw;
             fy = (iy + 0.15 + 0.7 * Hash.Unit(hash, 2)) * _ch;
             return true;
         }
+
+        /// <summary>A cell's own hash, from the cell wrapped onto the planet, so both sides of a seam see one cell: what its features are drawn from.</summary>
+        public ulong CellHash(int ix, int iy) => Hash.Of(_seed, Around(ix, _nx), Around(iy, _ny), _salt);
+
+        /// <summary>A crater cell's hash, from the cell wrapped onto the planet (<see cref="Crater"/>): one mix of the grid's key, as the hot path's sample reads hundreds.</summary>
+        public ulong CraterCell(int ix, int iy) => Hash.Mix(_key ^ (ulong)Around(ix, _nx) * 0x9E3779B97F4A7C15UL ^ (ulong)Around(iy, _ny) * 0xC2B2AE3D27D4EB4FUL);
+
+        /// <summary>
+        /// The <paramref name="k"/>-th crater a cell may hold, from the cell's hash (<see cref="CraterCell"/>): whether it is there and its
+        /// place read straight off the hash's bits (16 each; the top 16 its size, <see cref="Impact"/>), the second's hash one mix on, so
+        /// a crater costs no more hashing than that. Its position stays in the unwrapped cell (beside the query point across a seam).
+        /// </summary>
+        public bool Crater(ulong cell, int ix, int iy, int k, out double fx, out double fy, out ulong hash)
+        {
+            fx = fy = 0;
+            hash = k == 0 ? cell : Hash.Mix(cell + (ulong)k * 0xD1B54A32D192ED03UL);
+            if (Bits(hash, 0) > _presence) return false;
+            fx = (ix + 0.15 + 0.7 * Bits(hash, 16)) * _cw;
+            fy = (iy + 0.15 + 0.7 * Bits(hash, 32)) * _ch;
+            return true;
+        }
+
+        /// <summary>Sixteen of a hash's bits from <paramref name="shift"/> as a fraction, 0 to 1.</summary>
+        public static float Bits(ulong hash, int shift) => ((hash >> shift) & 0xFFFF) * (1f / 65536f);
+
     }
 
     double Distance(double x, double y, double fx, double fy)

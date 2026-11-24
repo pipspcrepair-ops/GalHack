@@ -35,3 +35,24 @@ float pfbm(vec3 p, float freq, vec2 size) {
 vec3 srgb_to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
+
+// The world is round past the land under you: past ROUND_FROM m from the eye the ground, the sea
+// and the clouds all sink out of sight together on the far land's slow curve (1 / 300 km, the
+// crossing's flatCurve), so the far land meets the sheet past it in the same place and its own
+// horizon is a round world's. ROUND_FROM (TerrainStreamer.RoundFrom) is past everything drawn in
+// full or that collides: nothing nearer, that stands on the ground, moves.
+const float ROUND_FROM = 2000.0;
+const float ROUND_RADIUS = 300000.0;
+float round_sink(vec2 away) {
+	float d = max(length(away) - ROUND_FROM, 0.0);
+	return d * d / (2.0 * ROUND_RADIUS);
+}
+
+// Whether a fragment is gone past the rim (x, z of the centre, half the square's width, m; no half
+// width: no rim). The last 600 m thin away a pixel at a time, by a pattern shared by land and sea, so
+// at that distance they fade into what stands behind them with no line.
+bool past_rim(vec2 p, vec3 rim, vec2 pixel) {
+	if (rim.z <= 0.0) return false;
+	float out_by = (max(abs(p.x - rim.x), abs(p.y - rim.y)) - rim.z + 600.0) / 600.0;
+	return out_by > fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}

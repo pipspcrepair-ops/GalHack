@@ -148,7 +148,7 @@ public sealed class SurvivalSim
         if (o.AutoHelmet && _airOkBefore && !airOk && Player.Gear.HasSuit && !Player.Gear.HelmetOn)
         {
             Player.Gear.HelmetOn = true;
-            Events.Add("Helmet sealed: the air here isn't breathable.");
+            Events.Add("HELMET SEALED · BAD AIR");
         }
         _airOkBefore = airOk;
 
@@ -168,7 +168,7 @@ public sealed class SurvivalSim
         bool large = inv.LargeBottles > 0 && (cap - v.Oxygen >= Rules.Oxygen.LargeBottle || inv.SmallBottles == 0);
         if (!large && inv.SmallBottles == 0) return;
         Outcome used = UseBottle(large);
-        if (used.Ok) Events.Add("Suit oxygen low: " + used.Message);
+        if (used.Ok) Events.Add("O2 LOW · " + used.Message);
     }
 
     /// <summary>The player hit the ground at this speed. Returns the health lost.</summary>
@@ -176,7 +176,7 @@ public sealed class SurvivalSim
     {
         if (Player.Dead) return 0;
         double lost = Player.Vitals.Land(speed, Mods);
-        if (lost > 0) Events.Add($"Hard landing: -{lost:F0} health.");
+        if (lost > 0) Events.Add($"HARD LANDING · -{lost:F0} HEALTH");
         if (Player.Vitals.Dead) Die(CauseOfDeath(DamageKind.Fall));
         return lost;
     }
@@ -227,15 +227,15 @@ public sealed class SurvivalSim
 
         LastBackpack = dropped.IsEmpty ? null : World.Drop(p.Position, dropped, Time, cause);
         Events.Add(LastBackpack != null
-            ? $"{cause}. Backpack with {dropped.ItemCount} items left at the marker."
-            : $"{cause}. Nothing dropped.");
+            ? $"{cause.ToUpperInvariant()} · BACKPACK · {dropped.ItemCount} ITEMS"
+            : $"{cause.ToUpperInvariant()} · NOTHING DROPPED");
     }
 
     public List<RespawnOption> RespawnOptions() => Respawning.Options(Player.DeathPosition, RespawnPoints);
 
     public Outcome Respawn(RespawnChoice choice)
     {
-        if (!Player.Dead) return Outcome.No("Still alive.");
+        if (!Player.Dead) return Outcome.No("ALIVE");
         RespawnOption option = RespawnOptions().First(o => o.Choice == choice);
         if (!option.Available) return Outcome.No(option.Detail);
 
@@ -286,7 +286,7 @@ public sealed class SurvivalSim
 
     public Outcome SetHome(RespawnPoint point)
     {
-        if (!point.CanBeHome) return Outcome.No("Only a clone chamber or healing booth can be home.");
+        if (!point.CanBeHome) return Outcome.No("HOME · CLONE CHAMBER OR BOOTH");
         foreach (RespawnPoint p in RespawnPoints) p.IsHome = false;
         point.IsHome = true;
         return Outcome.Done($"{point.Name} is now home.");
@@ -296,9 +296,9 @@ public sealed class SurvivalSim
 
     public Outcome ToggleHelmet()
     {
-        if (!Player.Gear.HasSuit) return Outcome.No("No suit, no helmet: put on a suit (I).");
+        if (!Player.Gear.HasSuit) return Outcome.No("NO SUIT");
         Player.Gear.HelmetOn = !Player.Gear.HelmetOn;
-        return Outcome.Done(Player.Gear.HelmetOn ? "Helmet sealed." : "Helmet open.");
+        return Outcome.Done(Player.Gear.HelmetOn ? "HELMET SEALED" : "HELMET OPEN");
     }
 
     public Outcome EquipSuit(string kind)
@@ -306,7 +306,7 @@ public sealed class SurvivalSim
         Inventory inv = Player.Inventory;
         Loadout gear = Player.Gear;
         SuitItem suit = inv.Suits.FirstOrDefault(s => s.Kind == kind);
-        if (suit == null) return Outcome.No("You don't have that suit.");
+        if (suit == null) return Outcome.No("SUIT · NONE");
         inv.Suits.Remove(suit);
         if (gear.Suit != null) inv.Suits.Add(gear.Suit);
         gear.Suit = suit;
@@ -328,7 +328,7 @@ public sealed class SurvivalSim
     public Outcome RemoveSuit()
     {
         Loadout gear = Player.Gear;
-        if (gear.Suit == null) return Outcome.No("No suit on.");
+        if (gear.Suit == null) return Outcome.No("NO SUIT");
         Player.Inventory.Suits.Add(gear.Suit);
         Player.Inventory.Boosters.AddRange(gear.Boosters);
         gear.Suit = null;
@@ -341,19 +341,19 @@ public sealed class SurvivalSim
     public Outcome EquipBooster(string id)
     {
         Loadout gear = Player.Gear;
-        if (!gear.HasSuit) return Outcome.No("Boosters fit into a suit.");
+        if (!gear.HasSuit) return Outcome.No("NO SUIT");
         int slots = gear.Slots(Data.Armor);
-        if (gear.Boosters.Contains(id)) return Outcome.No("Already fitted.");
+        if (gear.Boosters.Contains(id)) return Outcome.No("FITTED");
         if (gear.Boosters.Count >= slots)
-            return Outcome.No(slots == 0 ? "This suit has no booster slots." : $"All {slots} slots are full: remove a booster first.");
-        if (!Player.Inventory.Boosters.Remove(id)) return Outcome.No("You don't have that booster.");
+            return Outcome.No(slots == 0 ? "BOOSTER SLOTS · 0" : $"BOOSTER SLOTS · {slots}/{slots}");
+        if (!Player.Inventory.Boosters.Remove(id)) return Outcome.No("BOOSTER · NONE");
         gear.Boosters.Add(id);
         return Outcome.Done($"{Data.Armor.Booster(id).Name} fitted.");
     }
 
     public Outcome RemoveBooster(string id)
     {
-        if (!Player.Gear.Boosters.Remove(id)) return Outcome.No("Not fitted.");
+        if (!Player.Gear.Boosters.Remove(id)) return Outcome.No("NOT FITTED");
         Player.Inventory.Boosters.Add(id);
         Player.Vitals.Oxygen = Math.Min(Player.Vitals.Oxygen, OxygenCapacity);
         return Outcome.Done($"{Data.Armor.Booster(id).Name} removed.");
@@ -364,9 +364,9 @@ public sealed class SurvivalSim
     public Outcome Eat(string kind)
     {
         Vitals v = Player.Vitals;
-        if (Rules.Food.Max - v.Food < 1) return Outcome.No("Not hungry.");
+        if (Rules.Food.Max - v.Food < 1) return Outcome.No("NOT HUNGRY");
         FoodItem item = Player.Inventory.TakeOldestFood(kind);
-        if (item == null) return Outcome.No("None left.");
+        if (item == null) return Outcome.No("NONE LEFT");
         FoodKind food = Data.Food.Food(kind);
         double gain = Data.Food.NourishmentOf(item, Time);
         double fresh = Data.Food.Freshness(food, Time - item.MadeAt);
@@ -378,14 +378,14 @@ public sealed class SurvivalSim
     {
         Inventory inv = Player.Inventory;
         double cap = OxygenCapacity;
-        if ((large ? inv.LargeBottles : inv.SmallBottles) <= 0) return Outcome.No($"No {(large ? "large" : "small")} oxygen bottles.");
-        if (cap <= 0) return Outcome.No("No suit to fill.");
-        if (Player.Vitals.Oxygen >= cap) return Outcome.No("Suit oxygen is already full.");
+        if ((large ? inv.LargeBottles : inv.SmallBottles) <= 0) return Outcome.No($"{(large ? "LARGE" : "SMALL")} O2 BOTTLES · 0");
+        if (cap <= 0) return Outcome.No("NO SUIT");
+        if (Player.Vitals.Oxygen >= cap) return Outcome.No("O2 FULL");
         if (large) inv.LargeBottles--;
         else inv.SmallBottles--;
         double amount = large ? Rules.Oxygen.LargeBottle : Rules.Oxygen.SmallBottle;
         Player.Vitals.Oxygen = Math.Min(cap, Player.Vitals.Oxygen + amount);
-        return Outcome.Done($"{(large ? "Large" : "Small")} oxygen bottle: +{amount:F0}.");
+        return Outcome.Done($"{(large ? "LARGE" : "SMALL")} BOTTLE · +{amount:F0}");
     }
 
     public Outcome UseMedkit() => Healing.UseMedkit(Player.Vitals, Player.Inventory, Rules);
@@ -404,7 +404,7 @@ public sealed class SurvivalSim
     public Outcome Craft(Replicator replicator, int tier)
     {
         FoodKind food = Data.Food.Foods.FirstOrDefault(f => f.Tier == tier);
-        return food == null ? Outcome.No("Nothing to make at that tier.") : replicator.Craft(food, Player.Inventory, Time);
+        return food == null ? Outcome.No("TIER · NOTHING TO MAKE") : replicator.Craft(food, Player.Inventory, Time);
     }
 
     /// <summary>
@@ -434,11 +434,11 @@ public sealed class SurvivalSim
         {
             inv.Ore -= tier.BuildOre;
             kit = new ReplicatorKit { Fuel = tier.Fuel };
-            message = $"Built a {tier.Name.ToLowerInvariant()} from {tier.BuildOre} ore and set it down.";
+            message = $"{tier.Name.ToUpperInvariant()} · BUILT · -{tier.BuildOre} ORE";
         }
         else
         {
-            return Outcome.No($"No {tier.Name.ToLowerInvariant()} to set down. Building one takes {tier.BuildOre} ore; you have {inv.Ore}. Mine rocks (hold the left mouse button).");
+            return Outcome.No($"{tier.Name.ToUpperInvariant()} · ORE {inv.Ore}/{tier.BuildOre}");
         }
 
         Replicators.Add(new Replicator { Id = _nextId++, Tier = tier, Position = at, Energy = new FuelTank { Fuel = kit.Fuel } });
@@ -449,19 +449,19 @@ public sealed class SurvivalSim
 
     public Outcome PickBush(Bush bush)
     {
-        if (!bush.Ripe(Time)) return Outcome.No($"No fruit yet: it regrows in {(bush.RipeAt - Time) / 60:F0} min.");
+        if (!bush.Ripe(Time)) return Outcome.No($"FRUIT · {(bush.RipeAt - Time) / 60:F0} MIN");
         ForageRules f = Data.Food.Forage;
         for (int i = 0; i < f.FruitPerBush; i++) Player.Inventory.Food.Add(new FoodItem { Kind = "fruit", MadeAt = Time });
         Player.Inventory.Organics += f.OrganicsPerBush;
         bush.RipeAt = Time + f.RegrowMinutes * 60;
-        return Outcome.Done($"Picked {f.FruitPerBush} fruit and {f.OrganicsPerBush:F0} kg of plant matter.");
+        return Outcome.Done($"+{f.FruitPerBush} FRUIT · +{f.OrganicsPerBush:F0} kg ORGANICS");
     }
 
     public Outcome LootPod(EscapePod pod)
     {
-        if (pod.Rations <= 0) return Outcome.No("The pod's ration locker is empty.");
+        if (pod.Rations <= 0) return Outcome.No("RATIONS · 0");
         for (int i = 0; i < pod.Rations; i++) Player.Inventory.Food.Add(new FoodItem { Kind = "ration-pack", MadeAt = Time });
-        string message = $"Took {pod.Rations} ration packs from the pod.";
+        string message = $"+{pod.Rations} RATION PACKS";
         pod.Rations = 0;
         return Outcome.Done(message);
     }
@@ -471,10 +471,10 @@ public sealed class SurvivalSim
     public Outcome TakeFromStorage(double kg)
     {
         double amount = Math.Min(kg, BaseStorage.Organics);
-        if (amount <= 0) return Outcome.No("Storage has no organics.");
+        if (amount <= 0) return Outcome.No("ORGANICS · 0");
         BaseStorage.Organics -= amount;
         Player.Inventory.Organics += amount;
-        return Outcome.Done($"Took {amount:F0} kg organics for the field.");
+        return Outcome.Done($"+{amount:F0} kg ORGANICS");
     }
 
     public void AddOre(int count) => Player.Inventory.Ore += count;

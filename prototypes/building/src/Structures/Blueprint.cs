@@ -14,6 +14,7 @@ public sealed class BlueprintBlock
     public string[] Paint; // six face paint names (+x -x +y -y +z -z), "-" for unpainted; null when unpainted
     public float? Hp;
     public BlockFlags Flags;
+    public LightSettings? Light;
     public int Line;
 }
 
@@ -23,10 +24,13 @@ public sealed class BlueprintData
     public string Schema;
     public int Version;
     public string Name = "Unnamed";
-    public string Grid = "large";
-    public CoreMode Mode = CoreMode.Capital;
+    public string Grid = "1m";
+    public CoreMode Mode = CoreMode.Flight;
     public bool Gravity = true;
     public double Cargo;
+    /// <summary>The toolbar's arrangement ("bar", '-' an empty slot), or null; and the systems switched off ("off").</summary>
+    public string[] Bar;
+    public readonly List<string> Off = new();
     public readonly List<(string name, Paint paint, int line)> Paints = new();
     public readonly List<BlueprintBlock> Blocks = new();
     public readonly List<string> Errors = new();
@@ -39,8 +43,10 @@ public sealed class BlueprintData
 ///   schema galhack.blueprint
 ///   version 1
 ///   name "Foss Lancer"
-///   grid large                       # large (2 m) or small (0.5 m)
-///   mode capital                     # base or capital
+///   grid 1m                          # the one grid; old "large" and "small" files load on it as they are
+///   mode flight                      # base, hover or flight (old capital and vessel read as flight)
+///   bar spotlights guns.gatling - - - - life-support gravity   # the pilot's toolbar, a key per slot, '-' empty
+///   off fabricators                  # systems switched off
 ///   paint hull base=e9dfc4 grime=1   # base accent pattern texture stencil grime
 ///   block 0 1 0 core
 ///   block -3..3 0 -8..8 steel paint=hull
@@ -64,6 +70,7 @@ public static class Blueprint
     public static Structure Load(string text, Catalogue catalogue, out List<string> errors, string owner = Building.DefaultOwner)
     {
         BlueprintData data = Parse(text);
+        OldDoorTops(data, catalogue);
         errors = Validate(data, catalogue);
         return errors.Count > 0 ? null : Build(data, catalogue, owner);
     }
@@ -93,8 +100,8 @@ public static class Blueprint
                 case "name": data.Name = Arg(1) ?? ""; break;
                 case "grid": data.Grid = Arg(1); break;
                 case "mode":
-                    if (Enum.TryParse(Arg(1), true, out CoreMode mode) && !int.TryParse(Arg(1), out _)) data.Mode = mode;
-                    else Error($"mode must be base, capital, vessel or hover, not '{Arg(1)}'");
+                    if (CoreModes.TryParse(Arg(1), out CoreMode mode)) data.Mode = mode;
+                    else Error($"mode must be base, hover or flight, not '{Arg(1)}'");
                     break;
                 case "gravity":
                     if (Arg(1) is "on" or "off") data.Gravity = Arg(1) == "on";
@@ -103,6 +110,14 @@ public static class Blueprint
                 case "cargo":
                     if (!double.TryParse(Arg(1), NumberStyles.Float, CultureInfo.InvariantCulture, out data.Cargo) || data.Cargo < 0)
                         Error("bad cargo amount");
+                    break;
+                case "bar":
+                    if (t.Count < 2 || t.Skip(1).Any(k => k != "-" && !IsName(k))) Error("bar needs a slot key or '-' for each slot");
+                    else data.Bar = t.Skip(1).Select(k => k == "-" ? null : k).ToArray();
+                    break;
+                case "off":
+                    if (t.Skip(1).Any(k => !IsName(k))) Error("off needs system names");
+                    else data.Off.AddRange(t.Skip(1));
                     break;
                 case "paint": ParsePaint(t, line, data, Error); break;
                 case "block": total += ParseBlock(t, line, data, Error, total); break;
@@ -134,13 +149,18 @@ public static class Blueprint
                     if (Enum.TryParse(v, true, out Pattern pat) && !int.TryParse(v, out _)) p = p with { Pattern = pat };
                     else error($"unknown pattern '{v}'");
                     break;
-                case "texture":
-                    if (Enum.TryParse(v, true, out FaceTexture tex) && !int.TryParse(v, out _)) p = p with { Texture = tex };
-                    else error($"unknown texture '{v}'");
-                    break;
+                case "texture": break; // old paint lines named a surface; the plating owns that now
                 case "stencil":
                     if (v.Length == 1 && char.IsAsciiDigit(v[0])) p = p with { Stencil = (byte)v[0] };
                     else error($"stencil must be one digit, not '{v}'");
+                    break;
+                case "lamp":
+                    if (Enum.TryParse(v, true, out LampShape shape) && shape != LampShape.None && !int.TryParse(v, out _)) p = p with { Shape = shape };
+                    else error($"unknown lamp shape '{v}' (full strip panel border)");
+                    break;
+                case "light":
+                    if (LightSettings.TryParse(v, out LightSettings ls)) p = p with { Lamp = ls };
+                    else error($"bad light '{v}'");
                     break;
                 case "grime":
                     if (byte.TryParse(v, out byte g) && g <= 3) p = p with { Grime = g };
@@ -183,6 +203,11 @@ public static class Blueprint
                 if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float hp)) proto.Hp = hp;
                 else error($"bad hp '{v}'");
             }
+            else if (key == "light")
+            {
+                if (LightSettings.TryParse(v, out LightSettings ls)) proto.Light = ls;
+                else error($"bad light '{v}' (use rrggbb:mode:speed:seed, modes steady pulse flicker strobe fade)");
+            }
             else if (key == "paint")
             {
                 string[] names = v.Split(',');
@@ -207,7 +232,7 @@ public static class Blueprint
                     data.Blocks.Add(new BlueprintBlock
                     {
                         Pos = new Int3(x, y, z), Type = proto.Type, Shape = proto.Shape, Rot = proto.Rot,
-                        Paint = proto.Paint, Hp = proto.Hp, Flags = proto.Flags, Line = line,
+                        Paint = proto.Paint, Hp = proto.Hp, Flags = proto.Flags, Light = proto.Light, Line = line,
                     });
         return (int)count;
     }
@@ -215,18 +240,21 @@ public static class Blueprint
     /// <summary>
     /// Rejects bad data: syntax errors, a missing or second core, overlapping blocks, unknown
     /// ids, and blocks that claim to belong to the structure but are not attached to its core.
+    /// An old grid's data is first made to fit the 1 m grid, in place: see <see cref="OldGrids"/>.
     /// </summary>
     public static List<string> Validate(BlueprintData data, Catalogue catalogue)
     {
         var errors = new List<string>(data.Errors);
         if (data.Schema != SchemaName) errors.Add($"schema must be '{SchemaName}' (found '{data.Schema ?? "nothing"}')");
         if (data.Version != CurrentVersion) errors.Add($"unsupported version {data.Version} (expected {CurrentVersion})");
-        GridDef grid = catalogue.GridById(data.Grid ?? "");
-        if (grid == null) { errors.Add($"unknown grid '{data.Grid}'"); return errors; }
+        bool old = OldGrids.Contains(data.Grid);
+        if (data.Grid != catalogue.Grid.Id && !old) { errors.Add($"unknown grid '{data.Grid}'"); return errors; }
+        if (old) OldCellsMakeRoom(data, catalogue);
 
         var paintNames = new HashSet<string>(data.Paints.Select(p => p.name));
-        var scratch = new Structure(catalogue, grid);
+        var scratch = new Structure(catalogue);
         var lineOf = new Dictionary<Int3, int>();
+        var cellLine = new Dictionary<Int3, int>();
         int cores = 0;
         foreach (BlueprintBlock b in data.Blocks)
         {
@@ -244,13 +272,23 @@ public static class Blueprint
                 foreach (string name in b.Paint.Where(n => n != "-" && !paintNames.Contains(n)).Distinct())
                     Error($"unknown paint '{name}'");
             if ((b.Flags & BlockFlags.Open) != 0 && !type.IsDoor) Error($"only doors can be open, not '{b.Type}'");
-            if ((b.Flags & BlockFlags.Off) != 0 && !type.IsLight) Error($"only lights can be off, not '{b.Type}'");
+            if ((b.Flags & BlockFlags.Off) != 0 && !type.Switches) Error($"only lights and turrets can be off, not '{b.Type}'");
             if (Math.Abs(b.Pos.X) > MaxCoordinate || Math.Abs(b.Pos.Y) > MaxCoordinate || Math.Abs(b.Pos.Z) > MaxCoordinate)
                 Error("coordinate out of range");
 
             Block block = Building.Make(scratch, type, shape, rot);
             if (b.Hp is float hp && (hp <= 0 || hp > block.Hp + 0.05f)) Error($"hp {hp} is outside 0..{block.Hp:0.#}");
-            if (lineOf.TryGetValue(b.Pos, out int other)) { Error($"block at {b.Pos} overlaps the one from line {other}"); continue; }
+            // A block spanning several cells is saved at its anchor; its other cells are rebuilt here,
+            // and any of them landing on another block's cell is an error, never a silent overwrite.
+            int other = -1;
+            foreach (Int3 cell in scratch.CellsOf(b.Pos, block))
+                if (cellLine.TryGetValue(cell, out int taken)) { other = taken; break; }
+            if (other >= 0)
+            {
+                Error($"block at {b.Pos}{(type.Multi ? $" ({type.Size.X}x{type.Size.Y}x{type.Size.Z} cells)" : "")} overlaps the one from line {other}");
+                continue;
+            }
+            foreach (Int3 cell in scratch.CellsOf(b.Pos, block)) cellLine[cell] = b.Line;
             lineOf[b.Pos] = b.Line;
             if (type.IsCore) cores++;
             scratch.Set(b.Pos, block);
@@ -262,6 +300,13 @@ public static class Blueprint
         {
             HashSet<Int3> attached = Connectivity.Reachable(scratch, core);
             var detached = lineOf.Keys.Where(p => !attached.Contains(p)).OrderBy(p => lineOf[p]).ToList();
+            // An old grid's block may have hung on one that gave way to a bigger block (OldCellsMakeRoom): it goes with it.
+            if (old)
+            {
+                var gone = detached.ToHashSet();
+                data.Blocks.RemoveAll(b => gone.Contains(b.Pos));
+                detached.Clear();
+            }
             foreach (Int3 p in detached.Take(8))
                 errors.Add($"line {lineOf[p]}: block at {p} is not attached to the core");
             if (detached.Count > 8) errors.Add($"... and {detached.Count - 8} more detached blocks");
@@ -272,14 +317,16 @@ public static class Blueprint
     /// <summary>Builds a structure from validated data.</summary>
     public static Structure Build(BlueprintData data, Catalogue catalogue, string owner = Building.DefaultOwner)
     {
-        var s = new Structure(catalogue, catalogue.GridById(data.Grid))
+        var s = new Structure(catalogue)
         {
             Name = data.Name,
             Mode = data.Mode,
             GravityOn = data.Gravity,
             CargoSu = data.Cargo,
             Owner = owner,
+            Bar = data.Bar,
         };
+        s.SystemsOff.UnionWith(data.Off);
         var slots = new Dictionary<string, ushort> { ["-"] = 0 };
         foreach (var (name, paint, _) in data.Paints) slots[name] = s.Palette.Intern(paint, name);
 
@@ -294,13 +341,67 @@ public static class Blueprint
             if (b.Paint != null)
                 foreach (Dir d in Dirs.All) block.Paint[d] = slots[b.Paint[(int)d]];
             s.Set(b.Pos, block);
+            if (b.Light is LightSettings light) s.SetLight(b.Pos, light);
         }
         if (s.Core == null) s.Owner = null;
-        // Old blueprints said "capital" on every small grid, and a hover pad made the craft a hover
-        // vessel: they load in Hover Mode. A blueprint saved since says "vessel" or "hover" itself.
-        if (data.Mode == CoreMode.Capital && s.Grid.Size == GridSize.Small && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
+        // Old small-grid blueprints said "capital" with hover pads aboard, and those craft rode them.
+        if (data.Grid == "small" && data.Mode == CoreMode.Flight && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
             s.Mode = CoreMode.Hover;
         return s;
+    }
+
+    // ---- Old grids ----------------------------------------------------------------------------
+    // Blueprints from the 2 m and 0.5 m grids load on the 1 m grid as they are, a cell for a cell.
+    // Some of their one-cell blocks are bigger now (a door is 1x2x1), so they may run into their
+    // neighbours: a device keeps its cells and the armour in its way gives way; a block running
+    // into a device, or armour into armour, is left out, and so is whatever hung only on what was
+    // left out. These files are replaced, not converted.
+
+    /// <summary>The grids blueprints were saved on before the one 1 m grid.</summary>
+    public static readonly string[] OldGrids = { "large", "small" };
+
+    static void OldCellsMakeRoom(BlueprintData data, Catalogue catalogue)
+    {
+        var scratch = new Structure(catalogue);
+        var owner = new Dictionary<Int3, BlueprintBlock>();
+        var cellsOf = new Dictionary<BlueprintBlock, List<Int3>>();
+        var dropped = new HashSet<BlueprintBlock>();
+        foreach (BlueprintBlock b in data.Blocks)
+        {
+            if (!catalogue.TryGetType(b.Type, out BlockType type) || !Orientations.TryParse(b.Rot ?? "+y-z", out int rot)) continue;
+            List<Int3> cells = scratch.CellsOf(b.Pos, Building.Make(scratch, type, null, rot)).ToList();
+            var inWay = cells.Where(owner.ContainsKey).Select(c => owner[c]).Distinct().ToList();
+            if (inWay.Count > 0 && (type.IsArmor || inWay.Any(o => !catalogue.Type(o.Type).IsArmor)))
+            {
+                dropped.Add(b);
+                continue;
+            }
+            foreach (BlueprintBlock o in inWay)
+            {
+                dropped.Add(o);
+                foreach (Int3 c in cellsOf[o]) owner.Remove(c);
+            }
+            cellsOf[b] = cells;
+            foreach (Int3 c in cells) owner[c] = b;
+        }
+        data.Blocks.RemoveAll(dropped.Contains);
+    }
+
+    // ---- Doors two cells tall, for a while -----------------------------------------------------
+    // For a short while (design 702 to 708) a large door was two cells, a 3 m leaf under a top cell ("door-head")
+    // that took the place of the wall over it. The door is one block again; a blueprint saved then still loads,
+    // its door with the wall block over it once more.
+
+    /// <summary>A door's top named in a blueprint becomes the wall block it was: steel, its paint kept, whole.</summary>
+    static void OldDoorTops(BlueprintData data, Catalogue catalogue)
+    {
+        if (catalogue.TryGetType("door-head", out _)) return;
+        foreach (BlueprintBlock b in data.Blocks.Where(b => b.Type == "door-head"))
+        {
+            b.Type = "steel";
+            b.Hp = null;
+            b.Flags &= ~BlockFlags.Open;
+        }
     }
 
     // ---- Saving -----------------------------------------------------------------------------
@@ -312,7 +413,7 @@ public static class Blueprint
         void Line(string text) => sb.Append(text).Append('\n');
 
         Line("# GalHack blueprint. One statement per line; '#' starts a comment.");
-        Line("# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off]");
+        Line("# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]");
         Line("# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.");
         Line($"schema {SchemaName}");
         Line($"version {CurrentVersion}");
@@ -321,6 +422,8 @@ public static class Blueprint
         Line($"mode {s.Mode.ToString().ToLowerInvariant()}");
         Line($"gravity {(s.GravityOn ? "on" : "off")}");
         if (s.CargoSu > 0) Line($"cargo {Num(s.CargoSu)}");
+        if (s.Bar != null) Line($"bar {string.Join(" ", s.Bar.Select(k => k ?? "-"))}");
+        if (s.SystemsOff.Count > 0) Line($"off {string.Join(" ", s.SystemsOff)}");
 
         var blocks = s.Blocks().OrderBy(x => x.pos.Y).ThenBy(x => x.pos.Z).ThenBy(x => x.pos.X).ToList();
         var used = new SortedSet<ushort>();
@@ -333,7 +436,7 @@ public static class Blueprint
         // Runs merge on the written text, so blocks that print the same always merge the same way
         // (two damaged blocks rounding to the same hp merge on the first save, not only the second).
         Line("");
-        string[] tails = blocks.Select(x => BlockTail(s, x.block)).ToArray();
+        string[] tails = blocks.Select(x => BlockTail(s, x.block, x.pos)).ToArray();
         for (int i = 0; i < blocks.Count;)
         {
             Int3 start = blocks[i].pos;
@@ -352,14 +455,14 @@ public static class Blueprint
         var sb = new StringBuilder($"paint {name} base={Paint.Hex(p.Base)}");
         if (p.Accent != Paint.DefaultAccent) sb.Append($" accent={Paint.Hex(p.Accent)}");
         if (p.Pattern != Pattern.None) sb.Append($" pattern={p.Pattern.ToString().ToLowerInvariant()}");
-        if (p.Texture != FaceTexture.Panel) sb.Append($" texture={p.Texture.ToString().ToLowerInvariant()}");
         if (p.Stencil != 0) sb.Append($" stencil={(char)p.Stencil}");
         if (p.Grime != 0) sb.Append($" grime={p.Grime}");
+        if (p.IsLamp) sb.Append($" lamp={p.Shape.ToString().ToLowerInvariant()} light={p.Lamp.Value.ToText()}");
         return sb.ToString();
     }
 
     /// <summary>Everything on a block line after its coordinates.</summary>
-    static string BlockTail(Structure s, Block b)
+    static string BlockTail(Structure s, Block b, Int3 pos)
     {
         BlockType t = s.TypeOf(b);
         var sb = new StringBuilder(t.Id);
@@ -373,6 +476,7 @@ public static class Blueprint
         if (b.Hp < s.StatsOf(b).MaxHp - 0.05f) sb.Append(" hp=").Append(Num(Math.Round(b.Hp, 1)));
         if (b.Open) sb.Append(" open");
         if (b.Off) sb.Append(" off");
+        if (s.LightStyles.TryGetValue(pos, out LightSettings light)) sb.Append(" light=").Append(light.ToText());
         return sb.ToString();
     }
 

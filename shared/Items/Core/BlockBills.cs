@@ -1,44 +1,38 @@
+using System;
 using System.Collections.Generic;
 
 namespace GalHack.Items;
 
 /// <summary>
-/// What one block is made of, per grid, and the block family items made from it (Empyrion's way:
-/// blocks are craftable items). A constructor makes a block item from its bill; placing a block in
-/// survival uses one item, and taking it down gives the item back. Every shape of an armour
-/// material is placed from the same family item, so every shape costs what its cube does (design
-/// section 11). The small and large grids are separate families, with separate items.
+/// What one block is made of, and the one block item made from it (Empyrion's way: blocks are
+/// craftable items). A fabricator makes a block item from its bill; placing a block in survival
+/// uses one item, and taking it down gives the item back. Every shape of an armour block is placed
+/// from the same item, so every shape costs what its cube does (design section 11).
 /// </summary>
 public sealed class BlockBill
 {
     public string BlockId { get; init; }
-    public Bill Small { get; init; } = new();
-    public Bill Large { get; init; } = new();
+    public Bill Bill { get; init; } = new();
     /// <summary>Needs a unique find (salvage only), so it has no path from ore.</summary>
     public bool UniqueOnly { get; init; }
     /// <summary>Weapons: the ammo item it fires from shared storage.</summary>
     public string Ammo { get; init; }
-
-    /// <summary>Its tech-tree nodes on each grid (data: <c>unlock.small</c>, <c>unlock.large</c>), or null where it is always available.</summary>
-    public Unlock UnlockSmall { get; init; }
-    public Unlock UnlockLarge { get; init; }
-
-    /// <summary>The grids it can be placed on (every catalogue block is on both; deco pieces may be on one).</summary>
-    public bool OnSmall { get; init; } = true;
-    public bool OnLarge { get; init; } = true;
+    /// <summary>Its tech-tree node (data: <c>unlock</c>), or null where it is always available.</summary>
+    public Unlock Unlock { get; init; }
     public BlockFamily Family { get; init; } = BlockFamily.Device;
+    /// <summary>The block item.</summary>
+    public ItemDef Item { get; internal set; }
 
-    /// <summary>The block family items, per grid (null where it isn't on that grid).</summary>
-    public ItemDef ItemSmall { get; internal set; }
-    public ItemDef ItemLarge { get; internal set; }
-    public ItemDef ItemFor(bool smallGrid) => smallGrid ? ItemSmall : ItemLarge;
-    public bool On(bool smallGrid) => smallGrid ? OnSmall : OnLarge;
+    /// <summary>Cells the block fills (building's size, set when the two catalogues are linked; one until then).</summary>
+    public int Cells { get; set; } = 1;
+    /// <summary>What the data says about fitting and placing one, or null for the defaults below.</summary>
+    public double? Assembly { get; init; }
+    public int? PlaceXp { get; init; }
 
-    public Bill For(bool smallGrid) => smallGrid ? Small : Large;
-    public Unlock UnlockFor(bool smallGrid) => smallGrid ? UnlockSmall : UnlockLarge;
-
-    /// <summary>A block's tech-tree node id on a grid: <c>thruster@small</c>.</summary>
-    public static string NodeId(string blockId, bool smallGrid) => $"{blockId}@{(smallGrid ? "small" : "large")}";
+    /// <summary>Seconds the blueprint factory takes to fit one: 0.4 s for a one-cell block, rising to 1.6 s at eight cells.</summary>
+    public double AssemblySeconds => Assembly ?? 0.4 + 1.2 * (Math.Min(Cells, 8) - 1) / 7.0;
+    /// <summary>Experience for placing one: 1 for an armour block, else 1 a cell up to 8.</summary>
+    public int Xp => PlaceXp ?? (Family == BlockFamily.Armour ? 1 : Math.Min(Cells, 8));
 }
 
 /// <summary>Every block's bill, keyed by building's block id.</summary>
@@ -49,28 +43,23 @@ public sealed class BlockBills
     public IEnumerable<BlockBill> All => _bills.Values;
     public int Count => _bills.Count;
 
-    /// <summary>Seconds the blueprint factory takes to fit one block, per grid.</summary>
-    public double AssemblySmall { get; internal set; } = 0.4;
-    public double AssemblyLarge { get; internal set; } = 1.6;
-    public double AssemblySeconds(bool smallGrid) => smallGrid ? AssemblySmall : AssemblyLarge;
-
     public bool TryGet(string blockId, out BlockBill bill) => _bills.TryGetValue(blockId, out bill);
     public BlockBill Get(string blockId) => _bills.TryGetValue(blockId, out BlockBill b) ? b : throw new KeyNotFoundException($"no bill for block '{blockId}'");
 
-    /// <summary>The bill for one block on a grid (a copy, safe to change).</summary>
-    public Bill For(string blockId, bool smallGrid) => Get(blockId).For(smallGrid).Clone();
+    /// <summary>The bill for one block (a copy, safe to change).</summary>
+    public Bill For(string blockId) => Get(blockId).Bill.Clone();
 
     /// <summary>The ammo a weapon block fires, or null if it isn't a weapon.</summary>
     public string AmmoFor(string blockId) => _bills.TryGetValue(blockId, out BlockBill b) ? b.Ammo : null;
 
-    /// <summary>The block family item for a block on a grid, or null if there is none.</summary>
-    public ItemDef ItemFor(string blockId, bool smallGrid) => _bills.TryGetValue(blockId, out BlockBill b) ? b.ItemFor(smallGrid) : null;
+    /// <summary>The block item for a block, or null if there is none.</summary>
+    public ItemDef ItemFor(string blockId) => _bills.TryGetValue(blockId, out BlockBill b) ? b.Item : null;
 
     /// <summary>A build list as block items: one item per block (what survival placement uses).</summary>
     public Bill ItemsFor(IEnumerable<BlockCount> blocks)
     {
         var total = new Bill();
-        foreach (BlockCount b in blocks) total.Add(Get(b.BlockId).ItemFor(b.Small)?.Id ?? throw new KeyNotFoundException($"no item for block '{b.BlockId}'"), b.Count);
+        foreach (BlockCount b in blocks) total.Add(Get(b.BlockId).Item?.Id ?? throw new KeyNotFoundException($"no item for block '{b.BlockId}'"), b.Count);
         return total;
     }
 
@@ -78,7 +67,7 @@ public sealed class BlockBills
     public Bill Total(IEnumerable<BlockCount> blocks)
     {
         var total = new Bill();
-        foreach (BlockCount b in blocks) total.Add(Get(b.BlockId).For(b.Small), b.Count);
+        foreach (BlockCount b in blocks) total.Add(Get(b.BlockId).Bill, b.Count);
         return total;
     }
 

@@ -140,7 +140,7 @@ public sealed class CharacterBinding : BodyBinding
                     TouchedHullNormal = n;
                 }
             }
-            if (stepped && N.Vector3.Dot(n, up) < 0.3f) continue; // the step's riser: stepped up, not hit
+            if (stepped && Steps.Blocks(Character, n.ToGodot(), up.ToGodot())) continue; // the step's riser or edge: stepped up, not hit
             N.Vector3 otherVelocity = other == null || b.Frame != null ? N.Vector3.Zero : other.PointVelocity(point);
             N.Vector3 mine = b.Frame != null ? before.ToNumerics() : worldBefore;
             float closing = -N.Vector3.Dot(mine - otherVelocity, n);
@@ -309,12 +309,17 @@ public sealed class CharacterBinding : BodyBinding
         return false;
     }
 
-    public override void Teleport()
+    public override void Teleport() => Place(true);
+
+    /// <summary>Puts the character where its body was set this tick, drawn moving there from where it was (a script carrying it along a path).</summary>
+    public void Glide() => Place(false);
+
+    void Place(bool jump)
     {
         Align();
         Character.GlobalPosition = Body.Position.ToGodot();
         Character.Velocity = Body.Velocity.ToGodot();
-        Character.ResetPhysicsInterpolation();
+        if (jump) Character.ResetPhysicsInterpolation();
         _touched.Clear();
     }
 }

@@ -1,0 +1,172 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using GalHack.Terrain;
+using Godot;
+using Planets.Gen;
+using PlanetSurface.Terrain;
+using PlanetSurface.World;
+using Archetype = Planets.Gen.Archetype;
+
+namespace PlanetSurface;
+
+/// <summary>
+/// Cliffs read as cleanly far off as the old far meshes drew them: on fresh worlds of mesas and buttes, round the steepest
+/// cliffs, the drawn ground is looked at every quarter metre along each cliff's top and foot, for the GPU rings (2, 4 and
+/// 8 m) and for the far meshes they replaced (the same shaping in 128 m chunks, as they were built). A tooth is a notch in
+/// the rim or a fin at the foot: a stretch of the drawn edge standing off the land's. The rings may not have more of them than the old meshes.
+/// </summary>
+public partial class SurfaceTest
+{
+    async Task TeethChecks()
+    {
+        var rand = new Random();
+        const int Half = 32;
+        const float Cell = 0.25f;
+        int n = (int)(2 * Half / Cell) + 1;
+        var teeth = new int[3, 3];      // by level: the old meshes', the rings', the rings with one diagonal (as they were before they took each square's split)
+        float length = 0f;
+        int sites = 0;
+        foreach (int variant in new[] { 1, 0 })
+        {
+            var spec = PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Arid, variant);
+            PlanetWorld w = await Task.Run(() => PlanetWorld.Build(spec, Main.Catalog));
+            var rings = Enumerable.Range(0, 3).Select(l => new ClipGround.Reader(l, w.Source, w.Palette, (int)w.Width, (int)w.Height)).ToArray();
+            var one = Enumerable.Range(0, 3).Select(l => new ClipGround.Reader(l, w.Source, w.Palette, (int)w.Width, (int)w.Height) { OneDiagonal = true }).ToArray();
+            var olds = Enumerable.Range(0, 3).Select(l => new OldFar(w, l)).ToArray();
+            foreach (var (cx, cz) in Cliffs(w, rand, 3))
+            {
+                sites++;
+                var origin = new Vector2((float)cx - Half, (float)cz - Half);
+                var truth = new float[n * n];
+                for (int j = 0; j < n; j++)
+                for (int i = 0; i < n; i++)
+                    truth[j * n + i] = w.Source.SurfaceHeight(Mathx.WrapX(origin.X + i * Cell, w.Width), Mathx.Wrap(origin.Y + j * Cell, w.Height));
+                var sorted = truth.OrderBy(h => h).ToArray();
+                float lo = sorted[sorted.Length / 20], hi = sorted[sorted.Length * 19 / 20];
+                // Along each cliff's top and foot (where the land stands at 85% and 15% of the way up the cliff), a quarter metre at
+                // a time: a tooth is a run of points where the drawn ground stands off the land by more than a twentieth of the
+                // cliff's fall (half a metre at the least), a notch in the rim or a fin at the foot.
+                float limit = MathF.Max(0.5f, (hi - lo) * 0.05f);
+                foreach (float share in new[] { 0.85f, 0.15f })
+                {
+                    float at = lo + (hi - lo) * share;
+                    foreach (var line in Contours(truth.Select(h => h - at).ToArray(), n, Cell, origin))
+                    {
+                        var edge = Resample(line, Cell).Where(p => p.X > origin.X + 8 && p.Y > origin.Y + 8 && p.X < origin.X + 2 * Half - 8 && p.Y < origin.Y + 2 * Half - 8).ToList();
+                        length += edge.Count * Cell;
+                        for (int l = 0; l < 3; l++)
+                        for (int which = 0; which < 3; which++)
+                        {
+                            bool inTooth = false;
+                            foreach (Vector2 p in edge)
+                            {
+                                double x = Mathx.WrapX(p.X, w.Width), z = Mathx.Wrap(p.Y, w.Height);
+                                float drawn = which == 0 ? olds[l].Height(x, z) : which == 1 ? rings[l].Height(x, z) : one[l].Height(x, z);
+                                bool off = MathF.Abs(drawn - at) > limit;
+                                if (off && !inTooth) teeth[l, which]++;
+                                inTooth = off;
+                            }
+                        }
+                    }
+                }                await Frames(1);
+            }
+        }
+        float per = 100f / Math.Max(length, 1f);
+        for (int l = 0; l < 3; l++)
+        {
+            float old = teeth[l, 0] * per, ring = teeth[l, 1] * per, single = teeth[l, 2] * per;
+            Check(sites > 0 && ring <= old * 1.15f + 0.5f,
+                $"cliff teeth, ring {l} ({ClipGround.Spacing(l):F0} m): {ring:F2} a hundred metres of cliff edge against the old far meshes' {old:F2}, and {single:F2} with every square split one way ({teeth[l, 1]}, {teeth[l, 0]} and {teeth[l, 2]} over {length:F0} m of top and foot of {sites} cliffs)");
+        }
+    }
+
+    /// <summary>The points where a line turns more sharply than 60 degrees between samples a chord apart.</summary>
+    static List<Vector2> SharpTurns(List<Vector2> line, float chord)
+    {
+        var turns = new List<Vector2>();
+        List<Vector2> p = Resample(line, chord);
+        for (int k = 0; k + 2 < p.Count; k++)
+        {
+            Vector2 a = (p[k + 1] - p[k]).Normalized(), b = (p[k + 2] - p[k + 1]).Normalized();
+            if (Mathf.RadToDeg(MathF.Acos(Math.Clamp(a.Dot(b), -1f, 1f))) > 60f) turns.Add(p[k + 1]);
+        }
+        return turns;
+    }
+
+    /// <summary>The steepest cliffs within 3 km of the landing (a rise of 20 m or more within 16 m), 400 m apart.</summary>
+    static List<(double X, double Z)> Cliffs(PlanetWorld w, Random rand, int count)
+    {
+        var found = new List<(double X, double Z, float Rise)>();
+        for (int tries = 0; tries < 6000; tries++)
+        {
+            double x = w.Landing.X + (rand.NextDouble() - 0.5) * 6000, z = w.Landing.Y + (rand.NextDouble() - 0.5) * 6000;
+            float h = w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height)), rise = 0f;
+            foreach (var (dx, dz) in new[] { (16, 0), (-16, 0), (0, 16), (0, -16) })
+                rise = MathF.Max(rise, w.Source.SurfaceHeight(Mathx.WrapX(x + dx, w.Width), Mathx.Wrap(z + dz, w.Height)) - h);
+            if (rise > 20f && h > 1f) found.Add((x, z, rise));
+        }
+        var cliffs = new List<(double, double)>();
+        foreach (var f in found.OrderByDescending(f => f.Rise))
+        {
+            if (cliffs.Count >= count) break;
+            if (cliffs.All(c => Math.Abs(c.Item1 - f.X) + Math.Abs(c.Item2 - f.Z) > 400)) cliffs.Add((f.X, f.Z));
+        }
+        return cliffs;
+    }
+
+    /// <summary>The far meshes the GPU rings replaced: a level's 128 m chunks shaped as they were built, each square split by the ground.</summary>
+    sealed class OldFar(PlanetWorld w, int lod)
+    {
+        readonly Dictionary<(int, int), FarBuilder.Surface> _chunks = new();
+        readonly float _step = FarBuilder.Step(lod);
+
+        FarBuilder.Surface Chunk(int fx, int fz)
+        {
+            if (_chunks.TryGetValue((fx, fz), out var surface)) return surface;
+            int span = FarBuilder.Size, nx = (int)(span / _step) + 1;
+            var grid = new FarBuilder.Grid(nx, nx);
+            int g = grid.G;
+            double x0 = fx * (double)FarBuilder.Size, z0 = fz * (double)FarBuilder.Size;
+            var height = new float[g * g];
+            var river = new bool[g * g];
+            for (int j = 0; j < g; j++)
+            for (int i = 0; i < g; i++)
+            {
+                GroundSample s = w.Source.Ground(x0 + (i - 1) * _step, z0 + (j - 1) * _step, _step);
+                (height[j * g + i], river[j * g + i]) = (s.Height, s.InRiver);
+            }
+            return _chunks[(fx, fz)] = FarBuilder.Shape(grid, span, span, _step, x0, z0, height, river, w.Source, w.Palette, 0);
+        }
+
+        /// <summary>The chunk's triangles over a point (canonical): the square under it and those round it, as a slide may move one.</summary>
+        public float Height(double x, double z)
+        {
+            int fx = (int)Math.Floor(x / FarBuilder.Size), fz = (int)Math.Floor(z / FarBuilder.Size);
+            FarBuilder.Surface s = Chunk(fx, fz);
+            int nx = (int)(FarBuilder.Size / _step) + 1;
+            float u = (float)(x - fx * (double)FarBuilder.Size), v = (float)(z - fz * (double)FarBuilder.Size);
+            int ci = (int)(u / _step), cj = (int)(v / _step);
+            for (int dj = -1; dj <= 1; dj++)
+            for (int di = -1; di <= 1; di++)
+            {
+                int i = Math.Clamp(ci + di, 0, nx - 2), j = Math.Clamp(cj + dj, 0, nx - 2);
+                int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+                Vector3 pa = s.Vertices[a], pb = s.Vertices[b], pc = s.Vertices[c], pd = s.Vertices[d];
+                float? y = s.Split[j * (nx - 1) + i] == 0 ? Tri(pa, pb, pc, u, v) ?? Tri(pb, pd, pc, u, v) : Tri(pa, pb, pd, u, v) ?? Tri(pa, pd, pc, u, v);
+                if (y is float h) return h;
+            }
+            return s.Vertices[Math.Clamp(cj, 0, nx - 1) * nx + Math.Clamp(ci, 0, nx - 1)].Y;
+        }
+
+        static float? Tri(Vector3 a, Vector3 b, Vector3 c, float x, float z)
+        {
+            float det = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
+            if (MathF.Abs(det) < 1e-6f) return null;
+            float l1 = ((b.X - x) * (c.Z - z) - (c.X - x) * (b.Z - z)) / det, l2 = ((c.X - x) * (a.Z - z) - (a.X - x) * (c.Z - z)) / det, l3 = 1f - l1 - l2;
+            if (l1 < -1e-4f || l2 < -1e-4f || l3 < -1e-4f) return null;
+            return l1 * a.Y + l2 * b.Y + l3 * c.Y;
+        }
+    }
+}

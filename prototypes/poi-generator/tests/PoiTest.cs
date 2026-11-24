@@ -21,16 +21,30 @@ public partial class PoiTest : Node
 
     public override void _Ready()
     {
+        // Its own time limit: a run that hangs quits by itself and says so (nobody has to end it by hand).
+        // A wall-clock limit on a thread of its own, for a run whose loop has hung.
+        new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(35));
+            Console.Error.WriteLine("PoiTest took over 35 minutes of wall-clock time: watchdog");
+            System.Environment.Exit(2);
+        }) { IsBackground = true }.Start();
+        GetTree().CreateTimer(1800.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
+        {
+            GD.PrintErr("PoiTest timed out after 30 minutes");
+            GalHack.Testing.Backstop.Quit(this, 2);
+        };
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
+        Round.Cut = !OS.GetCmdlineUserArgs().Contains("--flat"); // (every round laid as whole cubes, as they were: to measure against)
         var checks = new (string Name, Action Run)[]
         {
-            ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("FactionRolls", FactionRolls), ("CityLots", CityLots), ("Roofs", Roofs), ("Lights", LightMoods), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
-            ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("StateTransforms", StateTransforms),
+            ("Sense", Sense), ("Variety", Variety), ("Depths", Depths), ("DepthsSheet", DepthsSheet), ("Underground", UndergroundNet), ("Cores", Cores), ("Lights", LightsApi), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
-            ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
+            ("Breaches", Breaches), ("NoLocks", NoLocks), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("RuinLook", RuinLook), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("LaysOut", LaysOut), ("Standard", Standard), ("References", ReferenceRanges), ("Patterns", PatternChecklist), ("Coherent", Coherent), ("Objects", Objects), ("Interiors", Interiors), ("Ornament", OrnamentCheck), ("Round", RoundCheck), ("Roads", Roads), ("RoadCost", RoadCost), ("PlaceCost", PlaceCost), ("Fresh", Fresh), ("Scale", Scale), ("Airports", Airports), ("Yards", Yards), ("TypeSizes", TypeSizes), ("TypesBuilt", TypesBuilt), ("FenceRuns", FenceRuns), ("PortTypes", PortTypes), ("HeldPlaces", HeldPlaces), ("Performance", Performance),
         };
         try
         {
@@ -45,19 +59,464 @@ public partial class PoiTest : Node
         catch (Exception e)
         {
             Fail($"exception: {e}");
+            Finish();
+            return;
         }
         // The walks run on physics ticks, so they go last; see _PhysicsProcess.
         if (only == null || only.Split(',').Contains("Walk")) NextWalk();
         else Finish();
     }
 
+    // ---- the large places --------------------------------------------------------------------
+
+    IEnumerable<FamilyDef> Large => _lib.Families.Where(f => f.Tags.Contains("grand"));
+
+    /// <summary>
+    /// The large places on fresh seeds: a layout per tech variant passes the layout checks, each spawned
+    /// in every state passes validation, they keep to the 2 m lattice and are far bigger than the old
+    /// shoebox. Fewer seeds than the mass runs, because each is a whole works.
+    /// </summary>
+    void GrandPlaces()
+    {
+        var sw = Stopwatch.StartNew();
+        int built = 0, spawned = 0, bad = 0;
+        var problems = new List<string>();
+        ulong fresh = (ulong)Random.Shared.NextInt64();
+        // What a large plan got wrong, all of it at once: a big place is too slow to fix one complaint at a time.
+        int told = 0;
+        Architect.Rejected = (layout, why) =>
+        {
+            if (told++ > 0) return;
+            foreach (string w in why) GD.Print("      rejected: " + w);
+            var nav = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+            var reach = nav.Reachable(layout.EntranceCell);
+            foreach (var m in layout.Modules)
+                if (!m.Cells.Any(reach.Contains)) GD.Print($"      unreachable {m.Purpose} storey {m.Storey} {m.Min} to {m.Max}");
+        };
+        foreach (FamilyDef f in Large)
+            foreach (VariantDef v in f.Variants.Concat(f.Variants))
+            {
+                ulong seed = Hash.Combine(fresh, Hash.Of(f.Id), (ulong)Random.Shared.NextInt64());
+                Layout layout;
+                var t0 = sw.ElapsedMilliseconds;
+                // Every way round: a place is turned to face what it served.
+                try { layout = PoiFactory.BuildLayout(_lib, f, v.Index, f.Rarity, seed, new LayoutHints(Dirs.Horizontal[Random.Shared.Next(4)])); }
+                catch (Exception e) { bad++; problems.Add($"{f.Id} {v.Name} seed {seed}: {e.Message}"); continue; }
+                built++;
+                Int3 size = layout.Blocks.Size;
+                long t1 = sw.ElapsedMilliseconds;
+                GD.Print($"      {f.Id} '{v.Name}' {size.X} x {size.Z} x {size.Y} m, {layout.Modules.Count} rooms, {layout.Blocks.CountBlocks()} cells, layout {t1 - t0} ms, {layout.Attempts} attempts");
+                if (Math.Max(size.X, size.Z) < 100 && !f.Tags.Contains("city")) { bad++; problems.Add($"{f.Id} is only {size.X} by {size.Z} m"); }
+                foreach (PoiState s in Enum.GetValues<PoiState>())
+                {
+                    if (f.StateWeights[(int)s] <= 0f) continue;
+                    long t2 = sw.ElapsedMilliseconds;
+                    PoiInstance inst = PoiFactory.Spawn(_lib, layout, s, seed + (ulong)s);
+                    spawned++;
+                    foreach (string p in Validator.Check(inst).Take(3)) { bad++; problems.Add($"{f.Id} '{v.Name}' seed {seed} {s}: {p}"); }
+                    GD.Print($"        {s}: {sw.ElapsedMilliseconds - t2} ms, {inst.Enemies.Count} enemies, removed {inst.RemovedFraction:P0}");
+                }
+            }
+        Architect.Rejected = null;
+        foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
+        Check(bad == 0 && built > 0, $"large places: {built} layouts and {spawned} spawns pass the layout checks and validation, in {sw.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>Lights keep a place's feel: dying places mostly burn with a few flickering or failed, hostile ones pulse red, high-tech ones paint some light on as strips.</summary>
+    void LightMoods()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        int steady = 0, flicker = 0, dead = 0, red = 0, hostile = 0, strips = 0, unstyled = 0;
+        foreach (FamilyDef f in _lib.Families.Where(f => !f.Space && f.Faction == Faction.None))
+        {
+            Layout layout = PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed);
+            if (f.StateWeights[(int)PoiState.Abandoned] > 0f)
+                foreach (LightSpot l in PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed + 1).Lights.Where(l => l.Mode is not (LightMode.Bloom or LightMode.Beacon)))
+                {
+                    if (l.Mode == LightMode.Dead) dead++;
+                    else if (l.Style is not { } st) unstyled++;
+                    else if (st.Anim == GalHack.Structures.LightAnim.Flicker) flicker++;
+                    else steady++;
+                }
+            if (f.StateWeights[(int)PoiState.Infested] > 0f)
+            {
+                var inf = PoiFactory.Spawn(_lib, layout, PoiState.Infested, seed + 2);
+                foreach (LightSpot l in inf.Lights.Where(l => l.Style != null)) { hostile++; if (l.Style!.Value.Anim == GalHack.Structures.LightAnim.Pulse && l.Style.Value.Color == 0xff3322) red++; }
+            }
+            if (f.Techs.Contains("high") || f.Techs.Count == 0)
+                strips += PoiFactory.Spawn(_lib, layout, PoiState.Active, seed + 3, new WorldProfile { Before = TechLevel.High, Now = TechLevel.High }).LitFaces.Count;
+        }
+        int lit = steady + flicker + dead;
+        Check(lit > 50 && unstyled == 0 && steady > flicker && flicker > 0 && dead > 0 && dead < lit / 4,
+            $"dying places: of {lit} lamps {steady} still burn, {flicker} flicker and {dead} have failed; {unstyled} without a style");
+        Check(hostile > 0 && red == hostile, $"hostile places pulse red: {red} of {hostile} lamps");
+        Check(strips > 0, $"high-tech places paint light on as strips: {strips} glowing faces");
+    }
+
+    /// <summary>Every faction place lays itself out on any roll: every family, many fresh seeds, every turn and rarity, with no failure at all.</summary>
+    void FactionRolls()
+    {
+        var families = _lib.Families.Where(f => f.Site is { } s && _lib.Sites[s].Parts.Count > 0 && _lib.Sites[s].Parts[0].Kind == "grand" && f.Faction != Faction.None || f.Site?.StartsWith("faction_") == true).Distinct().ToList();
+        ulong fresh = (ulong)Random.Shared.NextInt64();
+        int rolls = 0, failed = 0;
+        var why = new Dictionary<string, int>();
+        foreach (FamilyDef f in families)
+            for (int k = 0; k < (f.Id == "vharn_outpost" ? 1500 : 120); k++)
+            {
+                ulong seed = Hash.Combine(fresh, Hash.Of(f.Id), (ulong)k);
+                // Each pick from its own bits, so every turn meets every variant, tech and rarity.
+                var hints = new LayoutHints(Dirs.Horizontal[(int)(seed % 4)], (TechLevel)(seed / 4 % 3));
+                int variant = (int)(seed / 12 % (ulong)f.Variants.Count);
+                Rarity rarity = seed / 97 % 2 == 0 ? f.Rarity : (Rarity)(seed / 194 % 5);
+                rolls++;
+                try { PoiFactory.BuildLayout(_lib, f, variant, rarity, seed, hints); }
+                catch (Exception e)
+                {
+                    failed++;
+                    string key = $"{f.Id}: {e.Message.Split("last: ").Last().Split(" @ ")[0]}";
+                    why[key] = why.GetValueOrDefault(key) + 1;
+                }
+            }
+        foreach (var (k, n) in why.OrderByDescending(w => w.Value).Take(8)) GD.Print($"      {n} x {k}");
+        Check(failed == 0 && rolls > 0, $"faction places lay out on every roll: {rolls - failed} of {rolls} over {families.Count} families ({failed} failed, {100.0 * failed / Math.Max(1, rolls):F1}%)");
+
+        // The crash's own case: data asking for a plan the code doesn't know (a build older than its data). The
+        // world's door must leave the place out and say why, never throw.
+        FamilyDef hive = families.First(f => f.Id == "vharn_outpost");
+        SitePart part = _lib.Sites[hive.Site!].Parts[0];
+        string what = part.Arg("what");
+        Layout? none = null;
+        string? reason = null;
+        bool threw = false;
+        part.Args["what"] = "no_such_plan";
+        try { none = PoiFactory.TryLayout(_lib, hive, 0, hive.Rarity, fresh, null, out reason); }
+        catch (Exception) { threw = true; }
+        finally { part.Args["what"] = what; }
+        Check(!threw && none == null && reason != null, $"a place that can't lay out is left out, not thrown: {(threw ? "threw" : reason ?? "laid out")}");
+    }
+
+    /// <summary>
+    /// Every city lot the planner can ask for lays out: each kind at the lot sizes, storeys, styles, falls,
+    /// leans, topples, hillside steps and turns it rolls, with no failure; each sets its gate on its front lot
+    /// line, and nothing it builds above ground strays past the lot.
+    /// </summary>
+    void CityLots()
+    {
+        ulong fresh = (ulong)Random.Shared.NextInt64();
+        int rolls = 0, failed = 0, stray = 0, gates = 0;
+        var why = new Dictionary<string, int>();
+        var rng = new Rng(fresh);
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (string kind in new[] { "tower", "midrise", "terrace", "house", "works", "civic", "station", "police", "fire", "school", "university" })
+        {
+            FamilyDef f = _lib.Families.First(x => x.Id == "city_" + kind);
+            for (int k = 0; k < 40; k++)
+            {
+                float fall = rng.Float();
+                int Step() => rng.Chance(0.4f) ? rng.Range(1, 6) : 0;
+                var lot = kind switch
+                {
+                    "tower" => new CityLot(kind, rng.Range(17, 19), 17, rng.Range(2, 31), rng.Range(0, 1000), fall, Lean: rng.Chance(0.3f), Toppled: rng.Chance(0.2f)),
+                    "midrise" => new CityLot(kind, rng.Range(12, 16), 17, rng.Range(2, 9), rng.Range(0, 1000), fall, Lean: rng.Chance(0.2f)),
+                    "terrace" => new CityLot(kind, new[] { 9, 10, 13, 14, 17 }[rng.Range(0, 5)], 17, rng.Range(1, 4), rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
+                    "house" => new CityLot(kind, rng.Range(10, 13), 17, rng.Range(1, 3), rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
+                    "works" => new CityLot(kind, rng.Range(17, 21), 17, 1, rng.Range(0, 1000), fall),
+                    "police" or "fire" => new CityLot(kind, rng.Range(15, 21), 17, 2, rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
+                    _ => new CityLot(kind, 34, 34, 1, rng.Range(0, 1000), fall),
+                };
+                rolls++;
+                Dir front = Dirs.Horizontal[k % 4];
+                try
+                {
+                    Layout layout = PoiFactory.BuildLayout(_lib, f, k % f.Variants.Count, f.Rarity, rng.NextU64(), new LayoutHints(front, (TechLevel)(k % 3), lot));
+                    // The lot in the place's own cells: u along the front, v back from it, turned to its front (Plot.Cell).
+                    int w = 2 * lot.W, d = 2 * lot.D;
+                    (int U, int V) Frame(Int3 c) => front switch { Dir.North => (c.X, c.Z), Dir.South => (-1 - c.X, -1 - c.Z), Dir.East => (c.Z, -1 - c.X), _ => (-1 - c.Z, c.X) };
+                    bool In(Int3 c) => Frame(c) is var (u, v) && u >= 0 && u < w && v >= 0 && v < d;
+                    if (layout.Blocks.Blocks().Any(b => b.Item1.Y >= 0 && !In(b.Item1))) stray++;
+                    if (In(layout.Extras.Gate) && Frame(layout.Extras.Gate).V == 0) gates++;
+                }
+                catch (Exception e)
+                {
+                    failed++;
+                    string key = $"{kind} {lot.W}x{lot.D}x{lot.Storeys}: {e.Message.Split("last: ").Last().Split(" @ ")[0]}";
+                    why[key] = why.GetValueOrDefault(key) + 1;
+                }
+            }
+        }
+        foreach (var (k, n) in why.OrderByDescending(w => w.Value).Take(8)) GD.Print($"      {n} x {k}");
+        GD.Print($"      {rolls} city lots in {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms (fresh seed {fresh})");
+        Check(failed == 0, $"city lots lay out on every roll: {rolls - failed} of {rolls} ({failed} failed)");
+        Check(stray == 0, $"nothing a city lot builds above ground stands past its lot lines ({stray} of {rolls - failed} strayed)");
+        Check(gates == rolls - failed, $"every city lot's gate is on its front lot line ({gates} of {rolls - failed})");
+    }
+
+    /// <summary>A roof's angles are slopes: no family stacks cubes up a pitch, three courses or more, under the sky.</summary>
+    void Roofs()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        var bad = new Dictionary<string, int>();
+        foreach (FamilyDef f in _lib.Families.Where(f => !f.Space))
+            for (int v = 0; v < f.Variants.Count; v++)
+            {
+                BlockGrid g = PoiFactory.BuildLayout(_lib, f, v, f.Rarity, seed).Blocks;
+                var top = new Dictionary<(int, int), (int Y, Block B)>();
+                foreach (var (c, b) in g.Blocks())
+                    if (BlockInfo.Collides(b.Type) && (!top.TryGetValue((c.X, c.Z), out var t) || c.Y > t.Y)) top[(c.X, c.Z)] = (c.Y, b);
+                bool Step(int x, int z, int y) => top.TryGetValue((x, z), out var t) && t.Y == y && t.B.Type == BlockType.Cube && t.B.Role == Role.Roof;
+                int steps = 0;
+                foreach (var ((x, z), t) in top)
+                    foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                        if (t.Y > 0 && Step(x, z, t.Y) && Step(x + dx, z + dz, t.Y + 1) && Step(x + 2 * dx, z + 2 * dz, t.Y + 2)) steps++;
+                if (steps > 0) bad[f.Id] = bad.GetValueOrDefault(f.Id) + steps;
+            }
+        Check(bad.Count == 0, $"no stepped roofs in any family{(bad.Count > 0 ? ": " + string.Join(", ", bad.OrderByDescending(b => b.Value).Take(8).Select(b => $"{b.Key} {b.Value}")) : "")}");
+    }
+
+    // ---- worlds from layers ------------------------------------------------------------------
+
+    /// <summary>The layers are data: they parse, a world rolls one of each it can, the same seed the same roll, and they combine rather than replace.</summary>
+    void WorldLayers()
+    {
+        var kinds = _lib.Layers.GroupBy(l => l.Kind).ToDictionary(g => g.Key, g => g.Count());
+        Check(kinds.GetValueOrDefault(LayerKind.Theme) == 44 && kinds.GetValueOrDefault(LayerKind.Type) == 39 && kinds.GetValueOrDefault(LayerKind.Fall) == 82 && kinds.GetValueOrDefault(LayerKind.Dress) == 189,
+            $"every table of the layers doc loads: {string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}");
+        string[] worlds = { "Temperate", "Arid", "Ice", "Lava", "Alien" };
+        var themes = new Dictionary<string, int>();
+        var combos = new HashSet<string>();
+        int rolls = 0, same = 0, plain = 0, falling = 0, roughStarts = 0, starts = 0, lowHusks = 0, lows = 0, openFoul = 0, foul = 0;
+        var fams = new HashSet<string>();
+        ulong baseSeed = (ulong)Random.Shared.NextInt64();
+        for (ulong i = 0; i < 2000; i++)
+        {
+            ulong seed = Hash.Combine(baseSeed, i);
+            string w = worlds[i % 5];
+            bool start = i % 7 == 0;
+            WorldProfile profile = WorldProfile.Roll(seed, w, start);
+            if (!profile.Inhabited) continue;
+            WorldRoll a = WorldRoll.Roll(_lib, seed, w, profile, start)!, b = WorldRoll.Roll(_lib, seed, w, profile, start)!;
+            rolls++;
+            if (a.ToString() == b.ToString()) same++;
+            themes[a.Theme.Id] = themes.GetValueOrDefault(a.Theme.Id) + 1;
+            combos.Add(a.ToString());
+            fams.UnionWith(a.Poi.Keys);
+            if (a.Theme.Blank) plain++;
+            if (a.Fact("phase") == "falling") falling++;
+            if (start) { starts++; if (a.Rolled.Any(l => l.Is.Contains("rough")) || a.Occupancy.ContainsKey("FAC")) roughStarts++; }
+            if (a.Fact("pre") == "L") { lows++; if (a.Occupancy.ContainsKey("HSK")) lowHusks++; }
+            if (a.Fact("air0") is "foul" or "none")
+            {
+                foul++;
+                profile = profile with { Barred = a.Barred };
+                if (profile.Fits(_lib.Family("old_farm"), PoiState.Ruined)) openFoul++;
+            }
+        }
+        Check(same == rolls, $"the same seed rolls the same world ({same} of {rolls})");
+        Check(themes.Count >= 25 && themes.Values.Max() < rolls / 2, $"themes come up by how they fit: {themes.Count} of them, the top {themes.OrderByDescending(t => t.Value).First()}");
+        Check(combos.Count == rolls, $"no two worlds the same: {combos.Count} in {rolls} rolls");
+        Check(plain > rolls / 5 && plain < rolls * 2 / 5, $"about three settled worlds in ten have no mood at all: {plain * 100 / rolls}%");
+        Check(falling > 0 && falling < rolls / 12, $"mid-collapse worlds stay rare: {falling * 100f / rolls:F1}%");
+        Check(roughStarts == 0 && starts > 0, $"start worlds roll nothing rough and no faction holding ground ({roughStarts} of {starts})");
+        Check(lowHusks == 0 && lows > 0, $"husks need mid or high tech: none on {lows} low-tech worlds");
+        Check(openFoul == 0 && foul > 0, $"air filters families: a farm stands on none of {foul} worlds built under bad air ({openFoul} did)");
+
+        // The first themes to build: each old world's parts hold together on a roll, and show in what it adds up to.
+        WorldProfile mid = new() { Before = TechLevel.Mid, Now = TechLevel.Low, Starport = Starport.C, Current = PopulationNow.Survivors };
+        foreach (var (id, family) in new[] { ("long_queue", "evacuation_camp"), ("road_warrens", "scrap_fort"), ("glass_plains", "blast_crater"), ("fever_jungle", "biolab"), ("hush_suburbs", ""), ("quarantine", "hospital"), ("last_train", ""), ("salt_and_bone", ""), ("sentry_world", ""), ("folded_town", "") })
+        {
+            WorldLayer old = _lib.Layers.First(l => l.Kind == LayerKind.Old && l.Id == id);
+            var given = new WorldRoll.Given();
+            var kindOf = Enum.GetValues<LayerKind>().ToDictionary(k => k.ToString().ToLowerInvariant());
+            foreach (var part in old.Parts.Select(p => p.Split('.')).Where(p => kindOf.ContainsKey(p[0])).GroupBy(p => kindOf[p[0]]))
+                given.Set(part.Key, part.Select(p => p[1]).ToArray());
+            WorldRoll r = WorldRoll.Roll(_lib, Hash.Combine(baseSeed, Hash.Of(id)), "Temperate", mid, false, given)!;
+            bool holds = old.Parts.Where(p => !p.StartsWith("scar.") && !p.StartsWith("pre.") && !p.StartsWith("post.") && !p.StartsWith("unsettled.")).All(p => r.Rolled.Any(l => $"{l.Kind.ToString().ToLowerInvariant()}.{l.Id}" == p));
+            var table = r.Poi.Keys.Concat(r.Hub.Keys).Concat(r.Industry.Keys).Concat(r.Farm.Keys).ToHashSet();
+            Check(holds && (family == "" || table.Contains(family)), $"{id}: its parts make a world, theme {r.Theme.Id}, {string.Join(", ", r.Occupancy.OrderByDescending(o => o.Value).Take(4).Select(o => $"{o.Key} {o.Value:F0}"))}, places {string.Join(" ", table.Take(6))}");
+        }
+
+        // Layers add up: a presence changes who's in places, and leaves the rest of the mix as it was.
+        ulong one = Hash.Combine(baseSeed, 77);
+        WorldRoll quiet = WorldRoll.Roll(_lib, one, "Temperate", mid, false, new WorldRoll.Given().Set(LayerKind.Presence, "hermits").Set(LayerKind.Theme, "long_queue"))!;
+        WorldRoll gangs = WorldRoll.Roll(_lib, one, "Temperate", mid, false, new WorldRoll.Given().Set(LayerKind.Presence, "hermits", "gangs").Set(LayerKind.Theme, "long_queue"))!;
+        Check(gangs.Occupancy.GetValueOrDefault("GNG") > quiet.Occupancy.GetValueOrDefault("GNG"), $"layers add up: a gang presence takes gangs from {quiet.Occupancy.GetValueOrDefault("GNG")} to {gangs.Occupancy.GetValueOrDefault("GNG")}");
+    }
+
+    /// <summary>The same layout, different people: what each occupant leaves is theirs, nobody's plan changes, and it all still validates.</summary>
+    /// <summary>The merged drawing and collision of a large place are the same surfaces as the plain ones, in far fewer faces.</summary>
+    void MergedFaces()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        foreach (string id in new[] { "sewage_works", "old_farm", "works_complex" })
+        {
+            FamilyDef f = _lib.Family(id);
+            PoiInstance inst = PoiFactory.Spawn(_lib, PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed), PoiState.Ruined, seed + 1);
+            BlockGrid g = inst.Blocks;
+            MeshOptions Options(bool merged) => new()
+            {
+                ChunkSize = 32, Doors = false, Collision = true, Merged = merged, Drawn = true,
+                RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround,
+            };
+            static double Area(List<ChunkMesh> meshes)
+            {
+                double total = 0;
+                foreach (ChunkMesh m in meshes)
+                    for (int i = 0; i + 8 < m.Collision.Count; i += 9)
+                    {
+                        var a = new V3(m.Collision[i], m.Collision[i + 1], m.Collision[i + 2]);
+                        var e = new V3(m.Collision[i + 3], m.Collision[i + 4], m.Collision[i + 5]) - a;
+                        var h = new V3(m.Collision[i + 6], m.Collision[i + 7], m.Collision[i + 8]) - a;
+                        V3 c = V3.Cross(e, h);
+                        total += Math.Sqrt(V3.Dot(c, c)) * 0.5;
+                    }
+                return total;
+            }
+            List<ChunkMesh> plain = Mesher.Build(g, inst.Layout.Occupied, Options(false)), merged = Mesher.Build(g, inst.Layout.Occupied, Options(true));
+            double a0 = Area(plain), a1 = Area(merged);
+            int q0 = plain.Sum(m => m.Quads), q1 = merged.Sum(m => m.Quads);
+            int t0 = plain.Sum(m => m.Collision.Count), t1 = merged.Sum(m => m.Collision.Count);
+            Check(Math.Abs(a0 - a1) < a0 * 1e-4, $"{id}: what you touch from further off is what you touch up close: {a1:F0} mÂ² of collision merged, {a0:F0} plain");
+            // (Collision is merged into the fewest rectangles in both: every chunk's colliding faces are, near or far. So the
+            // merged mesh's collision is only held to no more than the plain one's, give or take a few split rectangles.)
+            Check(q1 * 3 < q0 && t1 <= t0 + t0 / 500 + 9, $"{id}: merged, {q1} faces for {q0}, {t1 / 9} collision triangles for {t0 / 9}");
+            ChunkMesh far = Mesher.Coarse(g, inst.Layout.Occupied);
+            Check(far.Quads > 0 && far.Quads * 20 < q0, $"{id}: the far mesh is {far.Quads} faces");
+        }
+    }
+
+    void Occupancy()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        FamilyDef sewage = _lib.Family("sewage_works"), hospital = _lib.Family("hospital");
+        int bad = 0;
+        string first = "";
+        foreach (FamilyDef f in new[] { sewage, hospital })
+        {
+            Layout layout = PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed);
+            var counts = new Dictionary<Occupant, Dictionary<BlockType, int>>();
+            var enemies = new Dictionary<Occupant, int>();
+            var people = new Dictionary<Occupant, (int Count, Mood Mood)>();
+            var walls = new HashSet<int>();
+            foreach (Occupant who in Enum.GetValues<Occupant>())
+            {
+                var inst = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed + 3, null, new OccupancyRoll(who));
+                foreach (string p in Validator.Check(inst).Take(2)) { bad++; if (first.Length == 0) first = $" ({f.Id}, {who}: {p})"; }
+                counts[who] = inst.Blocks.Blocks().GroupBy(b => b.Block.Type).ToDictionary(g => g.Key, g => g.Count());
+                enemies[who] = inst.Enemies.Count;
+                people[who] = (inst.Townsfolk?.People.Count ?? 0, inst.Mood);
+                walls.Add(inst.Blocks.Blocks().Count(b => b.Block.Role is Role.Wall or Role.Roof));
+            }
+            int Of(Occupant who, BlockType t) => counts[who].GetValueOrDefault(t);
+            Check(enemies[Occupant.Empty] == 0, $"{f.Id}: an empty place is empty");
+            Check(Of(Occupant.Nesters, BlockType.Pod) == 0 && enemies[Occupant.Nesters] > 0, $"{f.Id}: nesters build no nests and leave {enemies[Occupant.Nesters]} creatures");
+            Check(Of(Occupant.Scavengers, BlockType.Ash) > Of(Occupant.Empty, BlockType.Ash) && enemies[Occupant.Scavengers] == 0 && people[Occupant.Scavengers] is { Count: >= 2, Mood: Mood.Wary }, $"{f.Id}: scavengers leave a camp fire and are no one's enemies: {people[Occupant.Scavengers].Count} people, {people[Occupant.Scavengers].Mood}");
+            Check(enemies[Occupant.Squatters] == 0 && people[Occupant.Squatters].Mood == Mood.Peaceful, $"{f.Id}: squatters are at home and at peace: {people[Occupant.Squatters].Count} people");
+            Check(Of(Occupant.Gang, BlockType.Barricade) > Of(Occupant.Empty, BlockType.Barricade) + 3 && enemies[Occupant.Gang] > 0, $"{f.Id}: a gang leaves {Of(Occupant.Gang, BlockType.Barricade)} barricades and {enemies[Occupant.Gang]} of its own");
+            Check(Of(Occupant.Turned, BlockType.Remains) > Of(Occupant.Empty, BlockType.Remains) + 3, $"{f.Id}: the turned leave {Of(Occupant.Turned, BlockType.Remains)} bodies");
+            Check(Of(Occupant.Squatters, BlockType.Bunk) > 0, $"{f.Id}: squatters leave {Of(Occupant.Squatters, BlockType.Bunk)} bunks");
+            Check(walls.Count == 1, $"{f.Id}: the layout is the same whoever is in it ({walls.Count} wall counts)");
+            var both = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed + 3, null, new OccupancyRoll(Occupant.Gang, Occupant.Nesters, Sharing.Floors));
+            foreach (string p in Validator.Check(both).Take(2)) { bad++; if (first.Length == 0) first = $" ({f.Id} mixed: {p})"; }
+            Check(both.Enemies.Any(e => e.Kind == EnemyKind.Fauna) && both.Enemies.Any(e => e.Kind == EnemyKind.Guard), $"{f.Id}: a mixed place holds both groups, {both.Occupancy}");
+        }
+        Check(bad == 0, $"every occupant leaves every place walkable{first}");
+        var mix = new Dictionary<string, float> { ["EMP"] = 60, ["SCV"] = 30, ["NST"] = 10 };
+        int empty = 0, n = 4000, two = 0, traces = 0;
+        for (ulong i = 0; i < (ulong)n; i++)
+        {
+            OccupancyRoll r = OccupancyLayer.Roll(mix, sewage, Hash.Combine(seed, i));
+            if (r.Main == Occupant.Empty) empty++;
+            if (r.Second != null) two++;
+            if (r.Trace != null) traces++;
+        }
+        Check(Math.Abs(empty / (float)n - 0.6f) < 0.05f, $"a theme's mix sets the odds: {empty * 100 / n}% empty of a mix of 60");
+        Check(two > 0 && traces > 0, $"some places hold two groups ({two}), some only the trace of one ({traces})");
+    }
+
+    /// <summary>Plain land with a sea down one side and a slope across it: enough to read a plan's reasons.</summary>
+    sealed class TestLand : ILand
+    {
+        readonly ulong _seed;
+        public TestLand(ulong seed) => _seed = seed;
+        public double Width => 16000;
+        public double Depth => 8000;
+        public float Height(double x, double z) => 30f + (float)x * 0.006f + PoiGenerator.Gen.Noise.Fbm(_seed, (float)x, (float)z, 0.0015f) * 16f;
+        public bool Wet(double x, double z) => x < 900;
+        public bool Rich(double x, double z) => PoiGenerator.Gen.Noise.Fbm(_seed + 1, (float)x, (float)z, 0.003f) > 0.6f;
+    }
+
+    /// <summary>Plans on a test land: deterministic, every place with its reason, things where their reason says, and most of the land left alone.</summary>
+    void Regions()
+    {
+        int plans = 0, places = 0, reasons = 0, spaced = 0, wet = 0, sewage = 0, downhill = 0, rails = 0, unDepot = 0, powers = 0, differ = 0, breaks = 0, same = 0;
+        float wild = 0f;
+        ulong baseSeed = (ulong)Random.Shared.NextInt64();
+        for (ulong i = 0; i < 24; i++)
+        {
+            ulong seed = Hash.Combine(baseSeed, i);
+            WorldProfile profile = WorldProfile.Roll(seed, "Temperate");
+            if (!profile.Inhabited) continue;
+            WorldRoll roll = WorldRoll.Roll(_lib, seed, "Temperate", profile, false)!;
+            var land = new TestLand(seed);
+            RegionPlan plan = RegionPlan.Make(_lib, land, roll, profile, seed, (8000, 4000), false);
+            RegionPlan again = RegionPlan.Make(_lib, land, roll, profile, seed, (8000, 4000), false);
+            plans++;
+            if (plan.Places.Select(p => (p.Family, p.X, p.Z)).SequenceEqual(again.Places.Select(p => (p.Family, p.X, p.Z)))) same++;
+            foreach (PlannedPlace p in plan.Places)
+            {
+                places++;
+                if (string.IsNullOrEmpty(p.Why) || string.IsNullOrEmpty(p.Role)) reasons++;
+                if (land.Wet(p.X, p.Z)) wet++;
+                if (p.Breaks) breaks++;
+                foreach (PlannedPlace o in plan.Places)
+                    if (o.Index > p.Index && plan.Dist(o.X, o.Z, p.X, p.Z) < 150) spaced++;
+                if (p.Family == "sewage_works" && p.Serves >= 0)
+                {
+                    sewage++;
+                    if (land.Height(p.X, p.Z) <= land.Height(plan.Places[p.Serves].X, plan.Places[p.Serves].Z) + 1f) downhill++;
+                }
+            }
+            foreach (PlannedLink l in plan.Links)
+            {
+                if (l.Kind == "rail")
+                {
+                    rails++;
+                    if (plan.Places[l.A].Role != "depot" && plan.Places[l.B].Role != "depot") unDepot++;
+                }
+                if (l.Kind == "power")
+                {
+                    powers++;
+                    if (plan.Places[l.A].Role != "plant") reasons++;
+                }
+            }
+            int cells = 0, open = 0;
+            for (double z = 100; z < 8000; z += 400)
+                for (double x = 1000; x < 16000; x += 400)
+                {
+                    cells++;
+                    if (plan.RegionAt(x, z) == null) open++;
+                }
+            wild += open / (float)cells;
+        }
+        Check(same == plans && plans > 8, $"{plans} plans, each the same again from its seed ({same})");
+        Check(reasons == 0 && places > plans * 4, $"{places} planned places, every one with its reason ({reasons} not)");
+        Check(wet == 0 && spaced == 0, $"places stand on land, apart ({wet} wet, {spaced} crowded)");
+        Check(sewage > 0 && downhill >= sewage * 0.8f, $"sewage works run downhill of their towns: {downhill} of {sewage}");
+        Check(unDepot == 0, $"{rails} rail links, each ending at a depot ({unDepot} not)");
+        Check(powers > 0 || plans == 0, $"{powers} plants feed their towns");
+        Check(breaks > 0, $"{breaks} of {places} places break from the theme");
+        Check(wild / plans > 0.4f, $"most of the land is left empty: {wild / plans:P0}");
+        _ = differ;
+    }
+
     void Finish()
     {
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
-    IEnumerable<FamilyDef> Arch => _lib.Families.Where(f => f.Generator != Generator.Kit);
+    /// <summary>The planned places the mass runs walk through in their hundreds. The large places are whole works and have their own check (<see cref="GrandPlaces"/>).</summary>
+    IEnumerable<FamilyDef> Arch => _lib.Families.Where(f => f.Generator != Generator.Kit && !f.Tags.Contains("grand"));
     IEnumerable<FamilyDef> Kits => _lib.Families.Where(f => f.Generator == Generator.Kit);
 
     // ---- data ---------------------------------------------------------------------------
@@ -186,7 +645,7 @@ public partial class PoiTest : Node
                         else GD.PrintErr($"      {f.Variants[v]} {r} {s}: {issues[0]}");
                     }
         Check(ok == total, $"{ok}/{total} named architect layouts (every variant of {Arch.Count()} families, three rarities, four states) pass validation: " +
-                           "every room, storey and cache reachable, the deepest point reachable, keycards before their locks, nothing floating, no overlaps, cores only where held");
+                           "every room, storey and cache reachable, the deepest point reachable, nothing floating, no overlaps, cores only where held");
     }
 
     /// <summary>
@@ -320,7 +779,7 @@ public partial class PoiTest : Node
     /// </summary>
     void UndergroundNet()
     {
-        int plans = 0, ways = 0, rooms = 0, columns = 0, unreached = 0, leaks = 0, wrongTech = 0, outfalls = 0, stations = 0, stubs = 0, spaces = 0, unlinked = 0;
+        int plans = 0, badHoles = 0, holes = 0, ways = 0, rooms = 0, columns = 0, unreached = 0, leaks = 0, wrongTech = 0, outfalls = 0, stations = 0, stubs = 0, spaces = 0, unlinked = 0;
         var notes = new List<string>();
         var grounds = new (string Name, Func<int, int, float> F)[]
         {
@@ -341,6 +800,21 @@ public partial class PoiTest : Node
                     // Brick sewers on a low-tech world: none of the higher levels' poured concrete or composite.
                     if (tech == TechLevel.Low && built.Blocks.Values.Any(b => b.Type == BlockType.Cube && b.Role == Role.Wall && b.Material is PoiGenerator.Gen.Material.Concrete or PoiGenerator.Gen.Material.Alloy)) { wrongTech++; notes.Add("concrete on " + where); }
                     stations += plan.Stations.Count;
+                    // A couple of manholes a town, all off the carriageway (a road's half width is 4 m).
+                    var mh = plan.Shafts.Where(k => k.Network == UnderKind.Sewer && k.ToSurface).ToList();
+                    holes += mh.Count;
+                    if (mh.Count is < 2 or > 3) { badHoles++; notes.Add($"{mh.Count} manholes on {where}"); }
+                    foreach (UnderShaft k in mh)
+                        for (int dx = -1; dx <= 2; dx++)
+                            for (int dz = -1; dz <= 2; dz++)
+                            {
+                                int rx = k.Foot.X + dx - site.X, rz = k.Foot.Z + dz - site.Z;
+                                int along = rx * ax + rz * az, across = -rx * az + rz * ax;
+                                bool inRoad = Math.Abs(across) <= 4 && Math.Abs(along) <= site.MainHalf + 4;
+                                for (int c = -1; c <= 1; c++) inRoad |= Math.Abs(along - c * site.Block) <= 4 && Math.Abs(across) <= site.Arm + 4;
+                                inRoad |= Math.Abs(across - back * site.Arm) <= 4 && Math.Abs(along) <= site.Block + 4;
+                                if (inRoad) { badHoles++; notes.Add($"manhole in the road at {k.Foot} on {where}"); dx = dz = 9; }
+                            }
                     outfalls += plan.Outfalls.Count;
                     if (plan.Outfalls.Count == 0) stubs++;
                     var view = new UnderView(built);
@@ -391,6 +865,7 @@ public partial class PoiTest : Node
             $"under {plans} towns: {ways} ways in, {rooms} chambers and {columns} sampled tunnel stretches all walked to from one way in ({unreached} not), {leaks} open cells against bare rock{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(4)) : "")}");
         Check(wrongTech == 0 && stations == plans * 2 / 3 && outfalls > 0,
             $"the networks fit their worlds: {stations} metro stations and none on a low-tech world ({wrongTech} wrong), {outfalls} outfall culverts, {stubs} drains ending in a fall of rock where the ground never drops");
+        Check(badHoles == 0, $"{holes} manholes under {plans} towns, two or three a town, none in a carriageway ({badHoles} wrong)");
         Check(spaces > 0 && unlinked == 0, $"{spaces} spaces for creatures, all dark, each linked to its neighbours ({unlinked} alone)");
     }
 
@@ -463,7 +938,7 @@ public partial class PoiTest : Node
             {
                 exodusWorlds++;
                 var main = primaries.FirstOrDefault();
-                var mine = r.Pois.Where(p => p.Family.Tags.Contains("scrappy")).ToList();
+                var mine = r.Pois.Where(p => p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus")).ToList();
                 scrappy += mine.Count;
                 camps += r.Pois.Count(p => p.Family.Tags.Contains("evacuation"));
                 if (mine.Count < Math.Min(w.ScrappyPorts, 6)) thin++;
@@ -531,7 +1006,10 @@ public partial class PoiTest : Node
                 }
             }
             // Small improvised places repeat by design, as flavour ruins do.
-            if (f.Tags.Contains("flavour") || f.Tags.Contains("scrappy") || f.Tags.Contains("evacuation"))
+            if (Marker(f)) continue;
+            // (So are the era's own stand-ins for them: a caravan or road camp where a low-tech world has no launch field.)
+            static bool Filler(FamilyDef f) => f.Tags.Contains("flavour") || f.Tags.Contains("scrappy") || f.Tags.Contains("evacuation");
+            if (Filler(f) || _lib.Families.Any(o => o.Instead.Contains(f.Id) && Filler(o)))
             {
                 float same = full.GroupBy(c => c).Max(g => g.Count()) / (float)full.Count;
                 if (same > worstFiller) { worstFiller = same; worstFillerType = f.Id; }
@@ -565,7 +1043,8 @@ public partial class PoiTest : Node
             float ta = A.Values.Sum(), tb = B.Values.Sum();
             return A.Keys.Union(B.Keys).Sum(k => Math.Min(A.GetValueOrDefault(k) / ta, B.GetValueOrDefault(k) / tb));
         }
-        var pairs = new[] { ("prison_block", "hospital"), ("ominous_tower", "deep_bunker"), ("cryo_vault", "research_base"), ("hospital", "deep_bunker"),
+        // Hospitals and bunkers are drawn on the 2 m grid by plans of their own now (Civic.cs): these are the program-built ones.
+        var pairs = new[] { ("prison_block", "biolab"), ("ominous_tower", "research_base"), ("cryo_vault", "research_base"), ("command_bunker", "biolab"),
             ("prison_block", "ominous_tower"), ("biolab", "cryo_vault"), ("meridian_garrison", "prison_block") };
         var worst = pairs.Select(p => (p, o: Overlap(p.Item1, p.Item2))).OrderByDescending(x => x.o).First();
         Check(worst.o < 0.5f, $"types differ from each other: of {pairs.Length} pairs that must never walk alike, the closest ({worst.p.Item1} and {worst.p.Item2}) share {worst.o:P0} of their footprint and circulation mix (under 50%)");
@@ -592,14 +1071,17 @@ public partial class PoiTest : Node
         Check(bases, "every faction base has its core while it's active (hijack it to take the base)");
     }
 
-    const float RuinShare = 0.15f;
+    /// <summary>A marker, not a place (a warning post at the edge of a blast's hot ground): no rooms to ruin, nothing to infest, no landmark to see from afar.</summary>
+    static bool Marker(FamilyDef f) => f.Tags.Contains("warning");
+
+        const float RuinShare = 0.15f;
 
     void StateTransforms()
     {
         bool abandonedQuiet = true, infestedBloom = true, ruinedOk = true;
         float minRemoved = 1f;
         string ruinFirst = "";
-        foreach (var f in _lib.Families)
+        foreach (var f in _lib.Families.Where(f => !Marker(f)))
         {
             int v = 0;
             var ab = PoiFactory.Generate(_lib, f, v, Rarity.Rare, PoiState.Abandoned, 3);
@@ -608,10 +1090,14 @@ public partial class PoiTest : Node
             int growths = inf.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Growth);
             infestedBloom &= growths > 0 && inf.Enemies.Any(e => e.Kind is EnemyKind.Hollow or EnemyKind.Corrupted);
             var ru = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Ruined, 3);
-            minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
             var ruProblems = Validator.Check(ru);
-            if ((ru.RemovedFraction < RuinShare || ruProblems.Count > 0) && ruinFirst.Length == 0) ruinFirst = $" (first: {f.Id} lost {ru.RemovedFraction:P1}{(ruProblems.Count > 0 ? ", " + ruProblems[0] : "")})";
-            ruinedOk &= ru.RemovedFraction >= RuinShare && ruProblems.Count == 0;
+            // A crashed hulk is a real vessel of the player's blocks, damaged in its own plan (CapitalHull.Damage) and kept
+            // worth claiming (design: derelicts that can be repaired and claimed); the place's own blocks are only its yard.
+            bool hulk = CapitalHull.Of(ru.Layout) != null;
+            bool lost = hulk || ru.RemovedFraction >= RuinShare;
+            if ((!lost || ruProblems.Count > 0) && ruinFirst.Length == 0) ruinFirst = $" (first: {f.Id} lost {ru.RemovedFraction:P1}{(ruProblems.Count > 0 ? ", " + ruProblems[0] : "")})";
+            ruinedOk &= lost && ruProblems.Count == 0;
+            if (!hulk) minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
         }
         var garrison = PoiFactory.Generate(_lib, _lib.Family("vharn_outpost"), 0, Rarity.Rare, PoiState.Active, 3);
         Check(garrison.Enemies.Count(e => e.Defender) > 0, $"active faction places are guarded ({garrison.Enemies.Count(e => e.Defender)} defenders in a rare Vharn garrison)");
@@ -755,7 +1241,9 @@ public partial class PoiTest : Node
     void Breaches()
     {
         int breaches = 0, layouts = 0, toVault = 0;
-        foreach (var f in Arch.Where(f => f.Program != null && _lib.Programs[f.Program].Breach > 0))
+        // Buried buildings that roll a breach, and the places below ground whose years can bring one.
+        var below = new HashSet<string>(Below.Select(f => f.Id));
+        foreach (var f in Arch.Where(f => f.Program != null && _lib.Programs[f.Program].Breach > 0 || below.Contains(f.Id)))
             for (int i = 0; i < 20; i++)
             {
                 var layout = PoiFactory.BuildLayout(_lib, f, i, Rarity.Common, Hash.Combine(0xB2EAC4UL, (ulong)i, Hash.Of(f.Id)));
@@ -773,18 +1261,34 @@ public partial class PoiTest : Node
                                                      $"from the surface into its room and on to the vault ({toVault}), validated like any room");
     }
 
-    void Keys()
+    /// <summary>The owner's rule: no locked doors, no key cards. Every door of a fresh place is an ordinary door, and every room is on foot from the way in.</summary>
+    void NoLocks()
     {
-        int places = 0, locks = 0, fine = 0;
+        int places = 0, doors = 0, odd = 0, shut = 0;
+        var notes = new List<string>();
+        ulong fresh = (ulong)Random.Shared.NextInt64();
         foreach (var f in Arch)
             for (int i = 0; i < 6; i++)
             {
-                var p = PoiFactory.Generate(_lib, f, i, Rarity.Rare, (PoiState)(i % 4), (ulong)(700 + i), Hash.Combine(0x4E7UL, (ulong)i, Hash.Of(f.Id)));
+                var p = PoiFactory.Generate(_lib, f, i, Rarity.Rare, (PoiState)(i % 4), (ulong)Random.Shared.NextInt64(), Hash.Combine(fresh, (ulong)i, Hash.Of(f.Id)));
                 places++;
-                locks += p.Extras.Locks.Count;
-                if (Validator.KeyOrder(p) == null) fine++;
+                var layout = p.Layout;
+                var reach = p.Nav().Reachable(layout.EntranceCell);
+                foreach (var d in layout.Doorways)
+                {
+                    if (d.Cells.Count == 0 || d.ModuleB < 0) continue;
+                    doors++;
+                    Block leaf = p.Blocks.Get(d.Cells[0]);
+                    if (leaf.Type == BlockType.Door && leaf.Variant is not (DoorState.Closed or DoorState.Jammed or DoorState.Open or DoorState.Blast)) { odd++; if (notes.Count < 4) notes.Add($"{f.Id}: door variant {leaf.Variant}"); }
+                    if (!layout.Modules[d.ModuleB].Cells.Any(reach.Contains) && !layout.Extras.Secrets.Any(s => s.Module == d.ModuleB))
+                    {
+                        shut++;
+                        if (notes.Count < 4) notes.Add($"{f.Id}: room {layout.Modules[d.ModuleB]} is not on foot from the way in");
+                    }
+                }
             }
-        Check(fine == places && locks > 50, $"keycards and locks: {locks} locked doors in {places} places, every keycard reachable before the doors it opens ({fine}/{places})");
+        foreach (string n in notes) GD.PrintErr("      " + n);
+        Check(odd == 0 && shut == 0, $"no locks: {doors} doors in {places} fresh places, every one an ordinary door ({odd} odd) and every room on foot from the way in ({shut} cut off)");
     }
 
     // ---- placement (the kit engine's per-planet rules) -------------------------------------
@@ -1323,7 +1827,7 @@ public partial class PoiTest : Node
 
     /// <summary>
     /// The roadside ruins, on fresh seeds, turned every way, at every tech level: a house is house-sized
-    /// against a person (10 to 16 m wide, 4 m a storey, doors 2 m), has a sloped roof and a door and
+    /// against a person (10 to 16 m wide, 4 m a storey, the standard 2 m door), has a sloped roof and a door and
     /// never digs into the ground; decay leaves nothing hanging, no block trees, weeds only on
     /// something solid; and every face that isn't against a block is drawn, buried or not, tops of broken
     /// walls included, on these and on the places proper.
@@ -1339,23 +1843,30 @@ public partial class PoiTest : Node
                 foreach (TechLevel tech in Enum.GetValues<TechLevel>())
                     foreach (Dir front in Dirs.Horizontal)
                     {
-                        var layout = PoiFactory.BuildLayout(_lib, f, v.Index, Rarity.Common, (ulong)rand.NextInt64(), new LayoutHints(front, tech));
-                        if (layout.Blocks.Blocks().Any(b => b.Cell.Y < 0)) { belowGround++; Note($"{v.Name} goes below ground"); }
+                        ulong layoutSeed = (ulong)rand.NextInt64();
+                        var layout = PoiFactory.BuildLayout(_lib, f, v.Index, Rarity.Common, layoutSeed, new LayoutHints(front, tech));
+                        if (layout.Blocks.Blocks().FirstOrDefault(b => b.Cell.Y < 0) is { Block.IsAir: false } under) { belowGround++; Note($"{v.Name} goes below ground: {under.Block} at {under.Cell}"); }
+                        // A house's buildings, its garage among them, at house size: a terrace row runs long.
                         foreach (PlainBox b in layout.Extras.Plain.Where(_ => f.Id == "flavour_house"))
                         {
                             int across = Math.Min(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) - 3, along = Math.Max(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) - 3;
-                            if (across < 10 || along > 20 || (b.Eave + 1) % 4 != 0) { wrongSize++; Note($"{v.Name}: {across} by {along} m, eaves {b.Eave}"); }
+                            if (across < 6 || along > 64 || (b.Eave + 1) % 4 != 0) { wrongSize++; Note($"{v.Name}: {across} by {along} m, eaves {b.Eave}"); }
                         }
                         foreach (Doorway d in layout.Doorways)
                         {
                             Int3 lo = d.Cells.Aggregate(Int3.Min), hi = d.Cells.Aggregate(Int3.Max);
-                            if (hi.Y - lo.Y != 1) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
+                            // Every building's doors are the one standard door (a large block against a 1.8 m person): a house's, a shop's, an inn's, a shed's.
+                            if (hi.Y - lo.Y + 1 != DoorSize.Tall) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
                         }
-                        if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead")) { noDoor++; Note($"{v.Name} has no door"); }
-                        if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
+                        if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead" or "flavour_warning")) { noDoor++; Note($"{v.Name} has no door"); }
+                        // A house's roof is the form its family gave it: a flat one is flat, any other is slopes.
+                        bool flatByRule = f.Id == "flavour_house" && layout.Extras.Homes.All(x => x.Roof is "flat" or "turf");
+                        if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !flatByRule && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
                         foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned })
                         {
-                            PoiInstance p = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
+                            ulong spawnSeed = (ulong)rand.NextInt64();
+                            PoiInstance p = PoiFactory.Spawn(_lib, layout, state, spawnSeed);
+                            string seeds = $"layout {layoutSeed}, {tech}, {front}, spawn {spawnSeed}";
                             if (state == PoiState.Ruined && rand.Next(4) == 0) Gen.StateTransforms.Blast(p, 1f, 0f, 0.3f + (float)rand.NextDouble() * 0.6f, new Rng((ulong)rand.NextInt64()));
                             spawns++;
                             var g = p.Blocks;
@@ -1377,9 +1888,9 @@ public partial class PoiTest : Node
                             foreach (var (c, b) in g.Blocks())
                             {
                                 bool solid = BlockInfo.Collides(b.Type);
-                                if (solid && !held.Contains(c)) { floating++; Note($"{v.Name} {state}: {b} floats at {c}"); }
-                                if (!solid && b.Type is BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Plate && !nav.IsRock(c + Int3.Down) && !BlockInfo.Collides(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state}: {b} hangs at {c}"); }
-                                if (b.Type == BlockType.Rubble && !nav.IsRock(c + Int3.Down) && !BlockInfo.Supports(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state}: rubble hangs at {c}"); }
+                                if (solid && !held.Contains(c)) { floating++; Note($"{v.Name} {state} ({seeds}): {b} floats at {c}"); }
+                                if (!solid && b.Type is BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Plate && !nav.IsRock(c + Int3.Down) && !BlockInfo.Collides(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state} ({seeds}): {b} hangs at {c}"); }
+                                if (b.Type == BlockType.Rubble && !nav.IsRock(c + Int3.Down) && !BlockInfo.Supports(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state} ({seeds}): rubble hangs at {c}"); }
                                 if (b.Type == BlockType.Pillar && b.Material == Gen.Material.Timber && b.Role == Role.Decor && b.Color == new Rgb(0x4a, 0x3a, 0x2a) && !nav.IsRock(c + Int3.Down) == false && g.Get(c + Int3.Up * 3).Type == BlockType.Pillar) { trees++; Note($"{v.Name}: a block tree"); }
                             }
                             stands += Faces(g, layout.Occupied, ref faces, ref missing, ref faceFirst);
@@ -1461,7 +1972,8 @@ public partial class PoiTest : Node
             {
                 Int3 n = p + d.Vec();
                 var nb = g.Get(n);
-                if (BlockInfo.IsFullCube(nb.Type) && !BlockInfo.IsTransparent(nb.Material)) continue;
+                // (Shut: against a full block, or a rim piece that fills the face, the face lies between two solids.)
+                if (BlockInfo.IsFullCube(nb.Type) && !BlockInfo.IsTransparent(nb.Material) || Mesher.RimCovers(g.Rounds, nb, n, (int)d)) continue;
                 faces++;
                 Int3 v = d.Vec();
                 if (!drawn.Contains((p.X * 2 + 1 + v.X, p.Y * 2 + 1 + v.Y, p.Z * 2 + 1 + v.Z)))
@@ -1478,11 +1990,16 @@ public partial class PoiTest : Node
     void Landmarks()
     {
         var bad = new List<string>();
-        foreach (var f in _lib.Families)
+        foreach (var f in _lib.Families.Where(f => !Marker(f)))
             foreach (var s in new[] { PoiState.Abandoned, PoiState.Ruined })
             {
                 var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, s, 21);
                 int top = p.Blocks.Blocks().Where(b => b.Cell.Y >= 0 && BlockInfo.Collides(b.Block.Type)).Select(b => b.Cell.Y + 1).DefaultIfEmpty(0).Max();
+                // A crashed hulk stands as the vessel it is (its blocks set down in the place's frame), not in the place's own blocks: its tower's top.
+                if (CapitalHull.Of(p.Layout) is { } hull)
+                    foreach (var piece in hull.Pieces)
+                        foreach (int v in new[] { hull.TV0 - piece.V0, hull.TV1 - piece.V0 })
+                            top = Math.Max(top, (int)MathF.Floor(piece.Origin.Y + System.Numerics.Vector3.Transform(new System.Numerics.Vector3(0, hull.TowerTop, v), piece.Rotation).Y + 1f));
                 bool light = p.Lights.Count > 0 || p.Blocks.Blocks().Any(b => b.Cell.Y >= 0 && b.Block.Material is Gen.Material.Lumen or Gen.Material.Glyph or Gen.Material.Crystal);
                 if (s == PoiState.Ruined) top = Math.Max(top, f.Rise); // a ruin may have lost its top; it still needs its light
                 if (top < f.Rise || !light) bad.Add($"{f.Id} {s}: top {top} m (wants {f.Rise}), light {light}");
@@ -1546,11 +2063,12 @@ public partial class PoiTest : Node
     // ---- walking it -------------------------------------------------------------------
 
     // A body really walks from outside each place to its deepest point and back: through doors
-    // (locked ones open as if the walker held the cards), along the corridors, down every stair,
+    // along the corridors, down every stair,
     // riding lifts and climbing ladders. Proves the meshes, collision, doors, lifts and grid agree.
     readonly (string Family, int Variant, Rarity Rarity, PoiState State, bool Lifts, string Goal)[] _walks =
     {
-        ("old_airfield", 0, Rarity.Rare, PoiState.Abandoned, true, "deep"),
+        ("airfield", 0, Rarity.Rare, PoiState.Abandoned, true, "vault"),
+        ("abandoned_spaceport", 0, Rarity.Exotic, PoiState.Abandoned, true, "vault"),
         ("research_base", 0, Rarity.Uncommon, PoiState.Abandoned, true, "deep"),
         ("ominous_tower", 0, Rarity.Uncommon, PoiState.Ruined, false, "top+deep"),
         ("deep_bunker", 0, Rarity.Rare, PoiState.Infested, false, "deep"),
@@ -1580,7 +2098,6 @@ public partial class PoiTest : Node
         _walkRoot = new Node3D { Name = "Walk" };
         AddChild(_walkRoot);
         _view = PoiView.Build(poi, Gen.Biome.Rock, new PoiView.Options(Lights: false, Figures: false));
-        _view.AllKeys = true;
         _walkRoot.AddChild(_view);
         var hole = new Rect2I(_view.PlugMin, _view.PlugMax - _view.PlugMin + Vector2I.One);
         _walkRoot.AddChild(Terrain.Build(new Vector2I(-200, -200), new Vector2I(50, 50), (x, z) => Colors.Gray, new List<Rect2I> { hole }, true, 0f));
@@ -1684,9 +2201,18 @@ public partial class PoiTest : Node
             }
         }
         _walker.AutoTarget = new Vector3(target.X + 0.5f, target.Y, target.Z + 0.5f);
+        // Held up a moment: duck, as a player ducks under a door jammed part open.
+        _walker.AutoCrouch = _stuck > 45;
         if (++_stuck > 420)
         {
             Fail($"walking {WalkName(w)}: stuck at {at} on cell {_step}/{_route.Count} ({target}){(_back ? " on the way back" : "")}");
+            // What the route crosses there: each cell's block, the block under it and over it, and whose room it is.
+            var poi = _view.Poi;
+            for (int k = Math.Max(0, _step - 3); k < Math.Min(_route.Count, _step + 4); k++)
+            {
+                var c = _route[k];
+                GD.PrintErr($"      {(k == _step ? ">" : " ")} {c}: {poi.Blocks.Get(c).Type} over {poi.Blocks.Get(c + Gen.Int3.Down).Type}, under {poi.Blocks.Get(c + Gen.Int3.Up).Type}/{poi.Blocks.Get(c + Gen.Int3.Up * 2).Type}, {poi.Layout.Modules.FirstOrDefault(m => m.Cells.Contains(c))?.Purpose ?? "-"}");
+            }
             _walker = null;
             NextWalk();
         }

@@ -25,9 +25,13 @@ public sealed class CloudCoverage
     public static CloudCoverage Of(Texture2D noise)
     {
         if (noise == null || noise.GetWidth() == 0) return null;
-        Image image = noise.GetImage();
-        if (image == null || image.IsEmpty()) return null;
-        if (image.IsCompressed()) return null;
+        return Of(noise.GetImage());
+    }
+
+    /// <summary>A snapshot of a noise image, or null if there is none.</summary>
+    public static CloudCoverage Of(Image image)
+    {
+        if (image == null || image.IsEmpty() || image.IsCompressed()) return null;
         return new CloudCoverage(image.GetData(), image.GetWidth(), image.GetHeight());
     }
 
@@ -60,10 +64,11 @@ public sealed class CloudCoverage
     {
         float coverage = Coverage(x, z, cover, drift, scale);
         if (coverage <= 0f) return 0f;
+        // A heap: a flat base and a domed top that falls to nothing at the cloud's edge.
         float h = (y - cloudBase) / thick;
-        if (h <= 0f || h >= 1f) return 0f;
-        float top = Math.Clamp(0.2f + coverage * 2.6f, 0.2f, 1f);
-        float profile = Smooth(0f, 0.07f, h) * (1f - Smooth(top * 0.55f, top, h));
+        float top = Math.Clamp(0.2f + coverage * 2.6f, 0.2f, 1f) * MathF.Sqrt(Math.Clamp(coverage * 6f, 0f, 1f));
+        if (h <= 0f || h >= top) return 0f;
+        float profile = Smooth(0f, MathF.Min(0.07f, top * 0.4f), h) * (1f - Smooth(0.55f, 1f, h / top));
         return Math.Clamp(coverage * 3.2f * profile * 1.8f, 0f, 1f);
     }
 

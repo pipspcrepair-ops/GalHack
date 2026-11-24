@@ -17,51 +17,122 @@ public partial class BuildTest : Node
 {
     int _passes, _failures;
     Catalogue _cat;
-    BlockType _steel, _hardened, _combat, _glass, _core, _thruster, _generator, _container, _door, _ladder, _extender;
+    BlockType _base, _steel, _hardened, _combat, _window, _glass, _core, _thruster, _generator, _container, _door, _ladder;
 
     public override void _Ready()
     {
         _cat = GameData.Catalogue;
-        _steel = _cat.Type("steel");
-        _hardened = _cat.Type("hardened");
-        _combat = _cat.Type("combat");
-        _glass = _cat.Type("glass");
+        _base = _cat.Type("base-block");
+        _steel = _cat.Type("iron-plated");
+        _hardened = _cat.Type("hardened-plated");
+        _combat = _cat.Type("combat-plated");
+        _window = _cat.Type("window-block");
+        _glass = _cat.Type("glass-plated");
         _core = _cat.CoreType;
-        _thruster = _cat.Type("thruster");
-        _generator = _cat.Type("generator");
-        _container = _cat.Type("container");
-        _door = _cat.Type("door");
+        _thruster = _cat.Type("thruster-t1");
+        _generator = _cat.Type("generator-t1");
+        _container = _cat.Type("container-t1");
+        _door = _cat.Type("door-1x2x1");
         _ladder = _cat.Type("ladder");
-        _extender = _cat.Type("cpuext");
         GD.Print($"Catalogue: {_cat}");
 
         Run("Placement rules", TestPlacement);
         Run("Symmetry", TestSymmetry);
         Run("Removal", TestRemoval);
         Run("Severing", TestSevering);
-        Run("Mass, CPU and tiers", TestStats);
+        Run("One grid", TestOneGrid);
+        Run("Mass, power and thrust", TestStats);
         Run("Shapes", TestShapes);
         Run("Upgrading in place", TestUpgrade);
+        Run("Plating", TestPlating);
+        Run("Device ladders", TestLadders);
         Run("Paint", TestPaint);
         Run("Sealed rooms", TestRooms);
+        Run("Old ids and old grids", TestOldBlueprints);
         Run("Shared storage", TestStorage);
         Run("Blueprints", TestBlueprints);
         Run("Validator", TestValidator);
         Run("Core mode", TestCoreMode);
         Run("Core mode never touches blocks", TestModeKeepsEveryBlock);
-        Run("Early-game recipes", TestSmallRecipes);
         Run("Navigation", TestNav);
+        Run("Navigation on shapes", TestNavShapes);
         Run("Meshing performance", TestMeshing);
+        Run("Device detail", TestDeviceDetail);
+        MultiCellTests();
 
         GD.Print($"\n{_passes} passed, {_failures} failed");
         GetTree().Quit(_failures == 0 ? 0 : 1);
+    }
+
+    // ---- Device detail --------------------------------------------------------------------
+
+    /// <summary>
+    /// Every device gets detail from its function's rule, looks only (no solids, no cover); a screen's
+    /// symbol is placed on its own face; detail on a covered face is left out; the detail costs a few
+    /// hundred triangles a device at most.
+    /// </summary>
+    void TestDeviceDetail()
+    {
+        foreach (BlockType t in _cat.Types.Skip(1).Where(t => !t.IsArmor && !t.IsLadder && t.Function != "stairs")) // ladders and stairs are no devices
+            Check(t.Detail.Count > 0, $"{t.Id} has detail from its rule ({t.Detail.Count} parts)");
+
+        // A screen's symbol: pattern 7, the symbol in the stencil bits, and the accent's centre inside the polygon.
+        BlockType chair = _cat.Type("command-chair");
+        var s = new Structure(_cat);
+        s.Set(Int3.Zero, Building.Make(s, chair));
+        MeshBuffers m = ChunkMesher.Build(s, Int3.Zero).Opaque;
+        int screens = 0, centred = 0;
+        for (int i = 0; i < m.Indices.Count; i += 3)
+        {
+            int v0 = m.Indices[i];
+            int flags = (int)m.UV2s[v0].Y, accent = (int)m.UV2s[v0].X;
+            if ((flags & 7) != DetailPattern.Symbol || ((flags >> BlockMaterials.StencilShift) & 15) != (int)DeviceSymbol.Chevron) continue;
+            screens++;
+            float cu = ((accent >> 16) & 255) / 255f, cv = ((accent >> 8) & 255) / 255f;
+            Vector2 a = Frac(m.UVs[v0]), b = Frac(m.UVs[m.Indices[i + 1]]), c = Frac(m.UVs[m.Indices[i + 2]]);
+            float u0 = Mathf.Min(a.X, Mathf.Min(b.X, c.X)) - 0.01f, u1 = Mathf.Max(a.X, Mathf.Max(b.X, c.X)) + 0.01f;
+            float w0 = Mathf.Min(a.Y, Mathf.Min(b.Y, c.Y)) - 0.01f, w1 = Mathf.Max(a.Y, Mathf.Max(b.Y, c.Y)) + 0.01f;
+            if (cu >= u0 && cu <= u1 && cv >= w0 && cv <= w1) centred++;
+        }
+        Check(screens > 0 && centred == screens, $"the chair's console shows its symbol on its own faces ({centred} of {screens} triangles)");
+
+        // Detail on a face a neighbour covers is left out.
+        BlockType generator = _generator;
+        var lone = new Structure(_cat);
+        lone.Set(Int3.Zero, Building.Make(lone, generator));
+        int alone = Triangles(lone);
+        lone.Set(new Int3(1, 0, 0), Building.Make(lone, _steel));
+        lone.Set(new Int3(-1, 0, 0), Building.Make(lone, _steel));
+        int flanked = Triangles(lone) - 2 * 10;
+        Check(flanked < alone - 100, $"a generator's fins go when steel covers its flanks ({alone} triangles alone, {flanked} flanked)");
+
+        foreach (BlockType t in _cat.Types.Skip(1).Where(t => !t.IsArmor))
+        {
+            var one = new Structure(_cat);
+            one.Set(Int3.Zero, Building.Make(one, t));
+            int n = Triangles(one);
+            Check(n <= 1000, $"{t.Id} stays cheap: {n} triangles");
+        }
+    }
+
+    static Vector2 Frac(Vector2 v) => new(v.X - Mathf.Floor(v.X), v.Y - Mathf.Floor(v.Y));
+
+    static int Triangles(Structure s)
+    {
+        int n = 0;
+        foreach (Int3 c in s.Chunks.Keys)
+        {
+            ChunkMeshData d = ChunkMesher.Build(s, c);
+            n += (d.Opaque.Indices.Count + d.Glass.Indices.Count) / 3;
+        }
+        return n;
     }
 
     // ---- Placement ------------------------------------------------------------------------
 
     void TestPlacement()
     {
-        var empty = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var empty = new Structure(_cat);
         Check(Building.Check(empty, Int3.Zero, Block(empty, _steel)) == PlaceError.StartWithCore,
             "an empty structure only takes a core (the starter block)");
 
@@ -128,10 +199,10 @@ public partial class BuildTest : Node
         Structure s = NewShip();
         Place(s, 1, 0, 0, _hardened, "slope");
         var inventory = new Inventory();
-        var cost = _cat.CostOf(s.Get(new Int3(1, 0, 0)), s.Grid);
+        var cost = _cat.CostOf(s.Get(new Int3(1, 0, 0)));
         RemoveResult r = Building.Remove(s, new Int3(1, 0, 0), inventory);
         Check(r.Status == RemoveStatus.Removed && !s.Has(new Int3(1, 0, 0)), "the multi-tool removes the block");
-        Check(cost.All(kv => inventory[kv.Key] == kv.Value) && inventory["iron"] == 7 && inventory["tungsten"] == 2,
+        Check(cost.All(kv => inventory[kv.Key] == kv.Value) && inventory["hardened-plate"] == 2 && inventory["polymer"] == 1,
             $"its materials go to the inventory, scaled by shape volume ({string.Join(", ", inventory.Items.Select(kv => $"{kv.Value} {kv.Key}"))})");
 
         Place(s, 1, 0, 0, _steel);
@@ -167,7 +238,7 @@ public partial class BuildTest : Node
         Check(Math.Abs(s.CargoSu + wreck.CargoSu - 5000) < 1e-9 && wreck.CargoSu == 5000,
             "cargo is conserved: it went with the container that broke away");
         Check(Building.PaintOf(wreck, new Int3(4, 0, 0), Dir.PosX)?.Pattern == Pattern.Hazard, "the wreck keeps its paint");
-        Check(StructureStats.Compute(wreck).CpuLimit == 0, "the wreck's components stop working (no core, no CPU)");
+        Check(!StructureStats.Compute(wreck).Flies, "the wreck's components stop working (no core)");
 
         Check(Building.Place(wreck, new Int3(5, 0, 0), Block(wreck, _core), owner: "salvager") == PlaceError.None
               && wreck.Owner == "salvager" && !wreck.IsWreck, "placing a core claims the wreck");
@@ -193,56 +264,20 @@ public partial class BuildTest : Node
         Place(s, -1, 0, 0, _container);
         StructureStats st = StructureStats.Compute(s);
 
-        double mass = 4 + 10 * 1 + 2 * 2 * 0.5 + 3 + 6 + 2;
-        Check(Near(st.Mass, mass), $"mass is the sum of the blocks ({st.Mass:0.###} t, expected {mass} t)");
+        double mass = _core.Mass + 10 * _steel.Mass + 2 * _hardened.Mass * 0.5 + _thruster.Mass + _generator.Mass + _container.Mass;
+        Check(Near(st.Mass, mass, 1e-5), $"mass is the sum of the blocks ({st.Mass:0.###} t, expected {mass:0.###} t)");
         s.CargoSu = 2000;
-        Check(Near(StructureStats.Compute(s).Mass, mass + 2), "cargo adds to the mass (2000 SU = 2 t)");
+        Check(Near(StructureStats.Compute(s).Mass, mass + 2, 1e-5), "cargo adds to the mass (2000 SU = 2 t)");
         s.CargoSu = 0;
-        double cpu = 0 + 2500 + 4000 + 800; // the devices; armour costs none
-        Check(Near(st.CpuUsed, cpu) && st.Tier == 1 && st.CpuLimit == 200_000 && st.Efficiency == 1,
-            $"CPU is summed ({st.CpuUsed}) and the core alone gives tier 1 (200,000)");
-        Check(_cat.Types.Skip(1).Where(t => t.IsArmor).All(t => t.Cpu == 0) && _ladder.Cpu == 0, "plain armour and structural blocks cost no CPU: steel, hardened, combat, glass, concrete, a ladder");
         Check(Near(st.Thrust[(int)Dir.NegZ], _thruster.Thrust) && Near(st.ThrustToWeightForward, _thruster.Thrust / (mass * 9.81)),
             $"thrust-to-mass is right ({st.ThrustToWeightForward:0.00} g forward)");
 
-        Check(Near(StructureStats.EfficiencyFor(400_000, 200_000), 0.5), "100% over the limit gives 50% efficiency");
-        Check(Near(StructureStats.EfficiencyFor(250_000, 200_000), 0.8), "25% over gives 80% efficiency");
-
-        // A real overshoot: generators until the core's 200,000 is exceeded.
+        // No CPU: however many devices, each runs in full; power is the only limit.
         Structure big = NewShip();
         for (int x = 1; x <= 60; x++) Place(big, x, 0, 0, _generator);
-        StructureStats over = StructureStats.Compute(big);
-        Check(over.CpuUsed > over.CpuLimit && Near(over.Efficiency, 200_000 / over.CpuUsed)
-              && Near(over.PowerOut, 60 * 12 * over.Efficiency),
-            $"over the limit, components run at limit/used ({over.Efficiency:P1} of {60 * 12} MW = {over.PowerOut:0.#} MW)");
+        StructureStats many = StructureStats.Compute(big);
+        Check(Near(many.PowerOut, 60 * _generator.Power, 1e-5), $"60 generators make all their power ({many.PowerOut:0.#} MW)");
 
-        Structure ext = NewShip();
-        var tiers = new List<(int extenders, int tier, long limit)>();
-        for (int n = 0; n <= 4; n++)
-        {
-            if (n > 0) Place(ext, -n, 0, 0, _extender);
-            StructureStats e = StructureStats.Compute(ext);
-            tiers.Add((n, e.Tier, e.CpuLimit));
-        }
-        Check(tiers[1].tier == 2 && tiers[1].limit == 500_000 && tiers.Skip(1).All(t => t.tier == 2),
-            "a plain extender unlocks T2 500k, and however many are placed, no more: T3 and T4 are gated by exploration");
-        int TierWith(string type, int count)
-        {
-            Structure lattice = NewShip();
-            for (int n = 1; n <= count; n++) Place(lattice, -n, 0, 0, _cat.Type(type));
-            return StructureStats.Compute(lattice).Tier;
-        }
-        Check(TierWith("cpuext3", 1) == 2 && TierWith("cpuext3", 2) == 3 && TierWith("cpuext3", 4) == 3,
-            "T3 extenders: one counts as T2, two reach T3 1.5M, and they never reach T4");
-        Check(TierWith("cpuext4", 2) == 3 && TierWith("cpuext4", 3) == 3 && TierWith("cpuext4", 4) == 4,
-            "T4 extenders: four reach T4 10M");
-        Structure mixed = NewShip();
-        Place(mixed, -1, 0, 0, _extender);
-        Place(mixed, -2, 0, 0, _cat.Type("cpuext3"));
-        Check(StructureStats.Compute(mixed).Tier == 2, "a plain extender doesn't count towards T3");
-        GridDef small = _cat.Grid(GridSize.Small);
-        long[] smallLimits = new[] { 0, 1, 2, 4 }.Select(n => StructureStats.TierFor(_cat, small, new[] { 0, 0, 0, 0, n }, true).limit).ToArray();
-        Check(smallLimits.SequenceEqual(new long[] { 6000, 15000, 40000, 100000 }), "small-grid tiers are 6k / 15k / 40k / 100k");
 
         var hit = new DamageReport();
         Damage.Hit(s, new Int3(0, 0, 1), DamageType.Explosive, 100_000, hit);
@@ -263,14 +298,14 @@ public partial class BuildTest : Node
         foreach (var (id, v) in volumes)
             Check(Near(_cat.Shape(id).Volume, v, 1e-4), $"{id} has volume {v:0.###}");
         float cyl = _cat.Shape("cylinder").Volume;
-        Check(cyl > 0.76f && cyl < 0.786f, $"cylinder volume is about π/4 ({cyl:0.###})");
+        Check(cyl > 0.76f && cyl < 0.786f, $"cylinder volume is about Ï€/4 ({cyl:0.###})");
 
         bool scaled = true, same = true;
         foreach (ShapeDef shape in _cat.Shapes)
         {
             BlockStats st = s.StatsOf(Block(s, _combat, shape.Id));
             scaled &= Near(st.MaxHp, cube.MaxHp * shape.Volume, 1e-3) && Near(st.Mass, cube.Mass * shape.Volume, 1e-4);
-            same &= st.Armor == cube.Armor && st.Resist == cube.Resist && st.Cpu == cube.Cpu;
+            same &= st.Armor == cube.Armor && st.Resist == cube.Resist;
         }
         Check(scaled, "every shape's hit points and mass scale with its volume");
         Check(same, "every shape keeps the material's armour and resistances");
@@ -278,8 +313,8 @@ public partial class BuildTest : Node
               && _cat.Shape("slope").Face(Dir.PosX) == Coverage.Partial && _cat.Shape("slope").Face(Dir.PosY) == Coverage.None,
             "a slope has a full bottom and back, triangular sides and no top");
 
-        var smallShip = new Structure(_cat, _cat.Grid(GridSize.Small));
-        Check(Near(smallShip.StatsOf(Block(smallShip, _steel)).MaxHp, 50), "a small-grid steel cube has a tenth of the hit points (50)");
+        Check(Near(s.StatsOf(Block(s, _steel)).MaxHp, 158) && Near(s.StatsOf(Block(s, _base)).MaxHp, 63),
+            "a 1 m iron-plated cube has 158 hit points, a bare base block 63");
         Check(Near(s.StatsOf(Block(s, _hardened)).Resist.Kinetic, 0.45) && Near(s.StatsOf(Block(s, _combat)).Resist.Explosive, 0.55),
             "hardened leans to kinetic, combat to explosive");
     }
@@ -296,18 +331,109 @@ public partial class BuildTest : Node
         Building.PaintFace(s, p, Dir.PosY, Paint.Solid(0xe9dfc4).WithStencil('7', 0x2b2d42));
         Block before = s.Get(p);
 
-        Check(Building.Upgrade(s, p) == UpgradeStatus.Upgraded, "steel upgrades to hardened");
+        Check(Building.Upgrade(s, p) == UpgradeStatus.Upgraded, "iron plating upgrades to hardened");
         Block after = s.Get(p);
         Check(s.TypeOf(after) == _hardened && after.Shape == before.Shape && after.Rot == rot && after.Paint.Equals(before.Paint),
             "the upgrade keeps the shape, the orientation and the paint");
-        Check(Near(after.Hp, 1000 * 0.5), $"and comes back at the new material's full health ({after.Hp})");
+        Check(Near(after.Hp, _hardened.Hp * 0.5), $"and comes back at the new plating's full health ({after.Hp})");
         Check(Building.Upgrade(s, p) == UpgradeStatus.Upgraded && s.TypeOf(s.Get(p)) == _combat, "hardened upgrades to combat");
         Check(Building.Upgrade(s, p) == UpgradeStatus.AlreadyBest, "combat is the top");
         Check(Building.Upgrade(s, Int3.Zero) == UpgradeStatus.NotArmor, "components are not armour");
 
         var hit = new DamageReport();
-        Damage.Hit(s, p, DamageType.Energy, 600, hit);
+        Damage.Hit(s, p, DamageType.Energy, 200, hit);
         Check(Building.IsDamaged(s, p) && Building.Repair(s, p) && !Building.IsDamaged(s, p), "the multi-tool repairs a damaged block");
+    }
+
+    // ---- One grid, plating, ladders --------------------------------------------------------
+
+    void TestOneGrid()
+    {
+        GridDef g = _cat.Grid;
+        Check(g.Id == "1m" && g.CellSize == 1f && g.StorageCap == 320_000, $"one grid: 1 m cells, 320,000 SU of storage ({g.Id}, {g.CellSize} m)");
+        Check(NewShip().Grid == g && Blueprint.Save(NewShip()).Contains("grid 1m"), "every structure is on it, and its blueprints say so");
+    }
+
+    /// <summary>
+    /// Plating: plates sprayed onto a base block make it a plated block; spraying another plating
+    /// or stripping it gives the old plates back by the block's hit-point share, rounded down; a
+    /// repair takes plates in proportion to the damage; glass plates go on windows only.
+    /// </summary>
+    void TestPlating()
+    {
+        Structure s = NewShip();
+        var p = new Int3(1, 0, 0);
+        Place(s, 1, 0, 0, _base);
+        var bag = new Inventory { Creative = false };
+        Check(Building.Plate(s, p, _steel, bag) == UpgradeStatus.NotEnoughMaterials && s.TypeOf(s.Get(p)) == _base, "plating takes plates");
+        bag.Add(new() { ["iron-plate"] = 4, ["hardened-plate"] = 4 });
+        Check(Building.Plate(s, p, _steel, bag) == UpgradeStatus.Upgraded && s.TypeOf(s.Get(p)) == _steel && bag["iron-plate"] == 0 && Near(s.Get(p).Hp, 158),
+            "four iron plates make a base block an iron-plated one, whole");
+        Check(_cat.CostOf(s.Get(p)).OrderBy(kv => kv.Key).SequenceEqual(new Dictionary<string, int> { ["iron-plate"] = 4, ["polymer"] = 1 }.OrderBy(kv => kv.Key)),
+            "its bill is the base block's plus its plates");
+
+        var hit = new DamageReport();
+        Damage.Hit(s, p, DamageType.Kinetic, s.Get(p).Hp * 0.6f + _steel.Armor / (1 - _steel.Resist.Kinetic), hit);
+        float share = s.Get(p).Hp / 158f;
+        Check(Building.Plate(s, p, _hardened, bag) == UpgradeStatus.Upgraded && s.TypeOf(s.Get(p)) == _hardened
+              && bag["iron-plate"] == (int)MathF.Floor(4 * share) && bag["hardened-plate"] == 0,
+            $"spraying hardened over damaged iron gives back the iron's worth rounded down ({bag["iron-plate"]} plates at {share:P0})");
+
+        Damage.Hit(s, p, DamageType.Kinetic, s.Get(p).Hp * 0.5f + _hardened.Armor / (1 - _hardened.Resist.Kinetic), hit);
+        Dictionary<string, int> repair = Building.RepairCost(s, p);
+        float damage = 1 - s.Get(p).Hp / _hardened.Hp;
+        Check(repair.Count == 1 && repair["hardened-plate"] == (int)MathF.Ceiling(4 * damage), $"a repair takes plates in proportion to the damage ({repair["hardened-plate"]} for {damage:P0})");
+
+        share = s.Get(p).Hp / _hardened.Hp;
+        var back = new Inventory();
+        Check(Building.Strip(s, p, back) == UpgradeStatus.Upgraded && s.TypeOf(s.Get(p)) == _base && back["hardened-plate"] == (int)MathF.Floor(4 * share)
+              && Near(s.Get(p).Hp, _base.Hp * share, 1e-4),
+            $"stripping leaves the base block at its share, and the plates' worth rounded down ({back["hardened-plate"]})");
+        Check(Building.Strip(s, p) == UpgradeStatus.AlreadyBest, "a bare block has nothing to strip");
+
+        Place(s, 2, 0, 0, _base, "plate");
+        var slab = new Int3(2, 0, 0);
+        Building.Plate(s, slab, _steel);
+        Check(_cat.PlatesOf(s.Get(slab)) == 1 && _cat.PlatesOf(Block(s, _steel, "half")) == 2, "a shape takes plates by its volume, never fewer than one (plate 1, half 2)");
+        Check(Building.Plate(s, slab, _glass) == UpgradeStatus.WrongBase, "glass plates go on windows only");
+        Place(s, 3, 0, 0, _window);
+        Check(Building.Upgrade(s, new Int3(3, 0, 0)) == UpgradeStatus.Upgraded && s.TypeOf(s.Get(new Int3(3, 0, 0))) == _glass, "a window upgrades to glass plating");
+        Check(Building.Plate(s, Int3.Zero, _steel) == UpgradeStatus.NotArmor, "devices aren't plated yet");
+    }
+
+    /// <summary>Every device rung loads with its footprint; each family is one ladder, named by tier, and a door family is one item.</summary>
+    void TestLadders()
+    {
+        var sizes = new Dictionary<string, Int3>
+        {
+            ["thruster-t1"] = new(1, 1, 1), ["thruster-t2"] = new(1, 1, 2), ["thruster-t3"] = new(1, 1, 2), ["thruster-t4"] = new(2, 2, 4), ["thruster-t5"] = new(3, 3, 6),
+            ["generator-t1"] = new(1, 1, 1), ["generator-t2"] = new(1, 2, 1), ["generator-t3"] = new(3, 1, 1), ["generator-t4"] = new(6, 2, 2),
+            ["container-t1"] = new(1, 1, 1), ["container-t2"] = new(1, 1, 1), ["container-t3"] = new(1, 1, 1), ["container-t4"] = new(2, 1, 1),
+            ["command-chair"] = new(1, 2, 3), ["cockpit-t1"] = new(3, 2, 4), ["cockpit-t2"] = new(3, 3, 5), ["core"] = new(1, 1, 1),
+            ["door-1x2x1"] = new(1, 2, 1), ["door-2x2x1"] = new(2, 2, 1), ["door-3x3x1"] = new(3, 3, 1), ["door-4x4x1"] = new(4, 4, 1), ["door-5x5x1"] = new(5, 5, 1),
+        };
+        foreach (var (id, size) in sizes)
+        {
+            bool ok = _cat.TryGetType(id, out BlockType t) && t.Id == id && t.Size == size;
+            Structure s = NewShip();
+            if (ok) s.Set(new Int3(0, 1, 0), Building.Make(s, t));
+            Check(ok && s.Count == 1 + t.Cells && s.BlockCount == 2, $"{id} loads as {size.X}x{size.Y}x{size.Z} cells and sets whole");
+        }
+        foreach (string family in new[] { "thruster", "generator", "container" })
+        {
+            var rungs = _cat.Types.Skip(1).Where(t => t.Id.StartsWith(family + "-t")).ToList();
+            Check(rungs.Count >= 4 && rungs.Select(t => t.Name).Distinct().Count() == rungs.Count && rungs.All(t => t.Name.Contains($"T{t.Id[^1]}")),
+                $"{family}: {rungs.Count} rungs, named by tier");
+        }
+        Check(_cat.Types.Skip(1).All(t => !t.Name.Contains("small", StringComparison.OrdinalIgnoreCase) && !t.Name.Contains("large", StringComparison.OrdinalIgnoreCase)),
+            "no block is named small or large");
+        IReadOnlyList<BlockType> doors = _cat.VariantsOf(_door);
+        Check(doors.Count == 5 && doors.All(d => d.Head == _door && d.IsDoor) && doors.Select(d => d.Units).SequenceEqual(new[] { 1, 2, 5, 8, 13 }),
+            "the doors are one family under the 1x2x1 door, a bigger one taking more of its item (1, 2, 5, 8, 13)");
+        BlockType chair = _cat.Type("command-chair");
+        Check(_cat.Types.Skip(1).Where(t => t.IsCommandChair).All(t => t.Eye.Y > t.Seat.Y && t.Seat.Y > -0.5f && t.Eye.Y < 0.5f)
+              && Near((chair.Eye.Y - chair.Seat.Y) * chair.Size.Y, 0.8, 1e-3),
+            "every chair and cockpit seats a person: eyes 0.8 m over the seat, inside the block");
     }
 
     // ---- Paint ----------------------------------------------------------------------------
@@ -320,9 +446,9 @@ public partial class BuildTest : Node
         {
             Paint.Solid(0xe9dfc4).WithPattern(Pattern.Stripes, 0xe85d04),
             Paint.Solid(0x0a9396).WithPattern(Pattern.Chevrons, 0xf4a100) with { Grime = 2 },
-            Paint.Solid(0x2b2d42).WithPattern(Pattern.Checker, 0xe9dfc4) with { Texture = FaceTexture.Plates },
-            Paint.Solid(0xf4a100).WithPattern(Pattern.Hazard, 0x1b1b1b) with { Texture = FaceTexture.Ribbed },
-            Paint.Solid(0xe9dfc4).WithStencil('4', 0xc1121f) with { Grime = 1, Texture = FaceTexture.Smooth },
+            Paint.Solid(0x2b2d42).WithPattern(Pattern.Checker, 0xe9dfc4),
+            Paint.Solid(0xf4a100).WithPattern(Pattern.Hazard, 0x1b1b1b),
+            Paint.Solid(0xe9dfc4).WithStencil('4', 0xc1121f) with { Grime = 1 },
         };
         for (int x = 1; x <= 5; x++)
             foreach (Dir d in Dirs.All)
@@ -332,7 +458,47 @@ public partial class BuildTest : Node
         Structure loaded = Blueprint.Load(Blueprint.Save(s), _cat, out var errors);
         bool same = loaded != null && s.Blocks().All(x => Dirs.All.All(d =>
             Building.PaintOf(s, x.pos, d) == Building.PaintOf(loaded, x.pos, d)));
-        Check(errors.Count == 0 && same, "per-face colour, pattern, texture, stencil and grime survive a save and load");
+        Check(errors.Count == 0 && same, "per-face colour, pattern, stencil and grime survive a save and load");
+
+        // Old paint lines named a surface: still read, and dropped. The plating owns the surface.
+        string text = Blueprint.Save(s);
+        Check(!text.Contains("texture="), "a saved paint line has no texture");
+        string old = string.Join('\n', text.Split('\n').Select(l => l.StartsWith("paint ") ? l.TrimEnd('\r') + " texture=ribbed" : l));
+        Structure again = Blueprint.Load(old, _cat, out var oldErrors);
+        Check(again != null && oldErrors.Count == 0 && s.Blocks().All(x => Dirs.All.All(d => Building.PaintOf(s, x.pos, d) == Building.PaintOf(again, x.pos, d))),
+            "old paint lines that carry a texture still load, with the texture dropped");
+        TestPaintOverPlating();
+    }
+
+    /// <summary>
+    /// Paint is a coat: the same paint on two platings gives two different faces, each still carrying its
+    /// plating's surface (the bits the shader draws the plates from), and the paint never picks a surface.
+    /// </summary>
+    void TestPaintOverPlating()
+    {
+        Catalogue cat = PlatingKit.WithPrecursor();
+        var s = new Structure(cat);
+        var paints = new[] { Paint.Solid(0xe9dfc4), Paint.Solid(0x2b2d42), Paint.Solid(0x0a9396).WithPattern(Pattern.Stripes, 0xe9dfc4) };
+        int Surface(FaceLook l) => ((l.Flags >> BlockMaterials.MetalShift) & 3) | (((l.Flags >> BlockMaterials.WearShift) & 3) << 2) | (((l.Flags >> BlockMaterials.TextureShift) & 3) << 4);
+        var surfaces = new List<int>();
+        foreach (Paint paint in paints)
+        {
+            var looks = new List<FaceLook>();
+            for (int i = 0; i < PlatingKit.Platings.Length; i++)
+            {
+                var at = new Int3(i, 0, 0);
+                s.Set(at, Building.Make(s, cat.Type(PlatingKit.Platings[i])));
+                FaceLook bare = ChunkMesher.Look(s, s.Get(at), Dir.PosZ, PartStyle.Body, 0);
+                Building.PaintFace(s, at, Dir.PosZ, paint);
+                FaceLook coat = ChunkMesher.Look(s, s.Get(at), Dir.PosZ, PartStyle.Body, 0);
+                Check(Surface(coat) == Surface(bare) && ((coat.Flags >> BlockMaterials.TextureShift) & 3) == 0,
+                    $"{PlatingKit.Platings[i]} under paint {Paint.Hex(paint.Base)} keeps its own surface");
+                looks.Add(coat);
+                if (paint == paints[0]) surfaces.Add(Surface(bare));
+            }
+            Check(looks.Distinct().Count() == looks.Count, $"paint {Paint.Hex(paint.Base)} on six platings gives six different faces");
+        }
+        Check(surfaces.Distinct().Count() == surfaces.Count, "the six platings each have a surface of their own, bare polymer included");
     }
 
     // ---- Rooms ----------------------------------------------------------------------------
@@ -342,7 +508,7 @@ public partial class BuildTest : Node
         Structure s = HollowBox();
         RoomReport r = Rooms.Detect(s);
         Check(r.Sealed.Count() == 1 && r.Sealed.First().Cells.Count == 27 && !r.Leaking.Any(),
-            $"a closed 5×5×5 box holds one sealed 27-cell room ({r.Sealed.Count()} sealed)");
+            $"a closed 5Ã—5Ã—5 box holds one sealed 27-cell room ({r.Sealed.Count()} sealed)");
 
         var hole = new Int3(4, 2, 2);
         Block wall = s.Get(hole);
@@ -372,17 +538,50 @@ public partial class BuildTest : Node
         Check(r.Sealed.Count() == 1 && !r.Leaking.Any(), "a closed door seals");
         Building.Toggle(s, doorAt);
         r = Rooms.Detect(s);
-        Check(!r.Sealed.Any() && r.LeakFaces.SequenceEqual(new[] { new Face(doorAt, Dir.PosX) }), "an open door leaks, at the doorway");
+        Check(!r.Sealed.Any() && r.LeakFaces.OrderBy(f => f.Cell.Y).SequenceEqual(new[] { new Face(doorAt, Dir.PosX), new Face(doorAt + Int3.UnitY, Dir.PosX) }),
+            "an open 1x2x1 door leaks, at its doorway");
 
         Building.Toggle(s, doorAt);
         s.Set(new Int3(2, 2, 4), Block(s, _glass));
-        Check(Rooms.Detect(s).Sealed.Count() == 1, "a glass window is airtight");
+        s.Set(new Int3(2, 3, 4), Block(s, _window));
+        Check(Rooms.Detect(s).Sealed.Count() == 1, "windows, bare or glass plated, are airtight");
     }
 
-    /// <summary>A hollow 5×5×5 steel box from (0,0,0) to (4,4,4) with its core in the floor.</summary>
+    /// <summary>
+    /// Old ids read as the blocks that replaced them, and blueprints from the 2 m and 0.5 m grids load on
+    /// the 1 m grid as they are, cell for cell: a door is 1x2x1 now, so the wall over an old one-cell door
+    /// gives way to it, and a block running into a device is left out.
+    /// </summary>
+    void TestOldBlueprints()
+    {
+        var was = new (string old, string now)[]
+        {
+            ("steel", "iron-plated"), ("hardened", "hardened-plated"), ("combat", "combat-plated"), ("glass", "glass-plated"),
+            ("concrete", "concrete-plated"), ("cpuext", "iron-plated"), ("cpuext3", "iron-plated"), ("cpuext4", "iron-plated"),
+            ("thruster", "thruster-t1"), ("generator", "generator-t1"), ("fueltank", "container-t1"), ("container", "container-t1"),
+            ("door", "door-1x2x1"), ("chair", "command-chair"), ("cockpit", "command-chair"),
+        };
+        foreach (var (old, now) in was)
+            Check(_cat.TryGetType(old, out BlockType t) && t.Id == now, $"old id '{old}' reads as {now}");
+
+        string Text(string grid, params string[] blocks) => string.Join('\n', new[] { "schema galhack.blueprint", "version 1", "name \"Door\"", $"grid {grid}", "mode base",
+            "block 0 0 0 core", "block 1 0 0 steel", "block 2 0 0 steel", "block 0 1 0 steel", "block 2 1 0 steel" }.Concat(blocks).Append(""));
+        foreach (string grid in Blueprint.OldGrids)
+        {
+            Structure old = Blueprint.Load(Text(grid, "block 1 1 0 door", "block 1 2 0 glass", "block 0 2 0 thruster", "block 0 2 0 steel"), _cat, out List<string> errors);
+            Check(errors.Count == 0 && old.TypeOf(old.Get(new Int3(1, 1, 0))) == _door && old.AnchorOf(new Int3(1, 2, 0)) == new Int3(1, 1, 0)
+                  && old.TypeOf(old.Get(new Int3(0, 2, 0))) == _thruster,
+                $"a 'grid {grid}' blueprint loads on 1 m cells: its door grows to 1x2x1 over the glass, the steel after the thruster is left out ({string.Join("; ", errors)})");
+            Check(Blueprint.Save(old).Contains("grid 1m"), "and saves as a 1 m blueprint");
+        }
+        Check(Blueprint.Load(Text("1m", "block 1 1 0 door", "block 1 2 0 glass"), _cat, out List<string> overlap) == null && overlap.Any(e => e.Contains("overlaps")),
+            "on the 1 m grid the same overlap is an error");
+    }
+
+    /// <summary>A hollow 5Ã—5Ã—5 steel box from (0,0,0) to (4,4,4) with its core in the floor.</summary>
     Structure HollowBox()
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         for (int x = 0; x <= 4; x++)
             for (int y = 0; y <= 4; y++)
                 for (int z = 0; z <= 4; z++)
@@ -398,18 +597,11 @@ public partial class BuildTest : Node
         Structure s = NewShip();
         for (int x = 1; x <= 3; x++) Place(s, x, 0, 0, _container);
         StructureStats st = StructureStats.Compute(s);
-        Check(st.StorageCapacity == 24_000 && st.Containers == 3, $"three large containers make one 24,000 SU storage ({st.StorageCapacity})");
-        for (int x = 4; x <= 50; x++) Place(s, x, 0, 0, _container);
+        Check(st.StorageCapacity == 3 * _container.Storage && st.Containers == 3, $"three containers make one shared storage ({st.StorageCapacity} SU)");
+        BlockType big = _cat.Type("container-t4");
+        for (int x = 4; x <= 4 + 2 * 130; x += 2) Place(s, x, 0, 0, big);
         st = StructureStats.Compute(s);
-        Check(st.StorageRaw == 400_000 && st.StorageCapacity == 320_000, "50 containers (400,000 SU) are capped at 320,000 SU on the large grid");
-
-        var small = new Structure(_cat, _cat.Grid(GridSize.Small));
-        Building.Place(small, Int3.Zero, Block(small, _core));
-        for (int x = 1; x <= 10; x++) Building.Place(small, new Int3(x, 0, 0), Block(small, _container));
-        Check(StructureStats.Compute(small).StorageCapacity == 1250, "small containers hold 125 SU each");
-        for (int x = 11; x <= 300; x++) Building.Place(small, new Int3(x, 0, 0), Block(small, _container));
-        st = StructureStats.Compute(small);
-        Check(st.StorageRaw == 37_500 && st.StorageCapacity == 32_000, "the small grid caps storage at 32,000 SU");
+        Check(st.StorageRaw > 320_000 && st.StorageCapacity == 320_000, $"{st.Containers} containers ({st.StorageRaw:N0} SU) are capped at 320,000 SU");
     }
 
     // ---- Blueprints -----------------------------------------------------------------------
@@ -422,11 +614,11 @@ public partial class BuildTest : Node
         if (ship == null) return;
         StructureStats st = StructureStats.Compute(ship);
         RoomReport rooms = Rooms.Detect(ship);
-        GD.Print($"      {ship.Name}: {ship.Count} blocks, {st.Mass:0} t, CPU {st.CpuUsed:0}/{st.CpuLimit} (T{st.Tier}), " +
+        GD.Print($"      {ship.Name}: {ship.Count} blocks, {st.Mass:0} t, " +
                  $"{st.Thrusters} thrusters, {st.Generators} generators, {st.Containers} containers, " +
                  $"{rooms.Sealed.Count()} sealed rooms, {rooms.Leaking.Count()} leaking");
         Check(rooms.Sealed.Any() && !rooms.Leaking.Any(), "the example ship's cabin is sealed");
-        Check(ship.Blocks().Any(b => ship.TypeOf(b.block).IsCockpit) && st.Thrusters > 0 && st.Generators > 0 && st.Containers > 0,
+        Check(ship.Blocks().Any(b => ship.TypeOf(b.block).IsCommandChair) && st.Thrusters > 0 && st.Generators > 0 && st.Containers > 0,
             "it has a cockpit, thrusters, a generator and containers");
 
         string text1 = Blueprint.Save(ship);
@@ -437,7 +629,7 @@ public partial class BuildTest : Node
         Structure s = NewShip();
         for (int x = 1; x <= 4; x++) Place(s, x, 0, 0, _steel);
         Place(s, 1, 1, 0, _door);
-        Building.Toggle(s, new Int3(1, 1, 0));
+        Building.Toggle(s, new Int3(1, 2, 0));
         var hit = new DamageReport();
         Damage.Hit(s, new Int3(2, 0, 0), DamageType.Kinetic, 123.456f, hit);
         Damage.Hit(s, new Int3(3, 0, 0), DamageType.Kinetic, 123.43f, hit);
@@ -449,24 +641,25 @@ public partial class BuildTest : Node
 
     void TestValidator()
     {
-        const string head = "schema galhack.blueprint\nversion 1\nname \"t\"\ngrid large\n";
-        Check(Blueprint.Validate(Blueprint.Parse(head + "block 0 0 0 core\nblock 1 0 0 steel slope rot=+y+x\n"), _cat).Count == 0,
+        const string head = "schema galhack.blueprint\nversion 1\nname \"t\"\ngrid 1m\n";
+        Check(Blueprint.Validate(Blueprint.Parse(head + "block 0 0 0 core\nblock 1 0 0 iron-plated slope rot=+y+x\n"), _cat).Count == 0,
             "a good blueprint passes");
 
         var cases = new (string text, string expect, string what)[]
         {
-            (head + "block 0 0 0 steel\n", "no core", "no core"),
+            (head + "block 0 0 0 iron-plated\n", "no core", "no core"),
             (head + "block 0 0 0 core\nblock 1 0 0 core\n", "cores", "two cores"),
-            (head + "block 0 0 0 core\nblock 1..3 0 0 steel\nblock 2 0 0 hardened\n", "overlaps", "overlapping blocks"),
+            (head + "block 0 0 0 core\nblock 1..3 0 0 iron-plated\nblock 2 0 0 hardened-plated\n", "overlaps", "overlapping blocks"),
             (head + "block 0 0 0 core\nblock 1 0 0 unobtanium\n", "unknown block id", "an unknown block id"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel blob\n", "unknown shape", "an unknown shape"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel paint=nope\n", "unknown paint", "an unknown paint"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel rot=+y+y\n", "bad rot", "an impossible rotation"),
-            (head + "block 0 0 0 core\nblock 1 0 0 thruster slope\n", "takes no shape", "a shape on a component"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel\nblock 5 5 5 steel\n", "not attached", "a detached block marked as attached"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel half\nblock 1 1 0 steel\n", "not attached", "a block touching only a half block's open top"),
-            ("schema galhack.blueprint\nversion 9\ngrid large\nblock 0 0 0 core\n", "version", "an unknown version"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel hp=99999\n", "outside", "hit points above the maximum"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated blob\n", "unknown shape", "an unknown shape"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated paint=nope\n", "unknown paint", "an unknown paint"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated rot=+y+y\n", "bad rot", "an impossible rotation"),
+            (head + "block 0 0 0 core\nblock 1 0 0 thruster-t1 slope\n", "takes no shape", "a shape on a component"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated\nblock 5 5 5 iron-plated\n", "not attached", "a detached block marked as attached"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated half\nblock 1 1 0 iron-plated\n", "not attached", "a block touching only a half block's open top"),
+            ("schema galhack.blueprint\nversion 9\ngrid 1m\nblock 0 0 0 core\n", "version", "an unknown version"),
+            ("schema galhack.blueprint\nversion 1\ngrid 3m\nblock 0 0 0 core\n", "unknown grid", "an unknown grid"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated hp=99999\n", "outside", "hit points above the maximum"),
             (head + "block 0 0 0 core\nwibble\n", "unknown statement", "a junk line"),
         };
         foreach (var (text, expect, what) in cases)
@@ -483,20 +676,22 @@ public partial class BuildTest : Node
         Structure s = NewShip();
         Place(s, 0, 0, 1, _thruster);
         Place(s, 0, 1, 0, _generator);
-        Check(s.Mode == CoreMode.Capital && StructureStats.Compute(s).Flies, "a Big Core in Capital Mode flies");
+        Check(s.Mode == CoreMode.Flight && StructureStats.Compute(s).Flies, "a core in Flight Mode flies");
         Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Base, "B switches the core to base");
         StructureStats st = StructureStats.Compute(s);
         Check(!st.Flies && st.Thrust.Sum() == 0 && st.Blocks == 3, "a base keeps every block but does not fly");
         Structure loaded = Blueprint.Load(Blueprint.Save(s), _cat, out _);
         Check(loaded?.Mode == CoreMode.Base, "the mode is saved in the blueprint");
-        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Capital, "and switches back to capital");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Hover, "B steps it on to Hover Mode, hover plates or none");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Flight, "and back to Flight Mode");
 
-        var small = new Structure(_cat, _cat.Grid(GridSize.Small));
-        Building.Place(small, Int3.Zero, Block(small, _core));
-        Check(small.Mode == CoreMode.Vessel && Building.ToggleCoreMode(small) && small.Mode == CoreMode.Hover, "a Small Core switches between Vessel Mode and Hover Mode");
-        Check(Blueprint.Load(Blueprint.Save(small), _cat, out _)?.Mode == CoreMode.Hover, "the Small Core's mode is saved in the blueprint");
-        Check(Building.ToggleCoreMode(small) && small.Mode == CoreMode.Vessel, "and switches back");
-        Check(Blueprint.Load(Blueprint.Save(small).Replace("mode vessel", "mode capital"), _cat, out _)?.Mode == CoreMode.Vessel, "an old blueprint's \"mode capital\" on a small grid is Vessel Mode");
+        s.Mode = CoreMode.Flight;
+        string saved = Blueprint.Save(s);
+        Check(saved.Contains("mode flight") && Blueprint.Load(saved.Replace("mode flight", "mode vessel"), _cat, out _)?.Mode == CoreMode.Flight
+              && Blueprint.Load(saved.Replace("mode flight", "mode capital"), _cat, out _)?.Mode == CoreMode.Flight,
+            "saved as flight; old data's capital and vessel modes load as Flight Mode");
+        s.Mode = CoreMode.Hover;
+        Check(Blueprint.Load(Blueprint.Save(s), _cat, out _)?.Mode == CoreMode.Hover, "Hover Mode is saved in the blueprint");
     }
 
     /// <summary>
@@ -508,7 +703,7 @@ public partial class BuildTest : Node
     {
         Structure s = NewShip();
         s.Mode = CoreMode.Base;
-        for (int x = -1; x <= 60; x++)
+        for (int x = -1; x <= 200; x++)
             for (int z = -1; z <= 1; z++)
                 if (x != 0 || z != 0) s.Set(new Int3(x, 0, z), Block(s, _steel));
 
@@ -521,7 +716,9 @@ public partial class BuildTest : Node
             {
                 int rot = t.IsArmor || BlockType.Has(t.AttachFaces, Dir.NegY) ? 0 : backDown;
                 tried++;
-                if (Building.Place(s, new Int3(x0++, 1, 0), Building.Make(s, t, shape, rot)) == PlaceError.None) placedOk++;
+                var (lo, hi) = Footprint.Box(t, rot);
+                if (Building.Place(s, new Int3(x0 - lo.X, 1 - lo.Y, -lo.Z), Building.Make(s, t, shape, rot)) == PlaceError.None) placedOk++;
+                x0 += hi.X - lo.X + 1;
             }
         }
         Check(placedOk == tried, $"every block type and shape can be placed on a base ({placedOk}/{tried})");
@@ -529,58 +726,27 @@ public partial class BuildTest : Node
         var before = s.Blocks().ToDictionary(x => x.pos, x => x.block);
         StructureStats statsBefore = StructureStats.Compute(s);
         bool allSame = true, allValid = true;
-        foreach (CoreMode expected in new[] { CoreMode.Capital, CoreMode.Base, CoreMode.Capital })
+        foreach (CoreMode expected in new[] { CoreMode.Hover, CoreMode.Flight, CoreMode.Base, CoreMode.Hover, CoreMode.Flight })
         {
             Building.ToggleCoreMode(s);
-            allSame &= s.Mode == expected && s.Count == before.Count
+            allSame &= s.Mode == expected && s.BlockCount == before.Count
                 && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
             allValid &= Blueprint.Validate(Blueprint.Parse(Blueprint.Save(s)), _cat).Count == 0;
             StructureStats st = StructureStats.Compute(s);
-            allSame &= st.Blocks == statsBefore.Blocks && Near(st.Mass, statsBefore.Mass) && Near(st.CpuUsed, statsBefore.CpuUsed)
+            allSame &= st.Blocks == statsBefore.Blocks && Near(st.Mass, statsBefore.Mass)
                 && st.StorageCapacity == statsBefore.StorageCapacity && Near(st.PowerOut, statsBefore.PowerOut);
         }
-        Check(allSame, $"switching base → capital → base → capital keeps all {before.Count} blocks exactly as they were");
-        Check(allValid, "and the structure validates in both modes");
-        Check(s.Mode == CoreMode.Capital && StructureStats.Compute(s).Thrust.Sum() > 0,
-            "the same thrusters push once it is a capital ship (only flying depends on the mode)");
-    }
-
-    /// <summary>A small vessel is the early-game goal: its blocks must be cheap and made of common materials.</summary>
-    void TestSmallRecipes()
-    {
-        GridDef small = _cat.Grid(GridSize.Small);
-        var scratch = new Structure(_cat, small);
-        var common = new HashSet<string>(_cat.CommonMaterials);
-        var rare = new List<string>();
-        foreach (BlockType t in _cat.Types.Skip(1))
-            foreach (ShapeDef shape in t.IsArmor ? _cat.Shapes : new ShapeDef[] { null })
-                rare.AddRange(_cat.CostOf(Building.Make(scratch, t, shape), small).Keys.Where(i => !common.Contains(i)).Select(i => $"{t.Id}:{i}"));
-        Check(common.Count > 0 && rare.Count == 0,
-            $"every small-grid recipe uses only common materials ({string.Join(", ", common)})" +
-            (rare.Count > 0 ? ": not " + string.Join(", ", rare.Distinct()) : ""));
-
-        // A starter hopper: core, seat, four thrusters, generator, tank, container, glass canopy, steel hull.
-        var bill = new Dictionary<string, int>();
-        void Add(string id, int n, string shape = null)
-        {
-            foreach (var (item, count) in _cat.CostOf(Building.Make(scratch, _cat.Type(id), shape == null ? null : _cat.Shape(shape)), small))
-                bill[item] = (bill.TryGetValue(item, out int had) ? had : 0) + count * n;
-        }
-        Add("core", 1); Add("chair", 1); Add("thruster", 4); Add("generator", 1); Add("fueltank", 1); Add("container", 1);
-        Add("door", 1); Add("light", 2); Add("glass", 8); Add("glass", 4, "slope"); Add("steel", 70); Add("steel", 20, "slope");
-        int total = bill.Values.Sum();
-        Check(total <= 300, $"a 115-block starter small vessel costs {total} units of common materials: " +
-            string.Join(", ", bill.OrderBy(kv => kv.Key).Select(kv => $"{kv.Value} {kv.Key}")));
-        int smallSteel = _cat.CostOf(Building.Make(scratch, _steel), small)["iron"];
-        int largeSteel = _cat.CostOf(Block(NewShip(), _steel), _cat.Grid(GridSize.Large))["iron"];
-        Check(smallSteel * 5 <= largeSteel, $"a small steel block costs a fifth or less of a large one ({smallSteel} vs {largeSteel} iron)");
+        Check(allSame, $"switching base, hover, flight, base, hover, flight keeps all {before.Count} blocks exactly as they were");
+        Check(allValid, "and the structure validates in every mode");
+        Check(s.Mode == CoreMode.Flight && StructureStats.Compute(s).Thrust.Sum() > 0,
+            "the same thrusters push once it flies (only flying depends on the mode)");
     }
 
     // ---- Navigation -----------------------------------------------------------------------
 
     void TestNav()
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         for (int x = -2; x <= 2; x++)
             for (int z = -2; z <= 2; z++)
                 s.Set(new Int3(x, 0, z), Block(s, x == 0 && z == 0 ? _core : _steel));
@@ -589,7 +755,7 @@ public partial class BuildTest : Node
         for (int x = -2; x <= 2; x++)
             for (int z = -2; z <= 2; z++)
                 floors &= nav.Nodes.TryGetValue(new Int3(x, 1, z), out NavKind k) && k == NavKind.Floor;
-        Check(floors && nav.Nodes.Count == 25, $"the 25 cells above a 5×5 floor are walkable, nothing else ({nav.Nodes.Count} nodes)");
+        Check(floors && nav.Nodes.Count == 25, $"the 25 cells above a 5Ã—5 floor are walkable, nothing else ({nav.Nodes.Count} nodes)");
 
         s.Set(new Int3(0, 1, 0), Block(s, _steel));
         nav = NavGrid.Build(s);
@@ -620,11 +786,34 @@ public partial class BuildTest : Node
 
     // ---- Helpers --------------------------------------------------------------------------
 
-    Structure NewShip(GridSize grid = GridSize.Large)
+    Structure NewShip()
     {
-        var s = new Structure(_cat, _cat.Grid(grid));
+        var s = new Structure(_cat);
         Building.Place(s, Int3.Zero, Block(s, _core));
         return s;
+    }
+
+    /// <summary>Floors are the blocks' real shapes: a half block is a step up, a slope a ramp onto the block behind it, a full block a wall, stairs a way up.</summary>
+    void TestNavShapes()
+    {
+        var s = new Structure(_cat);
+        for (int x = -3; x <= 3; x++)
+            for (int z = -3; z <= 3; z++)
+                s.Set(new Int3(x, 0, z), Block(s, x == 0 && z == -3 ? _core : _steel));
+        s.Set(new Int3(0, 1, 0), Block(s, _steel, "half"));
+        s.Set(new Int3(2, 1, 0), Block(s, _steel));
+        s.Set(new Int3(-2, 1, 0), Block(s, _steel, "slope"));
+        s.Set(new Int3(-2, 1, 1), Block(s, _steel));
+        NavGrid nav = NavGrid.Build(s);
+        bool Linked(Int3 a, Int3 b) => nav.LinksFrom(a).Any(l => l.To == b) && nav.LinksFrom(b).Any(l => l.To == a);
+        Check(nav.Floor.TryGetValue(new Int3(0, 1, 0), out float half) && MathF.Abs(half - 1f) < 0.06f && Linked(new Int3(0, 1, 1), new Int3(0, 1, 0)),
+            $"a half block is stood on in its own cell, half a block up ({half:F2}), and stepped onto from the floor beside it");
+        Check(!nav.Nodes.ContainsKey(new Int3(2, 1, 0)) && nav.Nodes.ContainsKey(new Int3(2, 2, 0)) && !Linked(new Int3(1, 1, 0), new Int3(2, 2, 0)),
+            "a full block is a wall: its top is floor, but not a step up from beside it");
+        Check(Linked(new Int3(-2, 1, -1), new Int3(-2, 1, 0)) && Linked(new Int3(-2, 1, 0), new Int3(-2, 2, 1)),
+            "a slope is a ramp: up from the floor and on onto the block behind it");
+        List<Int3> path = nav.FindPath(new Int3(-2, 1, -2), new Int3(-2, 2, 1));
+        Check(path != null, $"A* walks up the slope onto the block ({path?.Count ?? 0} steps)");
     }
 
     Block Block(Structure s, BlockType t, string shape = null, int rot = 0) =>

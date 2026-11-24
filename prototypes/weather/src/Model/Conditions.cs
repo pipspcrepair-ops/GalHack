@@ -16,6 +16,8 @@ public enum Param
     /// <summary>Mean wind, m/s, blended as a vector so a change of direction never spins through zero suddenly.</summary>
     WindX, WindZ,
     Gustiness, Temperature, Solar, CreatureActivity, Lightning, Tornadoes, Debris, MoveSpeed, Exposure,
+    /// <summary>How much of the rain falls from storm cells, 0 (everywhere alike) to 1 (only under them).</summary>
+    Cellular,
 }
 
 [InlineArray(Conditions.Count)]
@@ -30,7 +32,7 @@ public struct ParamValues
 /// </summary>
 public struct Conditions
 {
-    public const int Count = 19;
+    public const int Count = 20;
 
     ParamValues _values;
 
@@ -65,6 +67,7 @@ public struct Conditions
     public readonly float DebrisPerMinute => this[Param.Debris];
     public readonly float MoveSpeed => this[Param.MoveSpeed];
     public readonly float Exposure => this[Param.Exposure];
+    public readonly float Cellular => this[Param.Cellular];
 
     /// <summary>The settled conditions of a weather state on a planet, with the wind blowing toward <paramref name="windHeading"/>.</summary>
     public static Conditions FromState(WeatherState s, float baseTemperature, float windHeading)
@@ -89,6 +92,7 @@ public struct Conditions
         c[Param.Debris] = s.Debris;
         c[Param.MoveSpeed] = s.MoveSpeed;
         c[Param.Exposure] = s.Exposure;
+        c[Param.Cellular] = s.Cellular;
         return c;
     }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
 namespace GalHack.Structures;
 
@@ -11,35 +12,48 @@ public readonly record struct NavLink(Int3 From, Int3 To, NavKind Kind);
 
 /// <summary>
 /// The walkable cells of a structure and the links between them, for other systems (crew,
-/// boarders, invaders) to run A* on. A cell is walkable when a character fits in it (enough
-/// clear cells above for its height) and the block under it has a full top face. Doors and
-/// ladders become nodes of their own kind, joined by door and ladder links.
+/// boarders, invaders) to run A* on. Floors are the blocks' real shapes (<see cref="Structure.SolidAt"/>):
+/// a cell is walkable where there is something to stand on at its foot, or within a step above it (a
+/// half block, a slope's middle, a stair), and the character fits from there up for its height.
+/// Neighbours join where the surface between them rises no more than a step (a ramp of slopes, a
+/// half block, a stair; never a full block). Doors and ladders become nodes of their own kind, joined
+/// by door and ladder links.
 /// </summary>
 public sealed class NavGrid
 {
     public readonly Dictionary<Int3, NavKind> Nodes = new();
+
+    /// <summary>Where a character stands in each node's cell (structure frame, in cells, at the cell's middle).</summary>
+    public readonly Dictionary<Int3, float> Floor = new();
     public readonly List<NavLink> Links = new();
     readonly Dictionary<Int3, List<NavLink>> _from = new();
 
     public IReadOnlyList<NavLink> LinksFrom(Int3 cell) =>
         _from.TryGetValue(cell, out var list) ? list : (IReadOnlyList<NavLink>)Array.Empty<NavLink>();
 
-    public static NavGrid Build(Structure s, float characterHeight = 1.8f)
+    /// <param name="stepHeight">the tallest rise walked up without a climb, m (the shared walker's step)</param>
+    public static NavGrid Build(Structure s, float characterHeight = 1.8f, float stepHeight = 0.6f)
     {
         var nav = new NavGrid();
         if (s.Count == 0) return nav;
-        int headroom = Math.Max(1, (int)MathF.Ceiling(characterHeight / s.Grid.CellSize - 1e-3f));
+        float cell = s.Grid.CellSize, height = characterHeight / cell, step = stepHeight / cell;
+        const float Fine = 0.05f;
 
-        // A character can be in a cell with no block, an open door, or a non-solid component.
-        bool Clear(Int3 c) => !s.TryGet(c, out Block b) || !s.IsSolid(b) || s.TypeOf(b).IsDoor;
-        bool Fits(Int3 c)
+        // Doors are walked through (a door node opens them); anything else solid is where its shape is.
+        bool Solid(Vector3 p) => s.SolidAt(p) && !(s.TryGet(Int3.Round(p), out Block b) && s.TypeOf(b).IsDoor);
+        // The surface under a point: the top of whatever is solid between from and to (cells), or null.
+        float? Surface(float x, float z, float from, float to)
         {
-            for (int k = 0; k < headroom; k++)
-                if (!Clear(c + new Int3(0, k, 0))) return false;
-            return true;
+            for (float y = from; y >= to; y -= Fine)
+                if (Solid(new Vector3(x, y, z))) return y + Fine * 0.5f;
+            return null;
         }
-        bool FloorUnder(Int3 c) =>
-            s.TryGet(c - Int3.UnitY, out Block below) && s.IsSolid(below) && s.AttachCoverage(below, Dir.PosY) == Coverage.Full;
+        bool Fits(float x, float z, float floor)
+        {
+            for (float y = floor + Fine; y < floor + height; y += 0.25f)
+                if (Solid(new Vector3(x, y, z))) return false;
+            return !Solid(new Vector3(x, floor + height - 0.01f, z));
+        }
 
         var (min, max) = s.Bounds();
         for (int z = min.Z - 1; z <= max.Z + 1; z++)
@@ -48,21 +62,35 @@ public sealed class NavGrid
                 {
                     var c = new Int3(x, y, z);
                     bool hasBlock = s.TryGet(c, out Block b);
-                    if (hasBlock && s.TypeOf(b).IsLadder) nav.Nodes[c] = NavKind.Ladder;
-                    else if (Fits(c) && FloorUnder(c))
-                        nav.Nodes[c] = hasBlock && s.TypeOf(b).IsDoor ? NavKind.Door : NavKind.Floor;
+                    if (hasBlock && s.TypeOf(b).IsLadder)
+                    {
+                        nav.Nodes[c] = NavKind.Ladder;
+                        nav.Floor[c] = y - 0.5f;
+                        continue;
+                    }
+                    // Standing at the cell's foot (on the block below), or on something no taller than a step inside it.
+                    if (Surface(x, z, y - 0.5f + step, y - 0.5f - Fine) is not float floor || !Fits(x, z, floor)) continue;
+                    nav.Nodes[c] = hasBlock && s.TypeOf(b).IsDoor ? NavKind.Door : NavKind.Floor;
+                    nav.Floor[c] = floor;
                 }
 
         foreach (var (c, kind) in nav.Nodes)
         {
             foreach (Dir d in new[] { Dir.PosX, Dir.NegX, Dir.PosZ, Dir.NegZ })
-            {
-                Int3 n = c + d.Vec();
-                if (!nav.Nodes.TryGetValue(n, out NavKind other)) continue;
-                NavKind link = kind == NavKind.Door || other == NavKind.Door ? NavKind.Door
-                    : kind == NavKind.Ladder || other == NavKind.Ladder ? NavKind.Ladder : NavKind.Floor;
-                nav.Add(new NavLink(c, n, link));
-            }
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    Int3 n = c + d.Vec() + Int3.UnitY * dy;
+                    if (!nav.Nodes.TryGetValue(n, out NavKind other)) continue;
+                    // Across the shared edge the surface rises no more than a step: a ramp or a step, not a wall.
+                    Vector3 toward = d.Vec().ToVector3() * 0.45f;
+                    float fa = nav.Floor[c], fb = nav.Floor[n];
+                    if (Surface(c.X + toward.X, c.Z + toward.Z, fa + step, fa - step) is not float ea
+                        || Surface(n.X - toward.X, n.Z - toward.Z, fb + step, fb - step) is not float eb
+                        || MathF.Abs(ea - eb) > step) continue;
+                    NavKind link = kind == NavKind.Door || other == NavKind.Door ? NavKind.Door
+                        : kind == NavKind.Ladder || other == NavKind.Ladder ? NavKind.Ladder : NavKind.Floor;
+                    nav.Add(new NavLink(c, n, link));
+                }
             if (kind != NavKind.Ladder) continue;
             // Ladders climb: up and down the ladder, and on to whatever floor is at either end.
             foreach (Dir d in new[] { Dir.PosY, Dir.NegY })

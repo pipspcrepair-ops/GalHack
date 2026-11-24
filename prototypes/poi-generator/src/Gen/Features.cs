@@ -49,23 +49,9 @@ public sealed class SecretRoom
     /// <summary>What gives it away: cracks, a draft, scorch, drag marks, a mismatch in the plan.</summary>
     public List<string> Tells = new();
     public List<Int3> TellCells = new();
-}
 
-/// <summary>A doorway that needs a keycard of some clearance (or a hack or a breach, the boarding way).</summary>
-public sealed class DoorLock
-{
-    public int Doorway;
-    public string Clearance = "";
-    public bool Blast;
-}
-
-/// <summary>Where a keycard lies: on remains, in a cache or on a desk.</summary>
-public sealed class KeyCard
-{
-    public string Clearance = "";
-    public Int3 Cell;
-    public int Module;
-    public string On = "";
+    /// <summary>The tells every breakable wall gives: what a player exploring notices.</summary>
+    public static readonly string[] Usual = { "cracked wall panel, a shade off the rest", "a draft through the cracks", "scuff marks on the floor in front", "the plan has a gap here no door explains" };
 }
 
 /// <summary>
@@ -109,6 +95,8 @@ public sealed class LightSpot
     public float Range = 8f;
     public int Module = -1;
     public int Storey;
+    /// <summary>Colour and animation set through PoiLights; null keeps the place's own behaviour for this lamp's Mode.</summary>
+    public GalHack.Structures.LightSettings? Style;
 }
 
 /// <summary>A sound hook the view (or the slice) plays: drips, hums, distant knocks, wind.</summary>
@@ -117,14 +105,19 @@ public sealed record SoundHook(string Kind, Int3 Cell, float Volume, int Storey)
 /// <summary>A tag for a later pass: spawn points, patrol routes, vehicles, zero-g, vacuum, water.</summary>
 public sealed record Marker(string Kind, Int3 Cell, string Note = "", int Group = 0);
 
+/// <summary>A crop sown in a plot: the game grows the world's own crop species there (its kind picks one of them), never a block.</summary>
+public readonly record struct CropSpot(Int3 Cell, byte Kind);
+
 /// <summary>Design-time extras a layout carries beyond modules and doorways.</summary>
 public sealed class LayoutExtras
 {
+    /// <summary>Where crops are sown: rows in the fields and beds in the greenhouses.</summary>
+    public List<CropSpot> Crops = new();
     public List<LevelInfo> Levels = new();
     public List<LiftShaft> Lifts = new();
     public List<SecretRoom> Secrets = new();
-    public List<DoorLock> Locks = new();
-    public List<KeyCard> Keys = new();
+    /// <summary>Doorways that are blast doors: heavy to look at, opened by hand like any other.</summary>
+    public HashSet<int> BlastDoors = new();
     public List<Hazard> Hazards = new();
     public List<Breach> Breaches = new();
     public List<LightSpot> Lights = new();
@@ -143,18 +136,36 @@ public sealed class LayoutExtras
     /// <summary>A layout the planner made wrong on purpose (a strange spawn).</summary>
     public bool Wrong;
     public bool InSpace;
-    /// <summary>Under water (sunken places): everything below WaterY is flooded unless sealed.</summary>
-    public int? WaterY;
+    /// <summary>
+    /// Standing water a place holds by design (a settling channel, a filter bed, a clarifier): the cells whose floor
+    /// lies under it. Never a block: drawn as a water surface a hand deep over the floor (MeshBuild.Water), with
+    /// no collision, hiding nothing; whatever stands in it stands up out of it.
+    /// </summary>
+    public HashSet<Int3> Water = new();
     /// <summary>The plain buildings of a roadside ruin (see <see cref="Homes"/>): where each stands, for its believable decay. Empty on every other place.</summary>
     public List<PlainBox> Plain = new();
     /// <summary>Masonry that outlasts the rest of a plain building: its chimneys.</summary>
     public HashSet<Int3> Lasting = new();
+    /// <summary>The round things as laid (<see cref="Round"/>): their rims are cut to the round, and nothing reshapes them.</summary>
+    public List<RoundBody> Rounds = new();
     /// <summary>The colour of a plain building's doors (a plain timber leaf, not a steel door).</summary>
     public Rgb? PlainDoor;
+    /// <summary>Plain doors are steel leaves, as a works has, not timber.</summary>
+    public bool PlainDoorSteel;
     /// <summary>Where a plain lot meets the road: the cell its path or forecourt ends at, on the lot's front edge.</summary>
     public Int3 Gate;
+    /// <summary>Where each house's service drop is fixed (a mast on the street side of its roof, facing the street), for the street's power line to run a wire to.</summary>
+    public List<ServicePoint> Service = new();
+    /// <summary>What each generated house turned out as (family, silhouette, garage door), for the tests.</summary>
+    public List<HomeNote> Homes = new();
+    /// <summary>Each room's own wall paint inside, by module (a house's rooms each in their own); the rest go by their finish's block colour.</summary>
+    public Dictionary<int, Rgb> Paints = new();
+    /// <summary>The colour every ceiling inside is painted, where the place says (a house's).</summary>
+    public Rgb? Ceiling;
     /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>
     public BlastZone? Blast;
+    /// <summary>A composed site's roads and paths as planned (<see cref="SiteRoads"/>); null on every other place.</summary>
+    public RoadPlan? Roads;
 }
 
 /// <summary>What the planner decided about one room, for tests and the overlay.</summary>
@@ -205,6 +216,8 @@ public sealed class Townsfolk
     public List<(int A, int B)> Links = new();
     public List<(int A, int B)> Routes = new();
     public List<CitizenSpawn> People = new();
+    /// <summary>Everyone here is the same person: one look for all of them (a place of copies).</summary>
+    public bool Copies;
     /// <summary>Animals the town keeps: stock in pens and fields, a working beast by the cart, pets by the homes.</summary>
     public List<(string Kind, Int3 Cell)> Animals = new();
     /// <summary>The town's area as a circle (local cells, metres), for wildlife to keep out of.</summary>

@@ -1,0 +1,219 @@
+using System;
+using System.Runtime.CompilerServices;
+using Godot;
+
+namespace Wildlife;
+
+/// <summary>
+/// A procedural rig: turns a creature's motion and intentions into a world transform per
+/// piece. There are only six (legged, chain, hopper, winged, gas bag, swarm); all the variety
+/// comes from the parts and proportions fed into them, so animation stays reliable however
+/// weird the species. Pure C#: the view copies <see cref="Pose"/> onto meshes, the tests
+/// check it for NaNs, floating feet and runaway bodies.
+/// </summary>
+public abstract class Rig
+{
+    public readonly Species Species;
+    public readonly RigLayout Layout;
+    public readonly Transform3D[] Pose;
+
+    /// <summary>Spheres (xyz centre, w radius) that bullets and blades test against.</summary>
+    public readonly Vector4[] Hits = new Vector4[12];
+    public int HitCount;
+    public Vector3 BoundsCenter;
+    public float BoundsRadius = 1f;
+
+    /// <summary>Height of the body's centre above the ground under it, for the tests.</summary>
+    public float BodyClearance;
+
+    /// <summary>Feet that have come down so far: a heavy thing is heard walking.</summary>
+    public int Steps;
+
+    // Intentions from the brain, smoothed so poses never snap.
+    protected float Crouch, Hidden, Graze, Rearing, Lunging, Bracing, Aiming, Dead;
+    /// <summary>How wide the mouth is now (<see cref="Creature.Gape"/>): opens quickly, snaps shut faster.</summary>
+    public float Gaping { get; private set; }
+    /// <summary>Each moving jaw and the head it hangs from.</summary>
+    readonly (int jaw, int head)[] _jaws;
+    protected float LookYaw;
+    float _prevYaw;
+    protected float YawRate;
+
+    static readonly ConditionalWeakTable<Species, RigLayout> Layouts = new();
+
+    protected Rig(Species species, Func<Species, RigLayout> build)
+    {
+        Species = species;
+        // A mutagenic world's growths, asymmetry and extra parts go on after the body is built (none at strength 0), and a taken beast's worms last.
+        Layout = Layouts.GetValue(species, s => Husks.Decorate(Mutation.Decorate(Coats.Decorate(Tack.Decorate(build(s), s), s), s), s));
+        Pose = new Transform3D[Layout.Pieces.Count];
+        for (int i = 0; i < Pose.Length; i++) Pose[i] = Transform3D.Identity;
+        var jaws = new System.Collections.Generic.List<(int, int)>();
+        for (int i = 0, head = -1; i < Layout.Pieces.Count; i++)
+        {
+            if (Layout.Pieces[i].Name == "head") head = i;
+            else if (Layout.Pieces[i].Name == "jaw" && head >= 0) jaws.Add((i, head));
+        }
+        _jaws = jaws.ToArray();
+    }
+
+    public static Rig Create(Species s, Creature c) => s.Rig switch
+    {
+        RigKind.Legged => new LeggedRig(s),
+        RigKind.Chain => new ChainRig(s),
+        RigKind.Hopper => new HopRig(s),
+        RigKind.Winged => new WingedRig(s),
+        RigKind.GasBag => new GasBagRig(s),
+        RigKind.Finned => new SwimRig(s),
+        RigKind.Clinger => new ClingRig(s),
+        RigKind.Crawler => new CrawlRig(s),
+        RigKind.Humanoid => new HumanRig(s),
+        _ => new SwarmRig(s, c),
+    };
+
+    /// <summary>
+    /// Ground height under a point for this creature: the planet's heights on the open surface,
+    /// the floor under it inside a cave or a place (where it stands, if none is near). Every rig
+    /// poses on this, never on the planet's heights alone: in a place below ground, or up a tower,
+    /// those are a storey or the whole hill away, and a body drawn there is an unseen attacker.
+    /// </summary>
+    public static float GroundY(WildSim w, Creature c, float x, float z) => FloorUnder(w, c, x, z) ?? c.Position.Y;
+
+    /// <summary>The same, null in a cave or a place where no floor is within a few metres below it (up in the air).</summary>
+    public static float? FloorUnder(WildSim w, Creature c, float x, float z) =>
+        c?.Space is { } s ? SpaceMath.FloorBelow(s, x, c.Position.Y + 0.9f, z, 3f) : w.Terrain.Height(x, z);
+
+    /// <summary>Snap to a resting pose at the creature's spawn point (feet planted, chains laid out).</summary>
+    public abstract void Reset(WildSim w, Creature c);
+
+    /// <summary>How fast the body really goes, from where it has been: what its gait keeps to, never what it means to do.</summary>
+    public readonly Pace Pace = new();
+
+    /// <summary>Poses the body for this step, then its jaws on its heads.</summary>
+    public void Update(WildSim w, Creature c, float dt)
+    {
+        Pace.Note(c.Position, c.Forward, dt);
+        Animate(w, c, dt);
+        Gaping = Geo.Smooth(Gaping, c.Gape, c.Gape < Gaping ? 45f : 14f, dt);
+        foreach ((int jaw, int head) in _jaws) Pose[jaw] = Pose[head] * Layout.Pieces[jaw].Mouth.Pose(Gaping);
+    }
+
+    protected abstract void Animate(WildSim w, Creature c, float dt);
+
+    /// <summary>
+    /// The part a strike is made with, as a sphere (xyz centre, w radius) in the world: by default
+    /// whatever of the body is nearest where the strike goes (<see cref="Creature.StrikeAt"/>): the
+    /// part a body with no jaws attacks with. 0 radius: none.
+    /// </summary>
+    public virtual Vector4 Striker(Creature c)
+    {
+        Vector4 best = default;
+        float least = float.MaxValue;
+        for (int i = 0; i < HitCount; i++)
+        {
+            Vector4 s = Hits[i];
+            float d = (new Vector3(s.X, s.Y, s.Z) - c.StrikeAt).Length() - s.W;
+            if (d < least) { least = d; best = s; }
+        }
+        return best;
+    }
+
+    /// <summary>Which way its chest faces as it is posed now, flat (a test of a blow squarely given).</summary>
+    public virtual Vector3 Chest(Creature c) => c.Forward;
+
+    /// <summary>How far ahead of its middle its striking part can reach, for a strike at this height: by default its jaws as it stands, thrown forward.</summary>
+    public virtual float Reach(Creature c, float y) => Attacks.Jaws(c) + Attacks.Stretch(c);
+
+    // ---- Feet, for the contact test ---------------------------------------------------
+
+    public virtual int FootCount => 0;
+    public virtual bool FootPlanted(int i) => false;
+    public virtual Vector3 FootTarget(int i) => Vector3.Zero;
+    public virtual Vector3 FootDrawn(int i) => Vector3.Zero;
+
+    // ---- Shared helpers ---------------------------------------------------------------
+
+    protected void SmoothIntents(Creature c, float dt)
+    {
+        Crouch = Geo.Smooth(Crouch, c.WantCrouch, 4f, dt);
+        Hidden = Geo.Smooth(Hidden, c.WantHidden, c.WantHidden > Hidden ? 1.5f : 6f, dt); // erupt fast, settle slowly
+        Graze = Geo.Smooth(Graze, c.WantGraze, 2.5f, dt);
+        Rearing = Geo.Smooth(Rearing, c.Rear, 10f, dt);
+        Lunging = Geo.Smooth(Lunging, c.Lunge, 14f, dt);
+        Bracing = Geo.Smooth(Bracing, c.Brace, c.Brace < Bracing ? 16f : 6f, dt); // a lowered head comes up into the blow at once
+        Aiming = Geo.Smooth(Aiming, c.WantAim, 4f, dt);
+        Dead = Mathf.MoveToward(Dead, c.Dead ? 1f : 0f, dt * 1.4f);
+
+        float yawDelta = Geo.WrapAngle(c.Yaw - _prevYaw);
+        _prevYaw = c.Yaw;
+        YawRate = Geo.Smooth(YawRate, dt > 0f ? yawDelta / dt : 0f, 5f, dt);
+
+        float look = 0f;
+        if (c.LookAt is { } at && !c.Dead)
+        {
+            Vector3 to = WildSim.Flat(at - c.Position);
+            if (to.LengthSquared() > 0.01f) look = Math.Clamp(Geo.WrapAngle(MathF.Atan2(-to.X, -to.Z) - c.Yaw), -1.1f, 1.1f);
+        }
+        else look = MathF.Sin(c.Age * 0.31f + c.Id) * 0.3f; // idle glances
+        LookYaw = Geo.Smooth(LookYaw, look, 3f, dt);
+    }
+
+    protected void ResetIntents(Creature c)
+    {
+        _prevYaw = c.Yaw;
+        Hidden = c.WantHidden;
+        Crouch = c.WantCrouch;
+    }
+
+    protected void SetHit(int i, Vector3 center, float radius)
+    {
+        Hits[i] = new Vector4(center.X, center.Y, center.Z, radius);
+        if (i >= HitCount) HitCount = i + 1;
+    }
+
+    protected void SetBounds(Vector3 center, float radius)
+    {
+        BoundsCenter = center;
+        BoundsRadius = radius;
+    }
+
+    /// <summary>A pose that hides a piece (scaled to nothing).</summary>
+    protected static Transform3D Collapsed(Vector3 at) => new(Basis.Identity.Scaled(Vector3.One * 0.001f), at);
+}
+
+/// <summary>
+/// How fast a body really goes, from where it has been, for its gait to keep to. Its move since last noted is eased in over about
+/// an eighth of a second as a velocity, so a body pushed to and fro (held at a wall, jostled in a crowd) goes nowhere; and it changes
+/// no faster than a body can, so a set-back's one-tick jump is no sprint. A move further than a cut is a respawn: it starts over.
+/// </summary>
+public sealed class Pace
+{
+    /// <summary>How quickly a move is taken in (1/s), and the most it changes a second (m/s²).</summary>
+    const float Ease = 8f, Accel = 25f;
+
+    Vector3 _at;
+    bool _has;
+
+    public Vector3 Velocity { get; private set; }
+
+    /// <summary>Its speed over the ground (flat), m/s.</summary>
+    public float Speed => WildSim.Flat(Velocity).Length();
+
+    /// <summary>How far it has gone over the ground so far, m: backwards (stepping back, eyes front) takes it back.</summary>
+    public float Walked { get; private set; }
+
+    public void Note(Vector3 at, Vector3 forward, float dt)
+    {
+        Vector3 d = at - _at;
+        _at = at;
+        if (!_has || d.LengthSquared() > DrawSmoother.CutDistance * DrawSmoother.CutDistance)
+        {
+            (_has, Velocity) = (true, Vector3.Zero);
+            return;
+        }
+        if (dt <= 0f) return;
+        Velocity = Velocity.MoveToward(Geo.Smooth(Velocity, d / dt, Ease, dt), Accel * dt);
+        float speed = Speed;
+        Walked += (WildSim.Flat(Velocity).Dot(forward) < -0.05f ? -speed : speed) * dt;
+    }
+}

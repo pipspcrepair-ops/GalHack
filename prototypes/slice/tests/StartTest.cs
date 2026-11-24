@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using GalHack.Physics;
 using Godot;
+using GalHack.Physics.Engine;
 using Slice.Game;
 using Slice.Start;
 using Slice.Ui;
@@ -13,9 +14,9 @@ namespace Slice.Tests;
 /// <summary>
 /// The start, on many worlds: fresh games roll fresh seeds, and on every one (three random worlds,
 /// or -- --seeds N of them, the soak; each seed printed) the start site is
-/// found and the castaway, with the game's own inputs only, wakes in the cryopod, opens it, takes
+/// found and the sleeper, with the game's own inputs only, wakes in the cryopod, opens it, takes
 /// the locker's kit, climbs the stairwell to the surface, walks 50 m away, comes back down into
-/// the bunker and out again. No teleports: the castaway never moves more than a stride in a tick,
+/// the bunker and out again. No teleports: the sleeper never moves more than a stride in a tick,
 /// and is never rescued from inside anything.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/StartTest.tscn
@@ -65,6 +66,17 @@ public partial class StartTest : Node
 
     void Fail(string what) => Check(false, what);
 
+    /// <summary>The fewest stairs blocks side by side on any step of the bunker's stairwell (its steps rise a cell per cell from z -4).</summary>
+    static int WellWidth(Bunker b)
+    {
+        GalHack.Structures.Structure s = b.Ruin.Structure;
+        int narrowest = int.MaxValue;
+        for (int k = 1; k <= b.Steps; k++)
+            narrowest = Math.Min(narrowest, Enumerable.Range(-8, 17).Count(x =>
+                s.TryGet(new GalHack.Structures.Int3(x, k, -(4 + k)), out GalHack.Structures.Block c) && s.TypeOf(c).Id == "stairs"));
+        return narrowest;
+    }
+
     /// <summary>Worlds in a plain run: each a fresh seed and a random planet type, so every run tries new ones.</summary>
     const int WorldsPerRun = 3;
 
@@ -73,7 +85,19 @@ public partial class StartTest : Node
         string[] args = OS.GetCmdlineUserArgs();
         int random = WorldsPerRun;
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
+        _exitOnly = args.Contains("--exit-only");
+        // --no-site-roads: the places without their planned roads, to time a world's load against.
+        PoiGenerator.Gen.SiteRoads.Enabled = !args.Contains("--no-site-roads");
+        // --places-at-load: every place built while the world loads, the old way, to time the load against.
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = args.Contains("--places-at-load");
+        // --force=FAMILY: each world also has one of these near the landing site (an airfield, to time a world's load with one).
+        foreach (string a in args) if (a.StartsWith("--force=")) PlanetSurface.Poi.PoiSiting.ForceFamily = a["--force=".Length..];
         var seeds = new List<ulong>();
+        if (args.Contains("--crowd"))
+        {
+            foreach (int x in Crowd(random)) yield return x;
+            yield break;
+        }
 
         // Two fresh games, nothing pinned: each rolls its own world.
         if (WorldChoice.FromArgs(args) == null)
@@ -85,6 +109,7 @@ public partial class StartTest : Node
                 AddChild(game);
                 yield return 0;
                 rolled.Add(game.World.Seed);
+                if (i == 0) foreach (int x in TreeDistance(game)) yield return x;
                 game.QueueFree();
                 yield return 0;
             }
@@ -99,13 +124,135 @@ public partial class StartTest : Node
             for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
             worlds.Add(WorldChoice.Fresh("ice")); // and always a cold one, for the chamber's warmth
         }
+        // --compare-load: each world loaded twice, its places built at load the old way and then as they are wanted.
+        // --compare-force (with --force=FAMILY): each world loaded twice, without the forced family and then with it.
+        bool compare = args.Contains("--compare-load"), withAndWithout = args.Contains("--compare-force");
+        string force = PlanetSurface.Poi.PoiSiting.ForceFamily;
         foreach (WorldChoice pinned in worlds)
+        {
+            if (compare) PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = true;
+            if (withAndWithout) PlanetSurface.Poi.PoiSiting.ForceFamily = null;
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
+            if (!compare && !withAndWithout) continue;
+            PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = false;
+            PlanetSurface.Poi.PoiSiting.ForceFamily = force;
+            foreach (int x in OneWorld(_lastWorld, seeds)) yield return x;
+        }
         int failedWorlds = _failedWorlds.Count;
         GD.Print($"worlds: {seeds.Count - failedWorlds} of {seeds.Count} passed{(failedWorlds > 0 ? $" (failed: {string.Join(", ", _failedWorlds)})" : "")}");
     }
 
     readonly List<string> _failedWorlds = new();
+
+    /// <summary>
+    /// -- --crowd --seeds N: no walk, no physics. On N fresh worlds the start site is found without keeping clear of the
+    /// planet's things, and what each kind of them would have crowded is counted (what the guard is for).
+    /// </summary>
+    IEnumerable<int> Crowd(int worlds)
+    {
+        var counts = new SortedDictionary<string, int>();
+        int crowded = 0, found = 0;
+        Bunker.KeepsClear = false;
+        for (int i = 0; i < worlds; i++)
+        {
+            var game = new Game.Game { Interactive = false, World = WorldChoice.Fresh("random") };
+            AddChild(game);
+            var watch = Stopwatch.StartNew();
+            while (game.Bunker == null && watch.Elapsed.TotalSeconds < 120) yield return 0;
+            if (game.Bunker != null)
+            {
+                found++;
+                List<string> kinds = game.Bunker.Crowding(game.Zone).Distinct().ToList();
+                if (kinds.Count > 0) crowded++;
+                foreach (string k in kinds) counts[k] = counts.GetValueOrDefault(k) + 1;
+                GD.Print($"  {game.World}: {(kinds.Count == 0 ? "clear" : string.Join(", ", kinds))}");
+            }
+            game.QueueFree();
+            for (int k = 0; k < 5; k++) yield return 0;
+        }
+        Bunker.KeepsClear = true;
+        GD.Print($"crowded: {crowded} of {found} sites; by kind: {string.Join(", ", counts.Select(c => $"{c.Key} {c.Value}"))}");
+        _passes++;
+    }
+
+    /// <summary>-- --exit-only: just the way-out check on each world (cheap, for many worlds).</summary>
+    bool _exitOnly;
+
+    /// <summary>
+    /// What stands over the way out, or null: the sky above the open steps, the top step and the ground beyond it,
+    /// 1.5 m wide, 40 m up, asked of every solid there is (terrain, structures, wrecks, hulks) and of the
+    /// physics server (places, rocks, trunks), the bunker's own blocks aside.
+    /// </summary>
+    static string Covered(Game.Game game)
+    {
+        Bunker b = game.Bunker;
+        var crowding = b.Crowding(game.Zone).Distinct().ToList();
+        if (crowding.Count > 0) return $"the planet's {string.Join(", ", crowding)} stand on it or by it";
+        Vector3 across = (b.At(new Vector3(1f, 0f, 0f)) - b.At(Vector3.Zero)).Normalized();
+        var space = game.Zone.GetWorld3D().DirectSpaceState;
+        var spots = new List<Vector3>();
+        for (int i = 0; i <= 8; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
+        foreach (Vector3 w in b.WayOut) if (w.Y > game.Zone.GroundAt(w.X, w.Z).Y - 0.5f) spots.Add(w);
+        int inWell = spots.Count;
+        // And the open ground beyond the way out, a few metres either side: whatever stands on it or over it.
+        for (int i = 9; i <= 20; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
+        for (int k = 0; k < spots.Count; k++)
+            foreach (float side in k < inWell ? new[] { -0.8f, 0f, 0.8f } : new[] { -2.5f, -1.2f, 0f, 1.2f, 2.5f })
+            {
+                Vector3 p = spots[k] + across * side;
+                if (k >= inWell) p.Y = MathF.Max(p.Y, game.Zone.GroundAt(p.X, p.Z).Y); // standing on the ground there
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.4f, p + Vector3.Up * 40f));
+                if (hit.Count > 0 && hit["collider"].AsGodotObject() is Node n && n != b.Ruin.Node && !b.Ruin.Node.IsAncestorOf(n)) return $"{n.GetPath()} ({n.GetType().Name}) {((Vector3)hit["position"]).Y - p.Y:F1} m over {p}";
+                for (float up = 0.4f; up <= 40f; up += 0.5f)
+                {
+                    var at = (p + Vector3.Up * up).ToNumerics();
+                    foreach (var f in game.Zone.Physics.StuckFields)
+                        if (f.Owner != b.Ruin.Body && f.IsSolid(game.Survivor.Body, at)) return $"{f.Name} {up:F1} m over {p}";
+                }
+            }
+        return null;
+    }
+
+    WorldChoice _lastWorld;
+
+    /// <summary>How long after standing the frames are watched at least, s (the builder's window, either way of loading).</summary>
+    const double BuildWatchSeconds = 20;
+
+    /// <summary>Frame times after standing, and for the worst of them what else happened that frame: garbage collections, their pause, the frame's own process and physics time, a place finished.</summary>
+    sealed class FrameWatch
+    {
+        ulong _was = Time.GetTicksUsec();
+        int _g0 = GC.CollectionCount(0), _g1 = GC.CollectionCount(1), _g2 = GC.CollectionCount(2), _built = -1;
+        TimeSpan _pause = GC.GetTotalPauseDuration();
+        int _frames, _over, _gcs;
+        double _worstPause;
+        readonly List<(double Ms, string Why)> _worst = new();
+
+        public void Tick(int built)
+        {
+            ulong now = Time.GetTicksUsec();
+            double ms = (now - _was) / 1000.0;
+            _was = now;
+            int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+            TimeSpan pause = GC.GetTotalPauseDuration();
+            string why = $"gc {g0 - _g0}/{g1 - _g1}/{g2 - _g2} paused {(pause - _pause).TotalMilliseconds:F1} ms, process {Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:F1}, physics {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:F1}{(_built >= 0 && built > _built ? $", {built - _built} built" : "")}";
+            if (g0 > _g0)
+            {
+                _gcs += g0 - _g0;
+                _worstPause = Math.Max(_worstPause, (pause - _pause).TotalMilliseconds);
+            }
+            (_g0, _g1, _g2, _pause, _built) = (g0, g1, g2, pause, built);
+            _frames++;
+            if (ms > 16.7) _over++;
+            _worst.Add((ms, why));
+            _worst.Sort((a, b) => b.Ms.CompareTo(a.Ms));
+            if (_worst.Count > 4) _worst.RemoveAt(4);
+        }
+
+        public double Worst => _worst.Count > 0 ? _worst[0].Ms : 0;
+
+        public override string ToString() => $"{_frames}, {_over} over 16.7 ms, {_gcs} collections (longest pause {_worstPause:F1} ms), worst {string.Join("; ", _worst.Select(w => $"{w.Ms:F1} ms ({w.Why})"))}";
+    }
 
     IEnumerable<int> OneWorld(WorldChoice pinned, List<ulong> seeds)
     {
@@ -113,6 +260,7 @@ public partial class StartTest : Node
         AddChild(game);
         yield return 0;
         WorldChoice world = game.World;
+        _lastWorld = world;
         int failuresBefore = _failures;
         seeds.Add(world.Seed);
         GD.Print($"-- {world} {(pinned == null ? "(a fresh game: rolled its own)" : "(pinned)")} --");
@@ -124,11 +272,31 @@ public partial class StartTest : Node
         }
         if (game.Bunker == null || game.Phase != Phase.Playing)
         {
-            Fail($"{world}: no start site found, or the castaway never woke");
+            Fail($"{world}: no start site found, or the sleeper never woke");
             _failedWorlds.Add($"{world.Key} {world.Seed}");
             game.QueueFree();
             yield return 0;
             yield break;
+        }
+        GD.Print($"  load{(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? " (places built at load, the old way)" : "")}: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms (seated in {PlanetSurface.Poi.PoiSiting.LastSeatMs:F0}); {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} built by then; {PlanetSurface.Poi.PoiSiting.LastTyped} typed places sited from their sketches in {PlanetSurface.Poi.PoiSiting.LastTypedMs:F0} ms ({game.Zone.Planet.Pois.Count(p => p.Whole != null)} parts), {PlanetSurface.Poi.PoiSite.LoadLayouts} of their layouts made while loading; waited on places {game.WaitedPlaces:F1} s, roads {game.WaitedInfra:F1} s, orbit {game.WaitedOrbit:F1} s");
+        Check(PlanetSurface.Poi.PoiSite.LoadLayouts == 0, $"{world}: no typed place's part laid out while the world loaded ({PlanetSurface.Poi.PoiSite.LoadLayouts})");
+        Check(PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds == 0, $"{world}: nothing in the load built a place by reading it unasked ({PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds})");
+        // The rest of the places are built after, nearest first, off the main thread: how long until every place in range stands, and the worst frame meanwhile.
+        // Watched for at least BuildWatchSeconds either way, so a world loaded the old way (--places-at-load) is timed over the same window.
+        if (game.Zone.Pois.Builds is { } builds)
+        {
+            var since = Stopwatch.StartNew();
+            var frames = new FrameWatch();
+            double allIn = -1, shown = -1;
+            int plainAtStanding = game.Zone.Pois.Unshown(builds.Range);
+            while ((allIn < 0 || shown < 0 || since.Elapsed.TotalSeconds < BuildWatchSeconds) && since.Elapsed.TotalSeconds < 120)
+            {
+                yield return 0;
+                frames.Tick(builds.Built);
+                if (allIn < 0 && builds.AllInRangeMs >= 0) allIn = since.Elapsed.TotalSeconds;
+                if (shown < 0 && game.Zone.Pois.Unshown(builds.Range) == 0) shown = since.Elapsed.TotalSeconds;
+            }
+            GD.Print($"  every place within {builds.Range:F0} m built {(allIn < 0 ? "never" : $"{allIn:F1} s")} and drawn as itself {(shown < 0 ? "never" : $"{shown:F1} s")} after standing ({plainAtStanding} plain blocks or unbuilt city tiles in view at standing; {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} places built, {builds.Built} by the builder); frames over {since.Elapsed.TotalSeconds:F0} s: {frames}");
         }
         Check(game.WorldStanding, $"{world}: at waking everything round the start stands: {game.Zone.Infra.TileCount} tiles of ruins, wrecks and bridges, {game.Zone.Planet.Pois.Count} places");
         // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.
@@ -140,7 +308,7 @@ public partial class StartTest : Node
             yield return 0;
             Check(wreck.Empty && game.Places.SalvageSites.Count() == count - 1 && !Godot.GodotObject.IsInstanceValid(body), $"{world}: a wreck comes apart under the tool ({count} to salvage round the start) and is gone");
         }
-        game.Zone.Weather.Bridge.Calm = true;
+        if (game.Zone.Weather.Bridge != null) game.Zone.Weather.Bridge.Calm = true; // an airless start has no weather
         game.Zone.Wildlife.Frozen = true;
         var drive = new Driver(game);
         var play = new Playthrough(game);
@@ -149,9 +317,9 @@ public partial class StartTest : Node
         {
             if (r.Body != game.Survivor.Body) return;
             rescues++;
-            GD.Print($"  (rescued the castaway from {r.Inside}: {r.From} -> {r.To})");
+            GD.Print($"  (rescued the sleeper from {r.Inside}: {r.From} -> {r.To})");
         };
-        // A teleport watch: the castaway's feet never jump further than a stride in one tick.
+        // A teleport watch: the sleeper's feet never jump further than a stride in one tick.
         float worstStep = 0f;
         Vector3 last = game.Survivor.WorldFeet;
         IEnumerable<int> Watched(IEnumerable<int> steps)
@@ -175,6 +343,19 @@ public partial class StartTest : Node
         double roomC = game.Zone.Data.Rules.Climate.SealedRoomC;
         Check(sealedIn && chamber.Temperature == roomC && chamber.OxygenPercent == 21 && (world.Archetype != Planets.Gen.Archetype.Ice || outside.Temperature < roomC),
             $"{world.Name}, seed {world.Seed}: the world's {outside.Temperature:F0} °C and {outside.OxygenPercent:F0}% oxygen outside don't reach the chamber: {chamber.Temperature:F0} °C, {chamber.OxygenPercent:F0}%");
+        // Nothing solid (ground, a place, a hulk, a wreck, a ruin, a rock, a tree) stands over the way out's open sky.
+        // The ground streamed in round the way out (terrain, then the colliders of its flora and the dressing), then a while more.
+        for (int k = 0; k < 1200 && !game.Zone.Streamer.ReadyAround(game.Bunker.Outside, 1, true); k++) yield return 0;
+        foreach (int x in drive.Wait(300)) yield return x;
+        string covered = Covered(game);
+        Check(covered == null, $"{world.Name}, seed {world.Seed}: the way out is open to the sky{(covered == null ? "" : $": {covered}")}");
+        Check(WellWidth(game.Bunker) == 2, $"{world.Name}, seed {world.Seed}: the stairwell is 2 m clear, two stairs blocks side by side on every step ({WellWidth(game.Bunker)})");
+        if (_exitOnly)
+        {
+            game.QueueFree();
+            for (int i = 0; i < 10; i++) yield return 0;
+            yield break;
+        }
         foreach (int x in Watched(play.WakeAndLeave(Check, $"{world.Name}, seed {world.Seed}: "))) yield return x;
         Check(rescues == 0 && worstStep < 1.5f, $"{world.Name}, seed {world.Seed}: no teleports (largest move in a tick {worstStep:F2} m), never rescued");
         Bunker b = game.Bunker;

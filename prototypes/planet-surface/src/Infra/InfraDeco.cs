@@ -52,6 +52,20 @@ public static class InfraDeco
     /// <summary>Godot meshes for the library's looks (main thread only).</summary>
     public static DecoMeshCache Meshes => _meshes ??= Poi == null ? null : new DecoMeshCache(Poi.Forge);
 
+    /// <summary>
+    /// Lets the library go with its caches, on the main thread (a new game: the last world's looks are no use to
+    /// the next); the next use loads it afresh, and anything of the last world still working keeps the old one.
+    /// </summary>
+    public static void Forget()
+    {
+        lock (Gate)
+        {
+            _poi = null;
+            _tried = false;
+        }
+        _meshes = null;
+    }
+
     /// <summary>A site of the library dressed (an evacuation jam, a derailed train...), one tile at a time.</summary>
     public static DecoPlan DressSite(string site, ulong seed, TechLevel tech, string state = "abandoned")
     {
@@ -95,25 +109,38 @@ public partial class InfraLayer
             NV corner = b.Local(Site.X, Site.Y, Site.Z);
             PlanetWorld world = b.World;
             float yaw = Mathf.DegToRad(Site.Yaw), siteY = Site.Y;
+            // A piece a step: a jam of vehicles made in one go stopped a frame for 100 ms.
+            DecoPlanView view = null;
+            Basis toSite = new Basis(Vector3.Up, yaw).Inverse();
             b.Extra.Add(() =>
             {
-                DecoMeshCache cache = InfraDeco.Meshes;
-                if (cache == null) return new Node3D { Name = "Wrecks (no library)" };
-                var view = DecoPlanView.Create(cache, plan, collide: true, lights: false);
+                if (InfraDeco.Meshes == null) return new Node3D { Name = "Wrecks (no library)" };
+                view = DecoPlanView.Start(plan);
                 view.Name = Site.Site;
                 view.Position = new Vector3(corner.X, siteY, corner.Z);
                 view.Rotation = new Vector3(0, yaw, 0);
-                Basis toSite = new Basis(Vector3.Up, yaw).Inverse();
-                for (int i = 0; i < view.Nodes.Count && i < plan.Placements.Count; i++)
+                return view;
+            });
+            for (int p = 0; p < plan.Placements.Count; p++)
+            {
+                int i = p;
+                b.Extra.Add(() =>
                 {
+                    if (view == null) return null;
+                    DecoNode node = view.Add(InfraDeco.Meshes, plan.Placements[i], collide: true, lights: false);
                     var (local, t) = seats[i];
-                    Vector3 at = view.Nodes[i].Position;
-                    view.Nodes[i].Position = at with { Y = local.Y - siteY + plan.Placements[i].Y };
+                    node.Position = node.Position with { Y = local.Y - siteY + plan.Placements[i].Y };
                     // The slope, in the site's frame, under the piece's own turn.
                     var slope = new Basis(new Vector3(t.M11, t.M12, t.M13), new Vector3(t.M21, t.M22, t.M23), new Vector3(t.M31, t.M32, t.M33));
-                    view.Nodes[i].Basis = toSite * slope * toSite.Inverse() * view.Nodes[i].Basis;
-                    if (world.Felled.Contains(WreckId(Site, i))) view.Nodes[i].Visible = false; // taken apart: its body goes in the next step
-                }
+                    node.Basis = toSite * slope * toSite.Inverse() * node.Basis;
+                    if (world.Felled.Contains(WreckId(Site, i))) node.Visible = false; // taken apart: its body goes in the next step
+                    return null;
+                });
+            }
+            b.Extra.Add(() =>
+            {
+                if (view == null) return null;
+                view.AddWires(InfraDeco.Meshes);
                 view.SetMeta("wreck", world.Infra.Wrecks.IndexOf(Site));
                 return view;
             });

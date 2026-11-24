@@ -3,6 +3,7 @@ using CapitalBase.Core;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Terrain;
+using PhysicsSandbox.Bridges;
 using ShipHandling.Handling;
 using N = System.Numerics;
 
@@ -27,9 +28,26 @@ public enum LiftOffPhase
 /// the ship back. The climb is flown by the handling model like any other flight: the stick is
 /// held at "up" in the world's frame, so a tilted hull rises vertically too.
 /// </summary>
+/// <summary>A hull lifting off: its body and flight model, its top speed, and letting go of whatever pinned it to the ground.</summary>
+public interface ILiftHull
+{
+    Body Body { get; }
+    HandlingFlight Flight { get; }
+    void LetGoOfGround();
+}
+
+/// <summary>The world it lifts off from: how much ground is still being rebuilt, the climb speed, the wind, the hull's top speed.</summary>
+public interface ILiftGround
+{
+    int Pending { get; }
+    float ClimbSpeed { get; }
+    float TopSpeed(ILiftHull hull);
+    void Settle(ILiftHull hull);
+}
+
 public sealed class LiftOff
 {
-    public readonly Craft Craft;
+    public readonly ILiftHull Hull;
     public readonly CutPlan Plan;
     public readonly PlanetEdit Edit;
 
@@ -52,27 +70,27 @@ public sealed class LiftOff
 
     N.Vector3 _start;
 
-    public LiftOff(Craft craft, CutPlan plan, PlanetEdit edit, double planMs)
+    public LiftOff(ILiftHull hull, CutPlan plan, PlanetEdit edit, double planMs)
     {
-        Craft = craft;
+        Hull = hull;
         Plan = plan;
         Edit = edit;
         PlanMs = planMs;
     }
 
-    public void Step(CapitalWorld world, float dt)
+    public void Step(ILiftGround world, float dt)
     {
-        Body body = Craft.Body;
+        Body body = Hull.Body;
         switch (Phase)
         {
             case LiftOffPhase.Cutting:
                 CuttingTicks++;
-                if (world.Patch.Pending > 0) return;
-                if (Craft.Pin is { Docked: false }) Craft.Release();
-                world.UpdateWind(Craft);
+                if (world.Pending > 0) return;
+                Hull.LetGoOfGround();
+                world.Settle(Hull);
                 _start = body.Position;
                 Phase = LiftOffPhase.Climbing;
-                Craft.Flight.Input = Climb(world);
+                Hull.Flight.Input = Climb(world);
                 return;
 
             case LiftOffPhase.Climbing:
@@ -82,24 +100,24 @@ public sealed class LiftOff
                 TopRise = MathF.Max(TopRise, rise);
                 Sideways = MathF.Max(Sideways, MathX.Flat(body.Position - _start).Length());
                 // Once up to speed, the climb never slows: a snag on the ground would stall it.
-                float speed = world.Rules.Liftoff.ClimbSpeed;
+                float speed = world.ClimbSpeed;
                 if (TopRise >= speed * 0.9f && rise < speed * 0.5f && Climbed < Plan.Climb) Stalls++;
                 if (Climbed >= Plan.Climb)
                 {
                     Phase = LiftOffPhase.Done;
-                    Craft.Flight.Input = PilotInput.LetGo;
+                    Hull.Flight.Input = PilotInput.LetGo;
                     return;
                 }
-                Craft.Flight.Input = Climb(world);
+                Hull.Flight.Input = Climb(world);
                 return;
         }
     }
 
     /// <summary>"Up" at the climb speed, in the hull's own frame (the flight model steers in that frame).</summary>
-    PilotInput Climb(CapitalWorld world)
+    PilotInput Climb(ILiftGround world)
     {
-        float top = Craft.Flight.Stats?.TopSpeed ?? world.Handling.Class(Craft.Spec.Class).TopSpeedAir;
-        N.Vector3 local = MathX.Unrotate(Craft.Body.Rotation, N.Vector3.UnitY * (world.Rules.Liftoff.ClimbSpeed / top));
+        float top = world.TopSpeed(Hull);
+        N.Vector3 local = MathX.Unrotate(Hull.Body.Rotation, N.Vector3.UnitY * (world.ClimbSpeed / top));
         return PilotInput.Hands(local.ToGodot());
     }
 }

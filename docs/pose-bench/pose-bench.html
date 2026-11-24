@@ -1,0 +1,862 @@
+<title>Pose Bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: keyframe list on the left, a 3D figure you grab by the elbows and hands in the middle, numbers and notes under it. */
+:root {
+  --bg: #eceff2; --panel: #ffffff; --ink: #1b2229; --mute: #5b6a75; --line: #d2d8de;
+  --hand: #d9570f; --elbow: #0a7f9c; --tip: #6a4cc2; --palm: #c2368f; --view: #dfe5ea; --danger: #c62828; --ok: #2e7d4f; --body: #9aa7b2;
+  --display: "Space Grotesk", system-ui, sans-serif; --text: "Inter", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #13171b; --panel: #1b2126; --ink: #e5eaee; --mute: #94a2ad; --line: #2c353c;
+  --hand: #ff8a4c; --elbow: #3cc4e4; --tip: #a58bff; --palm: #ff7ac6; --view: #0e1215; --danger: #ff6b6b; --ok: #6fd39a; --body: #55626d; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #13171b; --panel: #1b2126; --ink: #e5eaee; --mute: #94a2ad; --line: #2c353c;
+  --hand: #ff8a4c; --elbow: #3cc4e4; --tip: #a58bff; --palm: #ff7ac6; --view: #0e1215; --danger: #ff6b6b; --ok: #6fd39a; --body: #55626d; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--text); margin: 0;
+  padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font: 700 20px var(--display); margin: 0; letter-spacing: .01em; }
+h2 { font: 700 13px var(--display); margin: 0 0 8px; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.sub { color: var(--mute); }
+.app { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 820px) { .app { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; min-width: 0; }
+#list { max-height: 80vh; overflow-y: auto; padding: 8px; position: sticky; top: 8px; }
+@media (max-width: 820px) { #list { max-height: 220px; position: static; } }
+.grp { font: 700 11px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--mute); padding: 10px 6px 4px; }
+.kf { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: 0; color: var(--ink);
+  padding: 6px; border-radius: 4px; font: inherit; cursor: pointer; }
+.kf:hover { background: color-mix(in srgb, var(--elbow) 10%, transparent); }
+.kf[aria-current="true"] { background: color-mix(in srgb, var(--hand) 16%, transparent); font-weight: 600; }
+.kf .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--hand); flex: none; margin-top: 6px; visibility: hidden; }
+.kf.edited .dot { visibility: visible; }
+button, select, input, textarea { font: inherit; color: var(--ink); }
+button.b { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+button.b:hover:not(:disabled) { border-color: var(--elbow); }
+button.b:disabled { opacity: .5; cursor: default; }
+button.b.pri { background: var(--hand); border-color: var(--hand); color: #fff; font-weight: 600; }
+:root[data-theme="dark"] button.b.pri { color: #1a1008; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.b.pri { color: #1a1008; } }
+button:focus-visible, input:focus-visible, textarea:focus-visible, canvas:focus-visible, select:focus-visible { outline: 2px solid var(--elbow); outline-offset: 2px; }
+.bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.bar .sp { flex: 1; }
+.stage { position: relative; background: var(--view); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+canvas { display: block; width: 100%; height: min(62vh, 560px); min-height: 320px; touch-action: none; cursor: grab; }
+.legend { position: absolute; left: 10px; bottom: 8px; display: flex; gap: 12px; font: 12px var(--mono); color: var(--mute); pointer-events: none; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+.warn { position: absolute; right: 10px; top: 8px; font: 600 12px var(--text); color: var(--danger); background: var(--panel); border: 1px solid var(--danger); border-radius: 4px; padding: 3px 8px; }
+.arms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+@media (max-width: 700px) { .arms { grid-template-columns: minmax(0, 1fr); } }
+.arm h3 { margin: 0 0 6px; font: 700 14px var(--display); display: flex; justify-content: space-between; gap: 8px; }
+.row { display: grid; grid-template-columns: 78px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; margin-bottom: 6px; }
+.row label { color: var(--mute); font-size: 12px; }
+input[type=number] { width: 100%; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.pos { font: 12px var(--mono); color: var(--mute); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.pos b { color: var(--ink); font-weight: 500; }
+textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; min-height: 56px; resize: vertical; }
+.opts { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 12px; }
+.opts label { display: flex; gap: 6px; align-items: center; }
+.opts output { font: 12px var(--mono); color: var(--mute); min-width: 38px; }
+input[type=range] { accent-color: var(--hand); }
+.status { color: var(--mute); font-size: 13px; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--danger); }
+#out { display: none; margin-top: 8px; font: 12px var(--mono); }
+#out.on { display: block; }
+.src { font: 12px var(--mono); color: var(--mute); overflow-wrap: anywhere; }
+</style>
+
+<header>
+  <div>
+    <h1>Pose Bench</h1>
+    <div class="sub">Grab an elbow or a hand and put it where it belongs. Claude reads what you save.</div>
+  </div>
+  <div class="status" id="status" role="status">Loading…</div>
+</header>
+
+<div class="app">
+  <nav class="panel" id="list" aria-label="Keyframes"></nav>
+
+  <main class="panel">
+    <div class="bar">
+      <strong id="title" style="font:700 16px var(--display)"></strong>
+      <span class="sp"></span>
+      <button class="b" data-view="front">Front</button>
+      <button class="b" data-view="right">Right</button>
+      <button class="b" data-view="left">Left</button>
+      <button class="b" data-view="back">Back</button>
+      <button class="b" data-view="top">Top</button>
+      <button class="b" data-view="three">3/4</button>
+    </div>
+    <div class="src" id="src"></div>
+    <div class="stage" style="margin-top:8px">
+      <canvas id="cv" tabindex="0" aria-label="Figure. Drag the blue elbows, orange wrists, purple fingertips and pink palm marks; drag empty space to turn the view; scroll to zoom."></canvas>
+      <div class="legend"><span><i style="background:var(--elbow)"></i>elbow</span><span><i style="background:var(--hand)"></i>wrist</span><span><i style="background:var(--tip)"></i>fingers</span><span><i style="background:var(--palm)"></i>palm faces</span><span><i style="background:var(--body);opacity:.5"></i>before your edit</span></div>
+      <div class="warn" id="warn" hidden>Arm through the body</div>
+    </div>
+    <div class="opts" id="playbar">
+      <button class="b pri" id="play" type="button">Play</button>
+      <button class="b" id="stop" type="button" disabled>Back to editing</button>
+      <input type="range" id="scrub" min="0" max="3.9" step="0.01" value="0" aria-label="Position in the animation" disabled style="flex:1;min-width:120px">
+      <label>Speed <select id="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option></select></label>
+      <label><input type="checkbox" id="ghostmo" checked> Show original motion</label>
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="mirror"> Mirror edits to the other arm</label>
+      <label>Coat thickness <input type="range" id="pad" min="1" max="1.6" step="0.05" value="1"></label>
+      <label>Hand size <input type="range" id="hand" min="0.8" max="2.2" step="0.05" value="1.3"><output id="handv"></output></label>
+      <label>Lean forward <input type="range" id="lean" min="-0.5" max="1.1" step="0.01" value="0"><output id="leanv"></output></label>
+      <label>Hip height <input type="range" id="hip" min="0.35" max="0.95" step="0.01" value="0.89"><output id="hipv"></output></label>
+      <button class="b" id="reset">Reset this keyframe</button>
+    </div>
+    <div class="arms" id="arms"></div>
+    <div style="margin-top:12px">
+      <h2>What is wrong with it</h2>
+      <textarea id="note" aria-label="Note for this keyframe" placeholder="Optional. What should this look like?"></textarea>
+    </div>
+    <div class="opts">
+      <button class="b pri" id="save">Save for Claude</button>
+      <button class="b" id="copy">Copy edits as JSON</button>
+      <span class="status" id="saved"></span>
+    </div>
+    <textarea id="out" readonly aria-label="Edits as JSON"></textarea>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script>
+"use strict";
+// ---------- Keyframes. Every arm is {u, f, sh}: the upper arm and forearm directions as [out, up, ahead] in the
+// body's frame (out is toward that arm's own side), and the shoulder joint. arm 0 = left, arm 1 = right.
+// Positions marked "measured" were read off the running rig (a 1.72 m reference person) with the game's own code;
+// "intent" ones are the Bones(...) numbers written in the source.
+const DUMP = {"figure":{"height":1.72,"torso":0.553,"neck":0.072,"head":0.114,"upper":0.303,"fore":0.284,"shoulderW":0.225,"chestD":0.14,"legLen":0.896,"upperLeg":0.422,"hipW":0.161},"poses":[{"name":"stand","prop":"","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]]},{"name":"walk-a","prop":"","lean":0.053,"hipY":0.847,"arms":[{"s":[0.211,0,0],"e":[0.254,-0.297,0.038],"w":[0.241,-0.509,0.227]},{"s":[0.211,0,0],"e":[0.254,-0.242,-0.177],"w":[0.241,-0.525,-0.186]}],"grip":[0,0],"feet":[[0.106,-1.275,0.126],[0.089,-1.179,-0.146]]},{"name":"run-a","prop":"","lean":0.311,"hipY":0.743,"arms":[{"s":[0.211,0,0],"e":[0.35,-0.237,0.128],"w":[0.241,-0.135,0.369]},{"s":[0.211,0,0],"e":[0.295,-0.07,-0.282],"w":[0.241,-0.337,-0.202]}],"grip":[0,0],"feet":[[0.138,-1.17,0.128],[0.114,-0.827,0.204]]},{"name":"stalk","prop":"","lean":0.67,"hipY":0.632,"arms":[{"s":[0.211,0,0],"e":[0.307,-0.286,0.019],"w":[0.241,-0.407,0.267]},{"s":[0.211,0,0],"e":[0.307,-0.273,-0.089],"w":[0.241,-0.477,0.097]}],"grip":[0,0],"feet":[[0.189,-0.954,0.34],[0.153,-0.922,0.281]]},{"name":"work-low","prop":"","lean":0.35,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.161,-0.281,0.102],"w":[0.106,-0.529,0.227]},{"s":[0.211,0,0],"e":[0.161,-0.281,0.102],"w":[0.106,-0.529,0.227]}],"grip":[0,0],"feet":[[0.124,-1.266,0.281],[0.101,-1.266,0.281]]},{"name":"work-high","prop":"","lean":0.75,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.181,-0.232,0.192],"w":[0.1,-0.12,0.44]},{"s":[0.211,0,0],"e":[0.181,-0.232,0.192],"w":[0.1,-0.12,0.44]}],"grip":[0,0],"feet":[[0.114,-1.097,0.558],[0.111,-1.097,0.558]]},{"name":"reach","prop":"","lean":0.35,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.317,-0.036,0.281],"w":[0.172,0.047,0.511]},{"s":[0.211,0,0],"e":[0.317,-0.036,0.281],"w":[0.172,0.047,0.511]}],"grip":[0,0],"feet":[[0.106,-1.266,0.281],[0.118,-1.266,0.281]]},{"name":"sit","prop":"","lean":-0.05,"hipY":0.472,"arms":[{"s":[0.211,0,0],"e":[0.191,-0.279,0.116],"w":[0.14,-0.468,0.322]},{"s":[0.211,0,0],"e":[0.191,-0.279,0.116],"w":[0.14,-0.468,0.322]}],"grip":[0,0],"feet":[[0.146,-0.917,0.317],[0.158,-0.917,0.317]]},{"name":"crouch","prop":"","lean":0.55,"hipY":0.511,"arms":[{"s":[0.211,0,0],"e":[0.247,-0.214,0.211],"w":[0.247,-0.415,0.412]},{"s":[0.211,0,0],"e":[0.244,-0.193,0.231],"w":[0.241,-0.373,0.451]}],"grip":[0,0],"feet":[[0.166,-0.901,0.188],[0.178,-0.848,0.274]]},{"name":"sip","prop":"bottle","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.182,0.209,0.217],"w":[0,0.4,0.111]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.009,0.39,0.116],"propDir":[-0.05,-0.912,-0.407]},{"name":"carry-cane","prop":"cane","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.217,-0.295,0.067],"w":[0.18,-0.5,0.26]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.182,-0.49,0.25],"propDir":[0,-0.995,0.1]},{"name":"carry-umbrella","prop":"umbrella","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.223,-0.23,0.197],"w":[0.127,-0.157,0.454]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.132,-0.161,0.441],"propDir":[0.072,0.967,-0.244]},{"name":"carry-wrench","prop":"wrench","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.242,-0.543,0.017],"propDir":[-0.074,-0.772,0.632]},{"name":"carry-hoe","prop":"hoe","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.242,-0.543,0.017],"propDir":[0.082,0.977,0.196]},{"name":"carry-bottle","prop":"bottle","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.242,-0.543,0.017],"propDir":[-0.119,0.345,0.931]},{"name":"hoe-work","prop":"hoe","lean":0.35,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.161,-0.281,0.102],"w":[0.106,-0.529,0.227]},{"s":[0.211,0,0],"e":[0.161,-0.281,0.102],"w":[0.106,-0.529,0.227]}],"grip":[0,0],"feet":[[0.124,-1.266,0.281],[0.101,-1.266,0.281]],"propAt":[0.109,-0.517,0.221],"propDir":[0,0.059,0.998]},{"name":"rifle-low","prop":"rifle","lean":0.046,"hipY":0.887,"arms":[{"s":[0.208,-0.033,0.033],"e":[0.218,-0.279,0.209],"w":[0.166,-0.44,0.436]},{"s":[0.211,0,0],"e":[0.145,-0.26,0.14],"w":[-0.057,-0.297,0.335]}],"grip":[1,1],"feet":[[0.099,-1.317,0.001],[0.11,-1.313,0.085]],"propAt":[-0.057,-0.297,0.335],"propDir":[-0.527,-0.695,0.49]},{"name":"rifle-aim","prop":"rifle","lean":0.019,"hipY":0.887,"arms":[{"s":[0.202,-0.001,0.044],"e":[0.164,-0.061,0.339],"w":[0.084,-0.014,0.607]},{"s":[0.211,0,0],"e":[0.132,-0.131,0.261],"w":[-0.022,-0.017,0.47]}],"grip":[1,1],"feet":[[0.099,-1.317,-0.023],[0.11,-1.315,0.061]],"propAt":[-0.022,-0.017,0.47],"propDir":[-0.41,0.018,0.912]},{"name":"pistol-holster","prop":"pistol","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.241,-0.431,0.02],"propDir":[0,-0.986,0.169]},{"name":"pistol-low","prop":"pistol","lean":0.035,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.228,-0.238,0.186],"w":[0.083,-0.131,0.405]}],"grip":[0,1],"feet":[[0.106,-1.315,0.029],[0.118,-1.315,0.029]],"propAt":[0.083,-0.131,0.405],"propDir":[0,-0.494,0.87]},{"name":"pistol-raised","prop":"pistol","lean":0.02,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.15,-0.111,0.275],"w":[0.015,0,0.499]},{"s":[0.211,0,0],"e":[0.16,-0.099,0.281],"w":[0.03,0.03,0.498]}],"grip":[1,1],"feet":[[0.106,-1.316,0.016],[0.118,-1.316,0.016]],"propAt":[0.03,0.03,0.498],"propDir":[0,0.02,1.0]},{"name":"spear-upright","prop":"spear","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.343,-0.27,-0.036],"w":[0.281,-0.48,0.144]}],"grip":[0,1],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.281,-0.48,0.144],"propDir":[0,1.0,0.03]},{"name":"spear-level","prop":"spear","lean":0.019,"hipY":0.887,"arms":[{"s":[0.2,-0.017,0.037],"e":[0.145,-0.182,0.285],"w":[0.042,-0.241,0.542]},{"s":[0.211,0,0],"e":[0.32,-0.282,-0.007],"w":[0.15,-0.277,0.22]}],"grip":[1,1],"feet":[[0.102,-1.317,-0.015],[0.113,-1.315,0.051]],"propAt":[0.15,-0.277,0.22],"propDir":[-0.509,0.095,0.856]},{"name":"bow-hang","prop":"bow","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.334,-0.276,-0.017],"w":[0.301,-0.492,0.165]},{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]}],"grip":[1,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[-0.301,-0.492,0.165],"propDir":[-0.123,0.98,0.156]},{"name":"bow-drawn","prop":"bow","lean":0.002,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.503,-0.079,0.016],"w":[0.77,0.001,0.068]},{"s":[0.211,0,0],"e":[0.242,0.269,0.135],"w":[-0.029,0.192,0.098]}],"grip":[1,1],"feet":[[0.013,-1.318,-0.089],[0.014,-1.313,0.134]],"propAt":[-0.77,0.001,0.068],"propDir":[-0.238,0.97,0.049]},{"name":"machete-hang","prop":"machete","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.356,-0.256,-0.071],"w":[0.382,-0.492,0.085]}],"grip":[0,1],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.38,-0.48,0.077],"propDir":[-0.081,-0.669,0.739]},{"name":"machete-raised","prop":"machete","lean":0.02,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.36,-0.214,0.153],"w":[0.262,0.02,0.28]}],"grip":[0,1],"feet":[[0.106,-1.316,0.016],[0.118,-1.316,0.016]],"propAt":[0.266,0.008,0.273],"propDir":[0,0.975,0.223]},{"name":"club-hang","prop":"club","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.356,-0.256,-0.071],"w":[0.382,-0.492,0.085]}],"grip":[0,1],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]],"propAt":[0.38,-0.48,0.077],"propDir":[-0.081,-0.669,0.739]},{"name":"club-raised","prop":"club","lean":0.02,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.36,-0.214,0.153],"w":[0.262,0.02,0.28]}],"grip":[0,1],"feet":[[0.106,-1.316,0.016],[0.118,-1.316,0.016]],"propAt":[0.266,0.008,0.273],"propDir":[0,0.975,0.223]},{"name":"greet-chest","prop":"","lean":0.27,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.16,-0.234,0.185],"w":[-0.069,-0.066,0.194]}],"grip":[0,0],"feet":[[0.106,-1.286,0.218],[0.118,-1.286,0.218]]},{"name":"thanks-chest","prop":"","lean":0.425,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.307,-0.248,0.145],"w":[0.062,-0.122,0.214]},{"s":[0.211,0,0],"e":[0.172,-0.244,0.175],"w":[-0.065,-0.088,0.194]}],"grip":[0,0],"feet":[[0.106,-1.243,0.337],[0.118,-1.243,0.337]]},{"name":"salute-brow","prop":"","lean":0.185,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.334,0.255,0.108],"w":[0.051,0.266,0.126]}],"grip":[0,0],"feet":[[0.106,-1.302,0.15],[0.118,-1.302,0.15]]},{"name":"salute-out","prop":"","lean":0.23,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.252,-0.29,-0.075],"w":[0.241,-0.557,0.022]},{"s":[0.211,0,0],"e":[0.455,0.081,0.161],"w":[0.508,0.243,0.388]}],"grip":[0,0],"feet":[[0.114,-1.294,0.187],[0.11,-1.294,0.187]]},{"name":"clap-open","prop":"","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.378,0.156,0.199],"w":[0.202,0.377,0.22]},{"s":[0.211,0,0],"e":[0.378,0.156,0.199],"w":[0.202,0.377,0.22]}],"grip":[0,0],"feet":[[0.106,-1.315,0.041],[0.118,-1.315,0.041]]},{"name":"clap-closed","prop":"","lean":0.05,"hipY":0.947,"arms":[{"s":[0.211,0,0],"e":[0.228,0.203,0.224],"w":[0.042,0.417,0.22]},{"s":[0.211,0,0],"e":[0.228,0.203,0.224],"w":[0.042,0.417,0.22]}],"grip":[0,0],"feet":[[0.109,-1.375,0.044],[0.116,-1.375,0.044]]},{"name":"panic-clutch","prop":"","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.433,0.197,-0.062],"w":[0.159,0.241,-0.006]},{"s":[0.211,0,0],"e":[0.433,0.197,-0.062],"w":[0.159,0.241,-0.006]}],"grip":[0,0],"feet":[[0.244,-1.315,0.041],[0.221,-1.315,0.041]]},{"name":"panic-flail","prop":"","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.439,0.131,0.151],"w":[0.557,0.368,0.252]},{"s":[0.211,0,0],"e":[0.44,0.127,0.152],"w":[0.532,0.311,0.347]}],"grip":[0,0],"feet":[[0.231,-1.315,0.041],[0.234,-1.315,0.041]]},{"name":"fidget-wring","prop":"","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.255,-0.279,0.109],"w":[0.049,-0.227,0.297]},{"s":[0.211,0,0],"e":[0.255,-0.279,0.109],"w":[0.051,-0.218,0.296]}],"grip":[0,0],"feet":[[0.15,-1.315,0.041],[0.074,-1.315,0.041]]},{"name":"fidget-nape","prop":"","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.438,-0.195,-0.047],"w":[0.232,-0.349,0.073]},{"s":[0.211,0,0],"e":[0.203,0.302,-0.025],"w":[0.006,0.113,-0.103]}],"grip":[0,0],"feet":[[0.085,-1.315,0.041],[0.14,-1.315,0.041]]},{"name":"fidget-hips","prop":"","lean":0.05,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.438,-0.195,-0.047],"w":[0.232,-0.349,0.073]},{"s":[0.211,0,0],"e":[0.438,-0.195,-0.047],"w":[0.232,-0.349,0.073]}],"grip":[0,0],"feet":[[0.132,-1.315,0.041],[0.093,-1.315,0.041]]},{"name":"spew-clutch","prop":"","lean":0.312,"hipY":0.835,"arms":[{"s":[0.211,0,0],"e":[0.358,-0.223,0.142],"w":[0.089,-0.303,0.182]},{"s":[0.211,0,0],"e":[0.358,-0.223,0.142],"w":[0.089,-0.303,0.182]}],"grip":[0,0],"feet":[[0.106,-1.227,0.235],[0.118,-1.227,0.235]]},{"name":"spew-flung","prop":"","lean":0.65,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.351,-0.254,-0.087],"w":[0.425,-0.522,-0.146]},{"s":[0.211,0,0],"e":[0.351,-0.254,-0.087],"w":[0.425,-0.522,-0.146]}],"grip":[0,0],"feet":[[0.106,-1.169,0.47],[0.118,-1.169,0.47]]},{"name":"punch-cocked","prop":"","lean":0.08,"hipY":0.852,"arms":[{"s":[0.211,0,0],"e":[0.308,-0.287,0.001],"w":[0.162,-0.105,0.162]},{"s":[0.211,0,0],"e":[0.202,-0.182,-0.242],"w":[0.277,-0.078,0.012]}],"grip":[0,0],"feet":[[0.103,-1.281,0.04],[0.108,-1.274,0.117]]},{"name":"punch-thrown","prop":"","lean":0.167,"hipY":0.887,"arms":[{"s":[0.211,0,0],"e":[0.277,-0.279,0.098],"w":[0.15,-0.039,0.183]},{"s":[0.211,0,0],"e":[0.178,0.003,0.301],"w":[0.171,0.029,0.583]}],"grip":[0,0],"feet":[[0.116,-1.3,0.163],[0.081,-1.32,0.057]]}]};
+const D = {}; DUMP.poses.forEach(p => D[p.name] = p);
+const FG = DUMP.figure, UPPER = FG.upper, FORE = FG.fore, CHEST_Y = 0.9 * FG.torso, HIP_W = FG.hipW, UPPER_LEG = FG.upperLeg, LEG_LEN = FG.legLen;
+const NECK_Y = FG.torso * 0.1, HEAD_R = FG.head;
+const sub = (a, b) => a.map((x, j) => x - b[j]);
+const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return v.map(x => x / l); };
+const clone = o => JSON.parse(JSON.stringify(o));
+const r2 = x => Math.round(x * 100) / 100;
+const lerp = (a, b, t) => a.map((x, j) => x + (b[j] - x) * t);
+const nl = (a, b, t) => norm(lerp(a, b, t));
+const add = (v, d) => norm(v.map((x, j) => x + (d[j] || 0)));
+const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const sin = Math.sin, cos = Math.cos, PI = Math.PI;
+
+const SH0 = [D.stand.arms[0].s[0], 0, 0];
+const REST = { u: norm(sub(D.stand.arms[0].e, D.stand.arms[0].s)), f: norm(sub(D.stand.arms[0].w, D.stand.arms[0].e)), sh: SH0 };
+const STAND = { lean: D.stand.lean, hip: D.stand.hipY, feet: D.stand.feet };
+const PROPLEN = { rifle: .95, pistol: .22, spear: 1.9, bow: 1.2, machete: .6, club: .8, cane: .9, umbrella: .95, hoe: 1.4, wrench: .3, bottle: .25 };
+
+const SRC_ARMS = "shared/Bestiary/Rigs/HumanRig.Arms.cs", SRC_MOTION = "shared/Bestiary/Rigs/HumanRig.Motion.cs", SRC_RIG = "shared/Bestiary/Rigs/HumanRig.cs";
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+/** The palm's facing, kept square to the fingers. */
+function orth(d, p) {
+  let q = p.map((x, j) => x - d[j] * dot(p, d));
+  if (Math.hypot(...q) < 1e-3) q = cross(d, Math.abs(d[1]) < .9 ? [0, 1, 0] : [1, 0, 0]);
+  return norm(q);
+}
+REST.d = REST.f.slice(); REST.p = orth(REST.f, [-1, 0, 0]); REST.shape = "open";
+const off = { on: false, u: REST.u, f: REST.f, sh: SH0, d: REST.d, p: REST.p, shape: "open" };
+const intent = (u, f) => ({ on: true, u: norm(u), f: norm(f), sh: SH0 });
+const bothI = (u, f) => [intent(u, f), intent(u, f)];
+const rightI = (u, f) => [off, intent(u, f)];
+const GROUPS = [];
+let curGroup;
+const group = (name, kind) => GROUPS.push(curGroup = { name, kind, items: [] });
+/** An entry from the intent numbers; the body is the named measured pose's (a stand by default). */
+const I = (id, label, src, arms, bodyFrom = "stand") => curGroup.items.push({ id, label, src, arms, bodyFrom, kind: curGroup.kind });
+/** An entry read off the rig: arms in `use` are posed, the rest rest. */
+const M = (id, label, src, name, use = [0, 1]) => curGroup.items.push({ id, label, src, kind: curGroup.kind, bodyFrom: name, arms: [0, 1].map(i => {
+  const a = D[name].arms[i];
+  return use.includes(i) ? { on: true, u: norm(sub(a.e, a.s)), f: norm(sub(a.w, a.e)), sh: a.s } : off;
+}) });
+
+group("Gestures", "bones");
+I("handsup", "Hands up", SRC_ARMS + " ActArm BodyAct.HandsUp", bothI([.75, .5, .3], [.1, 1, .12]));
+I("cower", "Cower", SRC_ARMS + " ActArm BodyAct.Cower", bothI([.16, -.55, .8], [-.5, .85, .18]));
+I("waveoff-in", "Wave off, in", SRC_ARMS + " ActArm BodyAct.WaveOff (forearm swings between in and out)", rightI([.15, -.7, .7], [-.25, .3, .97]));
+I("waveoff-out", "Wave off, out", SRC_ARMS + " ActArm BodyAct.WaveOff", rightI([.15, -.7, .7], [.93, .3, .36]));
+I("beckon-out", "Beckon, out", SRC_ARMS + " ActArm BodyAct.Beckon", rightI([.12, -.7, .7], [.06, .15, 1]));
+I("beckon-in", "Beckon, curled", SRC_ARMS + " ActArm BodyAct.Beckon", rightI([.12, -.7, .7], [.06, 1.05, .1]));
+I("point", "Point ahead", SRC_ARMS + " ActArm BodyAct.Point (aimed at the target; this is straight ahead)", rightI([0, 0, 1], [0, .11, .99]));
+I("point-up", "Point up", SRC_ARMS + " ActArm BodyAct.Point (target high)", rightI([0, .533, .846], [0, .608, .794]));
+I("point-down", "Point down", SRC_ARMS + " ActArm BodyAct.Point (target low)", rightI([0, -.429, .904], [0, -.336, .942]));
+I("point-side", "Point to the side", SRC_ARMS + " ActArm BodyAct.Point (target far to the side)", rightI([.783, 0, .622], [.782, .11, .62]));
+I("shrug", "Shrug", SRC_ARMS + " ActArm BodyAct.Shrug", bothI([.35, -.85, .25], [.55, .62, .6]));
+I("grieve", "Grieve", SRC_ARMS + " ActArm BodyAct.Grieve", bothI([.1, -.68, .72], [-.55, .8, .12]));
+I("taunt", "Taunt", SRC_ARMS + " ActArm BodyAct.Taunt", [intent([.3, -.9, .2], [.15, .35, .9]), intent([.35, .45, .8], [.05, .9, .45])]);
+I("greet-wave", "Greet, wave", SRC_ARMS + " ActArm BodyAct.Greet style 0", rightI([.65, .55, .35], [.12, 1, .1]));
+I("greet-palm", "Greet, open palm", SRC_ARMS + " ActArm BodyAct.Greet style 1", rightI([.3, -.2, .92], [.05, 1, .1]));
+I("thanks-offer", "Thanks, palms offered", SRC_ARMS + " ActArm BodyAct.Thanks style 1", bothI([.2, -.85, .48], [.22, .18, .95]));
+I("warn", "Warn, stop", SRC_ARMS + " ActArm BodyAct.Warn", rightI([.18, -.05, .98], [.02, .85, .5]));
+I("celebrate-low", "Celebrate, low", SRC_ARMS + " ActArm BodyAct.Celebrate", bothI([.45, .85, .15], [-.2, .3, .4]));
+I("celebrate-high", "Celebrate, high", SRC_ARMS + " ActArm BodyAct.Celebrate", bothI([.45, .85, .15], [.05, 1, .05]));
+I("present", "Present wares", SRC_ARMS + " ActArm BodyAct.Present", rightI([.35, -.8, .45], [.65, .18, .75]));
+I("startle", "Startle", SRC_ARMS + " ActArm BodyAct.Startle", bothI([.6, -.45, .42], [.15, .95, .3]));
+I("panic-flail", "Panic, flung", SRC_ARMS + " ActArm BodyAct.Panic flail (middle of its range)", bothI([.6, .15, .4], [.3, .6, .5]));
+group("Fidgets", "bones");
+I("fidget-wring", "Wringing hands", SRC_ARMS + " FidgetPose phase 0", bothI([.14, -.9, .35], [-.72, .2, .66]));
+I("fidget-hips", "Hands on hips", SRC_ARMS + " FidgetPose phase 1 left arm and phase 2 both", bothI([.72, -.62, -.15], [-.6, -.45, .35]));
+group("Blows", "bones");
+I("punch-cocked", "Punch, cocked", SRC_MOTION + " StrikeArm Punch (left arm guards)", [intent([.2, -.85, .3], [-.45, .85, .3]), intent([.3, -.72, -.38], [-.12, .85, .5])], "punch-cocked");
+I("punch-thrown", "Punch, thrown", SRC_MOTION + " StrikeArm Punch (left arm guards)", [intent([.2, -.85, .3], [-.45, .85, .3]), intent([-.08, .04, 1], [-.06, .06, 1])], "punch-thrown");
+I("swat-raised", "Swat, raised", SRC_MOTION + " StrikeArm Swat (left arm out for balance)", [intent([.55, -.65, .25], [.3, -.4, .55]), intent([.3, .88, -.22], [.1, .55, -.6])]);
+I("swat-through", "Swat, through", SRC_MOTION + " StrikeArm Swat", [intent([.55, -.65, .25], [.3, -.4, .55]), intent([-.1, -.4, .95], [-.45, -.6, .65])]);
+I("seize-open", "Husk seize, open", SRC_MOTION + " StrikeArm Seize", bothI([.5, .3, .6], [.3, .6, .72]));
+I("seize-grab", "Husk seize, grab", SRC_MOTION + " StrikeArm Seize", bothI([.02, .18, 1], [-.32, .18, 1]));
+M("spew-clutch", "Retch, hands to belly", SRC_MOTION + " StrikeArm Spew, wind-up", "spew-clutch");
+I("spew-flung", "Retch, arms flung", SRC_MOTION + " StrikeArm Spew, strike", bothI([.45, -.82, -.28], [.25, -.9, -.2]), "spew-flung");
+
+group("Hand targets", "target");
+M("greet-chest", "Greet, hand to chest", SRC_ARMS + " ActArm Greet style 2 (OnChest)", "greet-chest", [1]);
+M("thanks-chest", "Thanks, hands on heart", SRC_ARMS + " ActArm Thanks style 2 (OnChest, one over the other)", "thanks-chest");
+M("salute-brow", "Salute, hand at brow", SRC_ARMS + " ActArm Thanks style 0 (hand to the brow)", "salute-brow", [1]);
+M("salute-out", "Salute, swept out", SRC_ARMS + " ActArm Thanks style 0 (swept out and forward)", "salute-out", [1]);
+M("clap-open", "Clap, open", SRC_ARMS + " ActArm Play (clapping over the head)", "clap-open");
+M("clap-closed", "Clap, together", SRC_ARMS + " ActArm Play", "clap-closed");
+M("panic-clutch", "Panic, hands to head", SRC_ARMS + " ActArm Panic (clutch)", "panic-clutch");
+M("fidget-nape", "Rub the neck (right hand)", SRC_ARMS + " FidgetPose phase 1; the left hand rests on the hip", "fidget-nape");
+
+group("Stances", "target");
+M("stand", "Standing, arms at rest", SRC_RIG + " DriveAlive (hang from the shoulder)", "stand");
+M("walk-a", "Walking, left arm forward", SRC_RIG + " DriveAlive (swing; the other arm is the mirror)", "walk-a");
+M("run-a", "Running, left arm forward", SRC_RIG + " DriveAlive (swing, bend .67)", "run-a");
+M("stalk", "Stalking, low and loose", SRC_RIG + " DriveAlive (stalk)", "stalk");
+M("work-low", "Bent to work, down", SRC_RIG + " DriveAlive (g.Work)", "work-low");
+M("work-high", "Bent to work, up", SRC_RIG + " DriveAlive (g.Work)", "work-high");
+M("reach", "Reaching out ahead", SRC_RIG + " DriveAlive (g.Reach, anyone)", "reach");
+M("sit", "Sitting, hands in lap", SRC_RIG + " DriveAlive (g.Sit)", "sit");
+M("crouch", "Crouching, forearms on knees", SRC_RIG + " DriveAlive (g.Crouch)", "crouch");
+
+group("Carrying", "target");
+M("sip", "Drinking from a bottle", SRC_RIG + " DriveAlive (sip)", "sip", [1]);
+M("carry-cane", "Cane", SRC_RIG + " DriveAlive (cane)", "carry-cane", [1]);
+M("carry-umbrella", "Umbrella", SRC_RIG + " DriveAlive (umbrella)", "carry-umbrella", [1]);
+M("carry-wrench", "Wrench", SRC_RIG + " PropPose (wrench, hand at rest)", "carry-wrench", [1]);
+M("carry-hoe", "Hoe on the shoulder", SRC_RIG + " PropPose (hoe)", "carry-hoe", [1]);
+M("carry-bottle", "Bottle held", SRC_RIG + " PropPose (bottle)", "carry-bottle", [1]);
+M("hoe-work", "Hoe, working", SRC_RIG + " PropPose (hoe, g.Work)", "hoe-work", [1]);
+
+group("Weapon holds", "hold");
+M("rifle-low", "Rifle, low ready", SRC_RIG + " Grips HoldKind.LongGun", "rifle-low");
+M("rifle-aim", "Rifle, shouldered", SRC_RIG + " Grips HoldKind.LongGun, aim 1", "rifle-aim");
+M("pistol-holster", "Pistol, holstered", SRC_RIG + " Grips HoldKind.Pistol", "pistol-holster", [1]);
+M("pistol-low", "Pistol, drawn low", SRC_RIG + " Grips HoldKind.Pistol, aim .5", "pistol-low", [1]);
+M("pistol-raised", "Pistol, both hands up", SRC_RIG + " Grips HoldKind.Pistol, aim 1", "pistol-raised");
+M("spear-upright", "Spear, upright", SRC_RIG + " Grips HoldKind.Spear", "spear-upright", [1]);
+M("spear-level", "Spear, level", SRC_RIG + " Grips HoldKind.Spear, aim 1", "spear-level");
+M("bow-hang", "Bow, hanging", SRC_RIG + " Grips HoldKind.Bow", "bow-hang", [0]);
+M("bow-drawn", "Bow, drawn", SRC_RIG + " Grips HoldKind.Bow, aim 1", "bow-drawn");
+M("blade-hang", "Machete or club, hanging", SRC_RIG + " Grips HoldKind.Blade", "machete-hang", [1]);
+M("blade-raised", "Machete or club, raised", SRC_RIG + " Grips HoldKind.Blade, aim 1", "machete-raised", [1]);
+
+// Where the palm faces (out, up, ahead; "out" is toward the arm's own side) and the hand's shape. The game has no hand
+// orientation yet, so these are first guesses for each pose; fix them.
+const OPEN = p => ({ p, shape: "open" }), FIST = p => ({ p, shape: "fist" }), PT = p => ({ p, shape: "point" });
+const HANDS = {
+  handsup: OPEN([0, 0, 1]), cower: OPEN([-.3, 0, -1]), "waveoff-in": OPEN([0, -1, 0]), "waveoff-out": OPEN([0, -1, 0]),
+  "beckon-out": OPEN([0, 1, 0]), "beckon-in": OPEN([0, .4, -1]),
+  point: PT([-1, -.3, 0]), "point-up": PT([-1, 0, .2]), "point-down": PT([-1, 0, -.2]), "point-side": PT([-.3, -1, 0]),
+  shrug: OPEN([0, 1, 0]), grieve: OPEN([-.3, 0, -1]), taunt: FIST([-1, 0, 0]),
+  "greet-wave": OPEN([0, 0, 1]), "greet-palm": OPEN([0, 0, 1]), "thanks-offer": OPEN([0, 1, 0]), warn: OPEN([0, 0, 1]),
+  "celebrate-low": FIST([-1, 0, 0]), "celebrate-high": FIST([-1, 0, 0]), present: OPEN([0, 1, 0]), startle: OPEN([0, 0, 1]),
+  "panic-flail": OPEN([0, 0, 1]), "panic-clutch": OPEN([-1, 0, 0]), "fidget-wring": OPEN([-1, .3, 0]),
+  "fidget-nape": [OPEN([-1, 0, 0]), OPEN([0, 0, 1])],
+  "punch-cocked": [FIST([-1, 0, 0]), FIST([0, -1, 0])], "punch-thrown": [FIST([-1, 0, 0]), FIST([0, -1, 0])],
+  "spew-clutch": OPEN([0, 0, -1]), "greet-chest": OPEN([0, 0, -1]), "thanks-chest": OPEN([0, 0, -1]),
+  "salute-brow": OPEN([0, -1, 0]), "salute-out": OPEN([0, 0, 1]),
+  sit: OPEN([0, -1, 0]), crouch: OPEN([0, -1, 0]), reach: OPEN([0, -1, 0]), "work-low": FIST([-1, 0, 0]), "work-high": FIST([-1, 0, 0]),
+  sip: FIST([-1, .3, .5]),
+};
+for (const id of ["carry-cane", "carry-umbrella", "carry-wrench", "carry-hoe", "carry-bottle", "hoe-work", "rifle-low", "rifle-aim", "pistol-holster", "pistol-low", "pistol-raised", "spear-upright", "spear-level", "bow-hang", "bow-drawn", "blade-hang", "blade-raised"]) HANDS[id] = FIST([-1, 0, 0]);
+function fillHand(id, i, a) {
+  if (!a.on) { Object.assign(a, { d: REST.d.slice(), p: REST.p.slice(), shape: "open" }); return; }
+  const h = HANDS[id], sp = Array.isArray(h) ? h[i] : h || OPEN([-1, 0, 0]);
+  a.d = a.f.slice(); a.p = orth(a.d, sp.p); a.shape = sp.shape;
+}
+
+// ---------- Build the keyframe table
+const ids = [], byId = {};
+const toSceneV = (v, side) => [v[0] * side, v[1], -v[2]];
+for (const g of GROUPS) for (const it of g.items) {
+  it.arms = it.arms.map((a, i) => { const c = clone(a); fillHand(it.id, i, c); return c; });
+  const body = D[it.bodyFrom] || D.stand;
+  const k = {
+    id: it.id, group: g.name, kind: it.kind, label: it.label, src: it.src, note: "",
+    orig: it.arms.map(a => clone(a)), feet: body.feet, obody: { lean: body.lean, hip: body.hipY },
+  };
+  k.cur = clone(k.orig); k.body = { ...k.obody };
+  // A carried thing: it goes with the wrist of the hand that grips it.
+  const pd = D[it.bodyFrom];
+  if (pd && pd.propAt) {
+    const at = toSceneV(pd.propAt, 1), dir = toSceneV(pd.propDir, 1);
+    let best = 0, bd = 9;
+    for (let i = 0; i < 2; i++) { const a = pd.arms[i], w = toSceneV(a.w, i === 0 ? -1 : 1), d = Math.hypot(at[0] - w[0], at[1] - w[1], at[2] - w[2]); if (d < bd) { bd = d; best = i; } }
+    const w = toSceneV(pd.arms[best].w, best === 0 ? -1 : 1);
+    k.prop = { kind: pd.prop, arm: best, off: sub(at, w), dir };
+  }
+  ids.push(k.id); byId[k.id] = k;
+}
+
+// ---------- Motion. Each act in the game moves on a clock around these keyframes (the same sines and rates
+// as HumanRig.Arms.cs / HumanRig.Motion.cs); here they are built from the keyframes you edit.
+const st = (id, extra) => (t, i, S) => { const a = S(id, i); return a && { u: a.u, f: extra ? add(a.f, extra(t, i)) : a.f }; };
+const ANIMS = {
+  handsup: { kfs: ["handsup"], g: st("handsup", (t, i) => [.04 * sin(t * 13 + i), 0, 0]) },
+  cower: { kfs: ["cower"], g: st("cower", (t, i) => [0, .04 * sin(t * 9 + i * 2), 0]) },
+  waveoff: { kfs: ["waveoff-in", "waveoff-out"], bl: t => .5 + .5 * sin(t * 5.5) },
+  beckon: { kfs: ["beckon-out", "beckon-in"], bl: t => .5 + .5 * sin(t * 4.5) },
+  point: { kfs: ["point"], g: st("point") },
+  "point-up": { kfs: ["point-up"], g: st("point-up") },
+  "point-down": { kfs: ["point-down"], g: st("point-down") },
+  "point-side": { kfs: ["point-side"], g: st("point-side") },
+  shrug: { kfs: ["shrug"], g: st("shrug", t => [0, .1 * Math.max(0, sin(t * 3)), 0]) },
+  grieve: { kfs: ["grieve"], g: st("grieve", t => [0, .05 * sin(t * 7) * Math.max(0, sin(t * .9)), 0]) },
+  taunt: { kfs: ["taunt"], g: (t, i, S) => { const a = S("taunt", i); if (!a) return null; if (i === 0) return a; const k = .12 * sin(t * 14); return { u: a.u, f: add(a.f, [k, 0, -k]) }; } },
+  "greet-wave": { kfs: ["greet-wave"], g: st("greet-wave", t => [.35 * sin(t * 6), 0, 0]) },
+  "greet-palm": { kfs: ["greet-palm"], g: st("greet-palm") },
+  "thanks-offer": { kfs: ["thanks-offer"], g: st("thanks-offer", t => [0, .06 * sin(t * 2), 0]) },
+  warn: { kfs: ["warn"], g: st("warn") },
+  celebrate: { kfs: ["celebrate-low", "celebrate-high"], bl: (t, i) => Math.max(0, sin(t * 8 + i * 1.3)) },
+  present: { kfs: ["present"], g: st("present") },
+  startle: { kfs: ["startle"], g: st("startle") },
+  panic: { kfs: ["panic-clutch", "panic-flail"], bl: (t, i) => ss(-.3, .3, sin(t * 1.6 + i)) },
+  "fidget-wring": { kfs: ["fidget-wring"], g: st("fidget-wring", (t, i) => [0, .18 * sin(t * 5 + i * PI), 0]) },
+  "fidget-hips": { kfs: ["fidget-hips"], g: st("fidget-hips") },
+  "fidget-nape": { kfs: ["fidget-nape"], g: st("fidget-nape") },
+  "greet-chest": { kfs: ["greet-chest"], g: st("greet-chest") },
+  "thanks-chest": { kfs: ["thanks-chest"], g: st("thanks-chest") },
+  salute: { kfs: ["salute-brow", "salute-out"], bl: t => { const q = t * .8 - Math.floor(t * .8); return ss(.35, .75, q) * (1 - ss(.88, 1, q)); } },
+  clap: { kfs: ["clap-open", "clap-closed"], bl: t => .5 - .5 * cos(t * 9) },
+  punch: { blow: 1, kfs: ["punch-cocked", "punch-thrown"] },
+  swat: { blow: 1, kfs: ["swat-raised", "swat-through"] },
+  seize: { blow: 1, kfs: ["seize-open", "seize-grab"] },
+  spew: { blow: 1, kfs: ["spew-clutch", "spew-flung"] },
+  stand: { loop: 1, kfs: ["stand"], g: st("stand") },
+  walk: { loop: 1, kfs: ["walk-a", "walk-a~m"], bl: t => .5 + .5 * sin(t * 2 * PI / 1.1) },
+  run: { loop: 1, kfs: ["run-a", "run-a~m"], bl: t => .5 + .5 * sin(t * 2 * PI / .7) },
+  stalk: { loop: 1, kfs: ["stalk", "stalk~m"], bl: t => .5 + .5 * sin(t * 2 * PI / 1.6) },
+  work: { kfs: ["work-low", "work-high"], bl: t => .5 + .5 * sin(t * 1.7) },
+  reach: { kfs: ["reach"], g: st("reach") },
+  sit: { kfs: ["sit"], g: st("sit") },
+  crouch: { kfs: ["crouch"], g: st("crouch") },
+  sip: { kfs: ["sip"], g: st("sip") },
+  "carry-cane": { loop: 1, kfs: ["carry-cane"], g: st("carry-cane") },
+  "carry-umbrella": { loop: 1, kfs: ["carry-umbrella"], g: st("carry-umbrella") },
+  "carry-wrench": { loop: 1, kfs: ["carry-wrench"], g: st("carry-wrench") },
+  "carry-hoe": { loop: 1, kfs: ["carry-hoe"], g: st("carry-hoe") },
+  "carry-bottle": { loop: 1, kfs: ["carry-bottle"], g: st("carry-bottle") },
+  "hoe-work": { loop: 1, kfs: ["hoe-work"], g: st("hoe-work") },
+  rifle: { loop: 1, kfs: ["rifle-low", "rifle-aim"], bl: t => ss(.3, 1.2, t) * (1 - ss(2.4, 3.3, t)) },
+  pistol: { loop: 1, kfs: ["pistol-holster", "pistol-low", "pistol-raised"], bl: t => ss(.3, 1.8, t) * (1 - ss(2.4, 3.6, t)) },
+  spear: { loop: 1, kfs: ["spear-upright", "spear-level"], bl: t => ss(.3, 1.2, t) * (1 - ss(2.4, 3.3, t)) },
+  bow: { loop: 1, kfs: ["bow-hang", "bow-drawn"], bl: t => ss(.3, 1.4, t) * (1 - ss(2.4, 3.3, t)) },
+  blade: { loop: 1, kfs: ["blade-hang", "blade-raised"], bl: t => ss(.3, 1.2, t) * (1 - ss(2.4, 3.3, t)) },
+};
+const ANIM_OF = {};
+for (const [a, d] of Object.entries(ANIMS)) d.kfs.forEach(k => { if (!k.endsWith("~m")) ANIM_OF[k] = a; });
+for (const id of ids) if (!ANIM_OF[id]) throw new Error("no animation for " + id);
+
+const play = { on: false, running: false, T: 0, speed: 1, ghost: true };
+let sel = ids[0], padK = 1;
+const loopLen = () => ANIMS[ANIM_OF[sel]].blow ? 2.2 : 3.9;
+const isMirror = id => id.endsWith("~m"), baseId = id => id.slice(0, -2);
+const armOf = (id, i, src) => isMirror(id) ? armOf(baseId(id), 1 - i, src) : (src === "cur" ? byId[id].cur : byId[id].orig)[i];
+function bodyOf(id, src) {
+  if (isMirror(id)) { const b = bodyOf(baseId(id), src); return { lean: b.lean, hip: b.hip, feet: [b.feet[1], b.feet[0]] }; }
+  const k = byId[id], b = src === "cur" ? k.body : k.obody;
+  return { lean: b.lean, hip: b.hip, feet: k.feet };
+}
+const propOf = id => byId[isMirror(id) ? baseId(id) : id].prop;
+const mixBody = (a, b, t) => ({ lean: a.lean + (b.lean - a.lean) * t, hip: a.hip + (b.hip - a.hip) * t, feet: a.feet.map((f, i) => lerp(f, b.feet[i], t)) });
+const mixHand = (a, b, t) => { const d = nl(a.d, b.d, t); return { d, p: orth(d, lerp(a.p, b.p, t)), shape: (t > .5 ? b : a).shape }; };
+const mixArm = (a, b, t) => ({ on: a.on || b.on, u: nl(a.u, b.u, t), f: nl(a.f, b.f, t), sh: lerp(a.sh, b.sh, t), ...mixHand(a, b, t) });
+/** Turn a direction the way a forearm turned (from -> to), so a hand follows its forearm. */
+function swing(v, from, to) {
+  const ax = cross(from, to), s = Math.hypot(...ax), c = dot(from, to);
+  if (s < 1e-6) return v.slice();
+  const k = ax.map(x => x / s), kv = cross(k, v), kd = dot(k, v);
+  return v.map((x, j) => x * c + kv[j] * s + k[j] * kd * (1 - c));
+}
+
+/** What is on screen at the playing clock, from the edited keyframes (src "cur") or the originals ("orig"). */
+function animView(src) {
+  const an = ANIMS[ANIM_OF[sel]], T = play.T, n = an.kfs.length;
+  const SA = (id, i) => { const a = armOf(id, i, src); return a.on ? a : null; };
+  let amt = 1, arms = [null, null], body, prop = propOf(an.kfs[0]);
+  if (an.blow) {
+    const s = Math.min(1, T / 1.6), w = ss(0, .4, s) * (1 - ss(.44, .56, s)), h = ss(.42, .55, s) * (1 - ss(.68, 1, s));
+    amt = Math.max(w, h);
+    const k = h / Math.max(1e-4, w + h);
+    for (let i = 0; i < 2; i++) { const A = armOf(an.kfs[0], i, src), B = armOf(an.kfs[1], i, src); arms[i] = mixArm(A, B, k); }
+    body = mixBody(bodyOf(an.kfs[0], src), bodyOf(an.kfs[1], src), k);
+    prop = propOf(an.kfs[k > .5 ? 1 : 0]) || prop;
+  } else if (an.bl) {
+    let xs = [0, 1].map(i => an.bl(T, i));
+    for (let i = 0; i < 2; i++) {
+      const x = Math.max(0, Math.min(n - 1, xs[i] * (n - 1))), j = Math.min(Math.floor(x), n - 2), b = x - j;
+      arms[i] = mixArm(armOf(an.kfs[j], i, src), armOf(an.kfs[j + 1], i, src), b);
+    }
+    const x = Math.max(0, Math.min(n - 1, (xs[0] + xs[1]) / 2 * (n - 1))), j = Math.min(Math.floor(x), n - 2);
+    body = mixBody(bodyOf(an.kfs[j], src), bodyOf(an.kfs[j + 1], src), x - j);
+    prop = propOf(an.kfs[x - j > .5 ? j + 1 : j]) || prop;
+  } else {
+    for (let i = 0; i < 2; i++) {
+      const p = an.g(T, i, SA), a0 = armOf(an.kfs[0], i, src);
+      arms[i] = p ? { on: true, u: p.u, f: p.f, sh: a0.sh, d: swing(a0.d, a0.f, p.f), p: swing(a0.p, a0.f, p.f), shape: a0.shape } : null;
+    }
+    body = bodyOf(an.kfs[0], src);
+  }
+  if (!an.loop && !an.blow) amt = T < .5 ? ss(0, .5, T) : T < 3 ? 1 : T < 3.5 ? 1 - ss(3, 3.5, T) : 0;
+  const view = {
+    arms: arms.map(p => {
+      if (!p) return { on: false, u: REST.u, f: REST.f, sh: SH0, d: REST.d, p: REST.p, shape: "open" };
+      const h = mixHand(REST, p, amt);
+      return { on: p.on !== false, u: nl(REST.u, p.u, amt), f: nl(REST.f, p.f, amt), sh: lerp(REST.sh, p.sh, amt), ...h };
+    }),
+    prop, feet: null,
+  };
+  const b2 = mixBody(STAND, body, amt);
+  view.lean = b2.lean; view.hip = b2.hip; view.feet = b2.feet;
+  return view;
+}
+
+const handDiff = (a, o) => a.shape !== o.shape || a.d.some((v, j) => Math.abs(v - o.d[j]) > .01) || a.p.some((v, j) => Math.abs(v - o.p[j]) > .01);
+const isEdited = k => k.note.trim() !== "" || k.cur.some((a, i) => a.on && handDiff(a, k.orig[i])) || Math.abs(k.body.lean - k.obody.lean) > .005 || Math.abs(k.body.hip - k.obody.hip) > .005 ||
+  k.cur.some((a, i) => a.on !== k.orig[i].on || (a.on && (a.u.some((v, j) => Math.abs(v - k.orig[i].u[j]) > .005) || a.f.some((v, j) => Math.abs(v - k.orig[i].f[j]) > .005))));
+
+// ---------- 3D scene
+const cv = document.getElementById("cv");
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 50);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let C = {}, dirty = true;
+function mkMat(color, opts) { return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: .6, metalness: 0 }, opts || {})); }
+scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 0.9));
+const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(-2, 3, -3); scene.add(dl);
+
+const FLOOR = -(CHEST_Y + STAND.hip);
+const hipG = new THREE.Group(), chestG = new THREE.Group(); // hipG turns with the lean; chestG's origin is the chest line, where the poses are measured from
+scene.add(hipG); hipG.add(chestG); chestG.position.y = CHEST_Y;
+const bodyMat = mkMat(0x9aa7b2, { transparent: true, opacity: .55 });
+const torso = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 20), bodyMat); chestG.add(torso);
+const headM = new THREE.Mesh(new THREE.SphereGeometry(HEAD_R, 20, 16), bodyMat); headM.position.set(0, NECK_Y + FG.neck + HEAD_R, 0); chestG.add(headM);
+const nose = new THREE.Mesh(new THREE.ConeGeometry(.025, .06, 10), bodyMat); nose.rotation.x = -Math.PI / 2; nose.position.set(0, headM.position.y, -HEAD_R - .015); chestG.add(nose);
+const floor = new THREE.GridHelper(3, 30, 0x888888, 0x888888); floor.position.y = FLOOR; floor.material.transparent = true; floor.material.opacity = .25; scene.add(floor);
+
+function limb(color, r, parent) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * .85, 1, 12), mkMat(color)); (parent || scene).add(m); return m; }
+function place(m, a, b) { const d = new THREE.Vector3().subVectors(b, a), l = d.length() || 1e-4; m.position.copy(a).addScaledVector(d, .5); m.scale.set(1, l, 1); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()); }
+const legM = [0, 1].map(() => ({ up: limb(0x888888, .06), lo: limb(0x888888, .045) }));
+legM.forEach(l => { l.up.material = bodyMat; l.lo.material = bodyMat; });
+const propM = new THREE.Mesh(new THREE.CylinderGeometry(.018, .018, 1, 10), mkMat(0x6b7885)); chestG.add(propM);
+const HAND_LEN = .19, PALM_AT = .05, PALM_OUT = .075;
+let handS = 1.3;
+function makeHand() {
+  const g = new THREE.Group(), mat = mkMat(0xd9570f), plate = mkMat(0xffd9b0);
+  const parts = { open: new THREE.Group(), fist: new THREE.Group(), point: new THREE.Group() };
+  const box = (w, h, d, x, y, z, m, parent, rz) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); if (rz) b.rotation.z = rz; (parent || g).add(b); return b; };
+  // local frame: +Y along the fingers, +Z out of the palm, +X toward the thumb
+  box(.085, .095, .028, 0, .0475, 0, mat);
+  box(.066, .075, .004, 0, .05, .016, plate); // the palm side shows light
+  [[.03, .082], [.01, .092], [-.01, .086], [-.03, .07]].forEach(([x, l]) => box(.018, l, .02, x, .095 + l / 2, 0, mat, parts.open));
+  box(.022, .062, .022, .056, .035, 0, mat, parts.open, -.55);
+  for (const k of ["fist", "point"]) {
+    box(.085, .05, .05, 0, .085, .03, mat, parts[k]);
+    box(.022, .05, .022, .02, .09, .062, mat, parts[k], 1.2);
+  }
+  box(.018, .09, .02, .03, .14, 0, mat, parts.point);
+  Object.values(parts).forEach(p => g.add(p));
+  g.userData = { mat, plate, parts };
+  return g;
+}
+const armRig = [0, 1].map(i => {
+  const r = {
+    up: limb(0x888888, .05, chestG), fo: limb(0x888888, .04, chestG),
+    elbow: new THREE.Mesh(new THREE.SphereGeometry(.035, 18, 14), mkMat(0x0a7f9c)),
+    hg: makeHand(),
+    tip: new THREE.Mesh(new THREE.SphereGeometry(.022, 14, 10), mkMat(0x6a4cc2)),
+    palmH: new THREE.Mesh(new THREE.SphereGeometry(.022, 14, 10), mkMat(0xc2368f)),
+    wrist: new THREE.Mesh(new THREE.SphereGeometry(.028, 14, 10), mkMat(0xd9570f)),
+    ghost: new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ transparent: true, opacity: .55 })),
+    hitE: new THREE.Mesh(new THREE.SphereGeometry(.06, 8, 6), new THREE.MeshBasicMaterial({ visible: false })),
+    hitH: new THREE.Mesh(new THREE.SphereGeometry(.05, 8, 6), new THREE.MeshBasicMaterial({ visible: false })),
+    shoulder: new THREE.Vector3(), elbowP: new THREE.Vector3(), handP: new THREE.Vector3(), pc: new THREE.Vector3(),
+  };
+  chestG.add(r.elbow, r.wrist, r.hg, r.tip, r.palmH, r.ghost, r.hitE, r.hitH);
+  r.hitE.userData = { arm: i, kind: "u" }; r.hitH.userData = { arm: i, kind: "f" }; r.tip.userData = { arm: i, kind: "d" }; r.palmH.userData = { arm: i, kind: "p" };
+  return r;
+});
+
+const sideOf = i => i === 0 ? -1 : 1;
+// body frame (out, up, ahead) <-> scene (x, y, z): the figure faces -z, as in the game.
+const toV = (v, side) => new THREE.Vector3(v[0] * side, v[1], -v[2]);
+const fromV = (p, side) => norm([p.x * side, p.y, -p.z]);
+const shoulderOf = (a, i) => { const v = toV(a.sh, sideOf(i)); v.x *= 1 + (padK - 1) * .8; return v; };
+
+const TORSO = { cy: (NECK_Y - CHEST_Y) / 2, ax: SH0[0], ay: FG.torso / 2 + .02, az: FG.chestD * 0.95 };
+function inTorso(p) {
+  const t = TORSO; const x = p.x / (t.ax * padK), y = (p.y - t.cy) / t.ay, z = p.z / (t.az * padK);
+  return x * x + y * y + z * z < .8;
+}
+/** Two-bone leg: the knee bends toward the pole. */
+function ik2(a, b, l1, l2, pole) {
+  const d = new THREE.Vector3().subVectors(b, a); let L = d.length();
+  const dir = d.clone().normalize(); L = Math.min(L, (l1 + l2) * .999);
+  const x = (l1 * l1 - l2 * l2 + L * L) / (2 * L), h = Math.sqrt(Math.max(0, l1 * l1 - x * x));
+  let p = pole.clone().sub(dir.clone().multiplyScalar(pole.dot(dir))); if (p.lengthSq() < 1e-6) p = new THREE.Vector3(0, 0, -1); p.normalize();
+  return a.clone().addScaledVector(dir, x).addScaledVector(p, h);
+}
+function setTheme() {
+  C.view = css("--view"); C.hand = css("--hand"); C.elbow = css("--elbow"); C.body = css("--body"); C.danger = css("--danger"); C.tip = css("--tip"); C.palm = css("--palm");
+  renderer.setClearColor(new THREE.Color(C.view), 1);
+  bodyMat.color.set(C.body);
+  armRig.forEach(r => {
+    r.elbow.material.color.set(C.elbow); r.wrist.material.color.set(C.hand); r.ghost.material.color.set(C.body);
+    r.tip.material.color.set(C.tip); r.palmH.material.color.set(C.palm);
+    r.hg.userData.mat.color.set(C.hand); r.hg.userData.plate.color.set(C.hand).offsetHSL(0, -.1, .3);
+  });
+  floor.material.color.set(C.body); propM.material.color.set(C.body); propM.material.color.offsetHSL(0, 0, -.2);
+  dirty = true;
+}
+function currentView() {
+  const k = byId[sel];
+  if (play.on) return animView("cur");
+  return { arms: k.cur, lean: k.body.lean, hip: k.body.hip, feet: k.feet, prop: k.prop };
+}
+function layout() {
+  const k = byId[sel];
+  const v = currentView();
+  const ghost = play.on ? (play.ghost ? animView("orig") : null) : { arms: k.orig };
+  hipG.rotation.x = -v.lean; hipG.position.y = FLOOR + v.hip;
+  torso.scale.set(TORSO.ax * padK, TORSO.ay, TORSO.az * padK); torso.position.set(0, TORSO.cy, 0);
+  hipG.updateMatrixWorld(true);
+  let warn = false;
+  [0, 1].forEach(i => {
+    const a = v.arms[i], r = armRig[i], s = sideOf(i), o = ghost && ghost.arms[i];
+    const sh = shoulderOf(a, i);
+    const el = sh.clone().addScaledVector(toV(a.u, s), UPPER);
+    const ha = el.clone().addScaledVector(toV(a.f, s), FORE);
+    r.shoulder.copy(sh); r.elbowP.copy(el); r.handP.copy(ha);
+    place(r.up, sh, el); place(r.fo, el, ha);
+    r.elbow.position.copy(el); r.wrist.position.copy(ha); r.hitE.position.copy(el); r.hitH.position.copy(ha);
+    // the hand: fingers along d, the palm facing p; a left hand is the mirror of a right one
+    const ds = toV(a.d, s).normalize(), ps = toV(a.p, s).normalize(), xs = new THREE.Vector3().crossVectors(ds, ps).normalize();
+    r.hg.position.copy(ha); r.hg.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xs, ds, ps));
+    r.hg.scale.set(s * handS, handS, handS);
+    const parts = r.hg.userData.parts; parts.open.visible = a.shape === "open"; parts.fist.visible = a.shape === "fist"; parts.point.visible = a.shape === "point";
+    r.pc.copy(ha).addScaledVector(ds, PALM_AT * handS);
+    r.tip.position.copy(ha).addScaledVector(ds, HAND_LEN * handS);
+    r.palmH.position.copy(r.pc).addScaledVector(ps, PALM_OUT * handS);
+    const live = a.on;
+    r.hitE.visible = r.hitH.visible = live && !play.on;
+    r.tip.visible = r.palmH.visible = live && !play.on;
+    [r.elbow.material, r.wrist.material, r.hg.userData.mat, r.hg.userData.plate].forEach(m => { m.transparent = !live; m.opacity = live ? 1 : .35; });
+    let bad = false;
+    if (live) {
+      for (let t = 0.4; t <= 1.001; t += .15) if (inTorso(sh.clone().lerp(el, t))) bad = true;
+      for (let t = 0; t <= 1.001; t += .125) if (inTorso(el.clone().lerp(ha, t))) bad = true;
+    }
+    if (bad) warn = true;
+    r.up.material.color.set(bad ? C.danger : C.body); r.fo.material.color.set(bad ? C.danger : C.body);
+    if (!bad) { r.up.material.color.offsetHSL(0, 0, -.18); r.fo.material.color.offsetHSL(0, 0, -.18); }
+    if (o && o.on) {
+      const sh2 = shoulderOf(o, i), oe = sh2.clone().addScaledVector(toV(o.u, s), UPPER), oh = oe.clone().addScaledVector(toV(o.f, s), FORE);
+      r.ghost.geometry.setFromPoints([sh2, oe, oh]); r.ghost.visible = true;
+    } else r.ghost.visible = false;
+  });
+  // the carried thing goes with the wrist that grips it
+  const p = v.prop;
+  if (p) {
+    const L = PROPLEN[p.kind] || .6, w = armRig[p.arm].handP, dir = new THREE.Vector3(...p.dir).normalize();
+    propM.visible = true; propM.scale.set(1, L, 1);
+    propM.position.copy(w).add(new THREE.Vector3(...p.off)).addScaledVector(dir, L * .2);
+    propM.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  } else propM.visible = false;
+  // legs: feet from the measured pose, knees forward
+  [0, 1].forEach(i => {
+    const s = sideOf(i), hipJ = chestG.localToWorld(new THREE.Vector3(s * HIP_W * .55, -CHEST_Y - .016, 0));
+    const foot = chestG.localToWorld(toV(v.feet[i], s));
+    const knee = ik2(hipJ, foot, UPPER_LEG, UPPER_LEG, new THREE.Vector3(0, 0, -1));
+    place(legM[i].up, hipJ, knee); place(legM[i].lo, knee, foot);
+  });
+  document.getElementById("warn").hidden = !warn;
+  dirty = true;
+}
+
+// ---------- Camera orbit
+const target = new THREE.Vector3(0, -.15, 0);
+let yaw = .6, pitch = .2, dist = 2.6;
+function setCam() {
+  camera.position.set(target.x + dist * Math.sin(yaw) * Math.cos(pitch), target.y + dist * Math.sin(pitch), target.z - dist * Math.cos(yaw) * Math.cos(pitch));
+  camera.lookAt(target); dirty = true;
+}
+const VIEWS = { front: [0, 0], right: [Math.PI / 2, 0], left: [-Math.PI / 2, 0], back: [Math.PI, 0], top: [0, Math.PI / 2 - .001], three: [.6, .2] };
+document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { [yaw, pitch] = VIEWS[b.dataset.view]; setCam(); });
+function resize() {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix(); dirty = true;
+}
+new ResizeObserver(resize).observe(cv);
+let lastFrame = 0;
+(function loop(now) {
+  if (play.on && play.running) {
+    const dt = Math.min(.1, (now - lastFrame) / 1000 || 0);
+    play.T = (play.T + dt * play.speed) % loopLen();
+    $("scrub").value = play.T; layout();
+  }
+  lastFrame = now;
+  if (dirty) { renderer.render(scene, camera); dirty = false; }
+  requestAnimationFrame(loop);
+})(0);
+
+// ---------- Dragging (the ray is worked in the chest's own frame, so a leaning body drags true)
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+function setRay(e) { const r = cv.getBoundingClientRect(); mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(mouse, camera); }
+let drag = null, orbit = null;
+cv.addEventListener("pointerdown", e => {
+  if (play.on) { orbit = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); return; }
+  setRay(e); scene.updateMatrixWorld(true);
+  const hits = ray.intersectObjects(armRig.flatMap(r => [r.tip, r.palmH, r.hitH, r.hitE]).filter(m => m.visible));
+  cv.setPointerCapture(e.pointerId);
+  if (hits.length) { const u = hits[0].object.userData; drag = { arm: u.arm, kind: u.kind, last: chestG.worldToLocal(hits[0].point.clone()) }; cv.style.cursor = "grabbing"; }
+  else orbit = { x: e.clientX, y: e.clientY };
+});
+cv.addEventListener("pointermove", e => {
+  if (orbit) { yaw -= (e.clientX - orbit.x) * .008; pitch = Math.max(-1.45, Math.min(1.5707, pitch + (e.clientY - orbit.y) * .008)); orbit.x = e.clientX; orbit.y = e.clientY; setCam(); return; }
+  if (!drag) return;
+  setRay(e); scene.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(chestG.matrixWorld).invert();
+  const o = ray.ray.origin.clone().applyMatrix4(inv), d = ray.ray.direction.clone().transformDirection(inv).normalize();
+  const r = armRig[drag.arm], K = drag.kind;
+  const c = K === "u" ? r.shoulder : K === "f" ? r.elbowP : K === "d" ? r.handP : r.pc, rad = K === "u" ? UPPER : K === "f" ? FORE : K === "d" ? HAND_LEN * handS : PALM_OUT * handS;
+  // where the mouse ray meets the sphere the joint can reach; the nearer-to-last of its two points, or the closest on a miss
+  const oc = o.clone().sub(c), b = oc.dot(d), q = oc.dot(oc) - rad * rad, disc = b * b - q;
+  let p;
+  if (disc >= 0) { const s = Math.sqrt(disc), p1 = o.clone().addScaledVector(d, -b - s), p2 = o.clone().addScaledVector(d, -b + s); p = p1.distanceTo(drag.last) <= p2.distanceTo(drag.last) ? p1 : p2; }
+  else p = o.clone().addScaledVector(d, -b);
+  drag.last.copy(p);
+  const dir = p.clone().sub(c);
+  if (dir.lengthSq() < 1e-8) return;
+  const v = fromV(dir.normalize(), sideOf(drag.arm));
+  if (K === "d" || K === "p") setHand(drag.arm, K, v); else setBone(drag.arm, K, v);
+});
+const end = () => { drag = null; orbit = null; cv.style.cursor = "grab"; };
+cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+cv.addEventListener("wheel", e => { e.preventDefault(); dist = Math.max(.9, Math.min(6, dist * Math.exp(e.deltaY * .0012))); setCam(); }, { passive: false });
+
+function setBone(i, kind, v) {
+  const k = byId[sel], mirror = document.getElementById("mirror").checked;
+  for (const n of mirror ? [i, 1 - i] : [i]) {
+    const a = k.cur[n];
+    if (!a.on && n !== i) Object.assign(a, { sh: SH0.slice(), d: k.cur[i].d.slice(), p: k.cur[i].p.slice(), shape: k.cur[i].shape });
+    if (kind === "f") { a.d = swing(a.d, a.f, v); a.p = orth(a.d, swing(a.p, a.f, v)); } // the hand turns with its forearm
+    a[kind] = v.slice(); a.on = true;
+  }
+  changed();
+}
+/** The fingers' direction (d) or where the palm faces (p). */
+function setHand(i, kind, v) {
+  const k = byId[sel];
+  for (const n of document.getElementById("mirror").checked ? [i, 1 - i] : [i]) {
+    const a = k.cur[n];
+    if (kind === "d") { a.d = v.slice(); a.p = orth(a.d, a.p); } else a.p = orth(a.d, v);
+    a.on = true;
+  }
+  changed();
+}
+
+// ---------- UI
+const $ = id => document.getElementById(id);
+function buildList() {
+  const L = $("list"); L.innerHTML = "";
+  for (const g of GROUPS) {
+    const h = document.createElement("div"); h.className = "grp"; h.textContent = g.name; L.appendChild(h);
+    for (const it of g.items) {
+      const b = document.createElement("button"); b.className = "kf"; b.dataset.id = it.id; b.type = "button";
+      b.innerHTML = '<span></span><span class="dot" title="Edited"></span>'; b.firstChild.textContent = it.label;
+      b.onclick = () => select(it.id); L.appendChild(b);
+    }
+  }
+}
+function refreshList() { document.querySelectorAll(".kf").forEach(b => { b.classList.toggle("edited", isEdited(byId[b.dataset.id])); b.setAttribute("aria-current", b.dataset.id === sel ? "true" : "false"); }); }
+function select(id) {
+  sel = id; const k = byId[id]; play.T = 0; syncPlayUI();
+  $("title").textContent = k.label;
+  $("src").textContent = k.src + (k.kind === "bones" ? " · numbers from the source" : " · start values measured from the running rig");
+  $("note").value = k.note; buildArms(); syncBody(); layout(); refreshList();
+}
+function syncBody() { const k = byId[sel]; $("lean").value = k.body.lean; $("hip").value = k.body.hip; $("leanv").textContent = k.body.lean.toFixed(2) + " rad"; $("hipv").textContent = k.body.hip.toFixed(2) + " m"; }
+
+function buildArms() {
+  const k = byId[sel], A = $("arms"); A.innerHTML = "";
+  [1, 0].forEach(i => {
+    const a = k.cur[i], d = document.createElement("div"); d.className = "arm";
+    d.innerHTML = `<h3><span>${i ? "Right arm" : "Left arm"} <span class="sub" style="font-weight:400">(arm ${i})</span></span><button class="b" type="button" data-on="${i}">${a.on ? "Rest this arm" : "Pose this arm"}</button></h3>`;
+    ["u", "f"].forEach(kind => {
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = `<label>${kind === "u" ? "Upper arm" : "Forearm"}</label>`;
+      ["out", "up", "ahead"].forEach((nm, j) => {
+        const inp = document.createElement("input"); inp.type = "number"; inp.step = ".05"; inp.value = r2(a[kind][j]); inp.id = `n-${i}-${kind}-${j}`; inp.setAttribute("aria-label", `${i ? "Right" : "Left"} ${kind === "u" ? "upper arm" : "forearm"} ${nm}`);
+        inp.disabled = !a.on;
+        inp.onchange = () => { const v = a[kind].slice(); v[j] = parseFloat(inp.value) || 0; if (Math.hypot(...v) < .05) v[j] = 1; setBone(i, kind, norm(v)); };
+        row.appendChild(inp);
+      });
+      d.appendChild(row);
+    });
+    [["d", "Fingers"], ["p", "Palm faces"]].forEach(([kind, label]) => {
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = `<label>${label}</label>`;
+      ["out", "up", "ahead"].forEach((nm, j) => {
+        const inp = document.createElement("input"); inp.type = "number"; inp.step = ".05"; inp.value = r2(a[kind][j]); inp.id = `n-${i}-${kind}-${j}`; inp.setAttribute("aria-label", `${i ? "Right" : "Left"} hand ${label.toLowerCase()} ${nm}`);
+        inp.disabled = !a.on;
+        inp.onchange = () => { const v = a[kind].slice(); v[j] = parseFloat(inp.value) || 0; if (Math.hypot(...v) < .05) v[j] = 1; setHand(i, kind, norm(v)); };
+        row.appendChild(inp);
+      });
+      d.appendChild(row);
+    });
+    const sr = document.createElement("div"); sr.className = "row";
+    sr.innerHTML = `<label>Hand shape</label><select id="shape-${i}" aria-label="${i ? "Right" : "Left"} hand shape" style="grid-column: span 3" ${a.on ? "" : "disabled"}><option value="open">Open</option><option value="fist">Fist</option><option value="point">Pointing</option></select>`;
+    d.appendChild(sr);
+    sr.querySelector("select").value = a.shape;
+    sr.querySelector("select").onchange = e => { for (const n of $("mirror").checked ? [i, 1 - i] : [i]) k.cur[n].shape = e.target.value; changed(); };
+    const p = document.createElement("div"); p.className = "pos"; p.id = "pos-" + i; d.appendChild(p);
+    A.appendChild(d);
+  });
+  A.querySelectorAll("[data-on]").forEach(b => b.onclick = () => {
+    const i = +b.dataset.on, a = k.cur[i]; a.on = !a.on;
+    if (a.on && !k.orig[i].on) { const o = k.cur[1 - i]; if (o.on) { a.u = o.u.slice(); a.f = o.f.slice(); } }
+    changed(true);
+  });
+  refreshNumbers();
+}
+const handPos = a => { const e = a.u.map((v, j) => a.sh[j] + v * UPPER); return { e, w: e.map((v, j) => v + a.f[j] * FORE) }; };
+function refreshNumbers() {
+  const k = byId[sel];
+  [0, 1].forEach(i => {
+    const a = k.cur[i];
+    const shp = $(`shape-${i}`); if (shp && document.activeElement !== shp) shp.value = a.shape;
+    ["u", "f", "d", "p"].forEach(kind => a[kind].forEach((v, j) => { const inp = $(`n-${i}-${kind}-${j}`); if (inp && document.activeElement !== inp) inp.value = r2(v); }));
+    const el = $("pos-" + i); if (!el) return;
+    const { e, w } = handPos(a);
+    const f = v => v.map(x => (x * 100).toFixed(0).padStart(4)).join(" ");
+    el.innerHTML = a.on ? `elbow <b>${f(e)}</b> cm<br>hand&nbsp; <b>${f(w)}</b> cm <span class="sub">(out, up, ahead of the chest line)</span>` : "At rest. Not part of this keyframe.";
+  });
+}
+function changed(rebuild) {
+  if (rebuild) buildArms(); else refreshNumbers();
+  layout(); refreshList(); persistLocal(); $("saved").textContent = "";
+}
+$("note").addEventListener("input", e => { byId[sel].note = e.target.value; refreshList(); persistLocal(); });
+$("reset").onclick = () => { const k = byId[sel]; k.cur = clone(k.orig); k.body = { ...k.obody }; k.note = ""; $("note").value = ""; syncBody(); changed(true); };
+$("pad").addEventListener("input", e => { padK = +e.target.value; layout(); });
+$("hand").addEventListener("input", e => { handS = +e.target.value; $("handv").textContent = "×" + handS.toFixed(2); persistLocal(); layout(); });
+$("handv").textContent = "×" + handS.toFixed(2);
+$("lean").addEventListener("input", e => { byId[sel].body.lean = +e.target.value; syncBody(); changed(); });
+$("hip").addEventListener("input", e => { byId[sel].body.hip = +e.target.value; syncBody(); changed(); });
+window.addEventListener("keydown", e => {
+  if (e.target.matches("input,textarea,select")) return;
+  const i = ids.indexOf(sel);
+  if (e.key === "ArrowDown" || e.key === "j") { select(ids[Math.min(ids.length - 1, i + 1)]); e.preventDefault(); }
+  if (e.key === "ArrowUp" || e.key === "k") { select(ids[Math.max(0, i - 1)]); e.preventDefault(); }
+});
+
+// ---------- Playback
+function syncPlayUI() {
+  $("play").textContent = play.on && play.running ? "Pause" : "Play";
+  $("stop").disabled = !play.on; $("scrub").disabled = !play.on;
+  $("scrub").max = loopLen();
+}
+$("play").onclick = () => {
+  if (!play.on) { play.on = true; play.running = true; play.T = 0; }
+  else play.running = !play.running;
+  syncPlayUI(); layout();
+};
+$("stop").onclick = () => { play.on = false; play.running = false; syncPlayUI(); layout(); };
+$("scrub").addEventListener("input", e => { play.running = false; play.T = +e.target.value; syncPlayUI(); layout(); });
+$("speed").onchange = e => { play.speed = +e.target.value; };
+$("ghostmo").onchange = e => { play.ghost = e.target.checked; layout(); };
+
+// ---------- Export / save
+const fv = v => `F.V(${v.map(x => r2(x).toFixed(2)).join(", ")})`;
+function exportOne(k) {
+  const arms = {};
+  k.cur.forEach((a, i) => {
+    const o = k.orig[i], name = i ? "right_arm1" : "left_arm0";
+    if (!a.on && !o.on) return;
+    const e = { posed: a.on, upper_out_up_ahead: a.u.map(r2), fore_out_up_ahead: a.f.map(r2) };
+    if (a.on) {
+      const { e: el, w } = handPos(a);
+      e.elbow_from_chest_m = el.map(r2); e.hand_from_chest_m = w.map(r2);
+      e.pole_out_up_ahead = norm(el.map((v, j) => v - (a.sh[j] + w[j]) / 2)).map(r2);
+      if (k.kind === "bones") e.code = `Bones(shoulder, ${fv(a.u)}, ${fv(a.f)}, upper, fore)`;
+    }
+    if (a.on) {
+      e.hand = { shape: a.shape, fingers_out_up_ahead: a.d.map(r2), palm_faces_out_up_ahead: a.p.map(r2) };
+      if (handDiff(a, o)) e.hand.was = { shape: o.shape, fingers_out_up_ahead: o.d.map(r2), palm_faces_out_up_ahead: o.p.map(r2) };
+    }
+    if (o.on) { e.was_upper = o.u.map(r2); e.was_fore = o.f.map(r2); e.was_hand_from_chest_m = handPos(o).w.map(r2); e.was_elbow_from_chest_m = handPos(o).e.map(r2); }
+    arms[name] = e;
+  });
+  const out = { id: k.id, label: k.label, source: k.src, how: HOW[k.kind], note: k.note.trim(), arms };
+  if (Math.abs(k.body.lean - k.obody.lean) > .005 || Math.abs(k.body.hip - k.obody.hip) > .005) out.body = { lean_forward_rad: r2(k.body.lean), hip_height_m: r2(k.body.hip), was_lean: r2(k.obody.lean), was_hip: r2(k.obody.hip) };
+  return out;
+}
+const HOW = {
+  bones: "Replace the Bones(shoulder, upper-arm direction, forearm direction, ...) numbers named in `code`.",
+  target: "The game places the hand at a target and bends the elbow toward a pole (ArmGoal(hand, pole)). Move the named target or pole so the hand and elbow land where hand_from_chest_m and elbow_from_chest_m say.",
+  hold: "A held weapon: the game places each hand on the weapon from the body each frame (HumanRig.Grips). Change the grip points so the hands land where hand_from_chest_m says; the elbow bends toward pole_out_up_ahead.",
+};
+const editedList = () => ids.map(i => byId[i]).filter(isEdited);
+const doc = () => ({ hand_scale: handS, hand_note: "The game draws a hand as a small ball with no orientation. Hands here are 0.19 m long at scale 1 (an adult's), shown at hand_scale; every pose has fingers_out_up_ahead (the fingers' direction), palm_faces_out_up_ahead and a shape (open, fist, pointing). The starting values were guessed per pose and may have been corrected by the owner.", about: "Pose Bench edits. Unit vectors are [out, up, ahead] in the body's frame (out is toward the arm's own side); positions are metres from the chest line (the point between the shoulders) for a 1.72 m reference person: upper arm 0.303 m, forearm 0.284 m. Lean is forward tilt of the torso about the hips, in radians; hip height is above the feet.", keyframes: editedList().map(exportOne) });
+function persistLocal() { try { localStorage.setItem("posebench3", JSON.stringify({ hand: handS, kfs: ids.map(i => [i, byId[i].cur, byId[i].note, byId[i].body]) })); } catch (e) {} }
+function loadLocal() { try { const s = JSON.parse(localStorage.getItem("posebench3") || "null"); if (s) { handS = s.hand || handS; $("hand").value = handS; s.kfs.forEach(([i, cur, note, body]) => { const k = byId[i]; if (k && Array.isArray(cur) && cur.length === 2 && cur.every(a => a.sh && a.d)) { k.cur = cur; k.note = note || ""; if (body) k.body = body; } }); } } catch (e) {} }
+/** Saved edits from before hands had an orientation get the starting hand. */
+function withHands(k, arms) { return arms.map((a, i) => a.d ? a : { ...a, d: k.orig[i].d.slice(), p: k.orig[i].p.slice(), shape: k.orig[i].shape }); }
+
+$("copy").onclick = async () => {
+  const text = JSON.stringify(doc(), null, 2), out = $("out");
+  out.value = text; out.classList.add("on");
+  try { await navigator.clipboard.writeText(text); $("saved").textContent = "Copied."; } catch (e) { out.select(); $("saved").textContent = "Select and copy the text below."; }
+};
+
+let db = null;
+$("save").onclick = async () => {
+  const list = editedList();
+  if (!db) { $("saved").textContent = "Saving needs a signed-in viewer. Use Copy edits as JSON instead."; $("saved").className = "status bad"; return; }
+  try {
+    for (const k of list) await db.collection("keyframes").doc(k.id).set({ label: k.label, savedAt: new Date().toISOString(), json: JSON.stringify(exportOne(k)), cur: JSON.stringify({ arms: k.cur, body: k.body, hand: handS }), note: k.note });
+    $("saved").textContent = list.length ? `Saved ${list.length} keyframe${list.length > 1 ? "s" : ""}. Tell Claude when you're done.` : "Nothing edited yet."; $("saved").className = "status ok";
+  } catch (e) { $("saved").textContent = "Save failed: " + (e.message || e.code); $("saved").className = "status bad"; }
+};
+
+// ---------- Boot
+buildList(); loadLocal(); setTheme(); setCam(); select(sel); resize();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { setTheme(); layout(); });
+new MutationObserver(() => { setTheme(); layout(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+$("status").textContent = "Drag a hand or an elbow";
+(async () => {
+  try {
+    const c = window.claude && await window.claude.use("db"); if (!c) return;
+    db = c;
+    const snap = await db.collection("keyframes").get();
+    snap.docs.forEach(d => {
+      const v = d.data(), k = byId[d.id];
+      if (!k || !v || !v.cur) return;
+      try {
+        const cur = JSON.parse(v.cur);
+        if (cur && Array.isArray(cur.arms) && cur.arms.length === 2 && cur.arms.every(a => a.sh)) { k.cur = withHands(k, cur.arms); if (cur.body) k.body = cur.body; k.note = v.note || ""; }
+      } catch (e) {}
+    });
+    select(sel);
+    $("status").textContent = "Saved edits loaded";
+  } catch (e) {}
+})();
+</script>

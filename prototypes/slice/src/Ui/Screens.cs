@@ -49,7 +49,7 @@ public partial class CockpitConsole : Node3D
     {
         Screen = new WorldScreen { Name = "Screen", Pixels = new Vector2I(960, 600), SizeMeters = new Vector2(0.48f, 0.30f), Pickable = false, MovesCamera = false, Bezel = 0.02f };
         AddChild(Screen);
-        _page = new ConsolePage();
+        _page = new ConsolePage { Game = Game };
         Screen.SetContent(_page);
         Visible = false;
     }
@@ -64,9 +64,11 @@ public partial class CockpitConsole : Node3D
             if (seated != null)
             {
                 Reparent(seated.Node, false);
-                // Low in front of the seat, tilted back toward the pilot's eye.
-                Vector3 seat = seated.Seat.Value.ToGodot();
-                Transform = new Transform3D(new Basis(Vector3.Right, -0.55f), seat + new Vector3(0f, 0.62f, -0.62f));
+                // Standing on the chair's console, its bezel's back foot on the edge nearest the pilot,
+                // turned to face the pilot's eye.
+                Vector3 edge = seated.ConsoleEdge.ToGodot();
+                Basis face = Basis.LookingAt(seated.Eye.ToGodot() - edge, seated.ChairBasis.Y, useModelFront: true);
+                Transform = new Transform3D(face, edge + face.Y * (Screen.SizeMeters.Y / 2f + Screen.Bezel) + face.Z * 0.052f);
             }
             Visible = seated != null;
             Screen.MarkDirty();
@@ -77,12 +79,13 @@ public partial class CockpitConsole : Node3D
     public sealed partial class ConsolePage : SlicePage
     {
         public Vessel Vessel;
+        public Game.Game Game;
 
         protected override string Signature()
         {
             if (Vessel?.Stats is not HandlingStats st) return Vessel == null ? "none" : $"pod|{Vessel.Structure.Mode}|{Vessel.ModeWarning}";
             VesselController c = Vessel.Controller;
-            return $"{Vessel.Structure.Mode}|{Vessel.ModeWarning}|{st.Mass:F1}|{st.LiftMargin:F0}|{Vessel.Body.Velocity.Length():F0}|{Vessel.Body.Position.Y:F0}|{c?.Gear?.Deployed}|{c?.Frozen}|{Vessel.Flight.State.Cruise}|{c?.ConsoleMessage}";
+            return $"{Vessel.Structure.Mode}|{Vessel.ModeWarning}|{st.Mass:F1}|{st.LiftMargin:F0}|{Vessel.Body.Velocity.Length():F0}|{Vessel.Body.Position.Y:F0}|{Vessel.Flight.Top:F0}|{c?.Gear?.Deployed}|{c?.Frozen}|{Vessel.Flight.State.Cruise}|{c?.ConsoleMessage}";
         }
 
         public override void _Draw()
@@ -97,17 +100,17 @@ public partial class CockpitConsole : Node3D
                 {
                     // A core with nothing to fly on: what it is set to, and what its mode lacks.
                     this.Header(w, Vessel.Name.ToUpperInvariant(), ModeFit.Name(Vessel.Structure.Mode), C.Accent2);
-                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), Vessel.ModeWarning ?? "Anchored: no flight systems in use.", Vessel.ModeWarning == null ? C.Text : C.Warn);
-                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "Mode: Tab menu, CORE tab.", C.Dim);
+                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), Vessel.ModeWarning ?? "ANCHORED · NO FLIGHT", Vessel.ModeWarning == null ? C.Text : C.Warn);
+                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "MODE · [TAB] CORE", C.Dim);
                     return;
                 }
                 this.Header(w, Vessel.Name.ToUpperInvariant(), "BEACON", C.Accent2);
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), "Distress beacon transmitting.", C.Text);
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "No engines: this pod came down once.", C.Dim);
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "Your locker: E where the lamp is green.", C.Dim);
+                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), "DISTRESS BEACON · ON", C.Text);
+                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "ENGINES · NONE", C.Dim);
+                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "LOCKER · [E] GREEN LAMP", C.Dim);
                 return;
             }
-            this.Header(w, Vessel.Name.ToUpperInvariant(), st.ClassLabel.ToUpperInvariant());
+            this.Header(w, Vessel.Name.ToUpperInvariant(), ModeFit.Name(Vessel.Structure.Mode));
             float y = 112;
             void Row(string label, string value, Color colour)
             {
@@ -118,18 +121,18 @@ public partial class CockpitConsole : Node3D
             Row("ACCEL F / B", $"{st.Accel(Direction.Forward):F1} / {st.Accel(Direction.Back):F1} m/s²", C.Text);
             Row("ACCEL UP / SIDE", $"{st.Accel(Direction.Up):F1} / {st.Accel(Direction.Right):F1} m/s²", C.Text);
             Row("TURN", $"{st.TurnRate:F0} °/s", C.Text);
-            Row("TOP SPEED", $"{st.TopSpeed:F0} m/s", C.Text);
-            Row("LIFT MARGIN", $"{st.LiftMargin:+0;-0} kN ({st.SpareLift:F1} t spare)", st.CanLiftOff ? C.Good : C.Danger);
+            Row("TOP SPEED", $"{Vessel.Flight.Top:F0} m/s", C.Text);
+            Row("LIFT MARGIN", $"{st.LiftMargin:+0;-0} kN · {st.SpareLift:F1} t SPARE", st.CanLiftOff ? C.Good : C.Danger);
             Row("MASS", $"{st.Mass:F2} t", C.Text);
             y += 6;
             this.Block(new Rect2(0, y, w, 4), C.Rule);
             y += 18;
             VesselController c = Vessel.Controller;
-            // Over the cap you are in space, and "up" is away from the globe.
-            var space = Vessel.Zone as Slice.Orbit.OrbitZone;
-            string state = c == null ? "" : space != null ? "IN SPACE" : c.Frozen ? "LANDED" : c.Gear?.Deployed == true ? "GEAR DOWN" : "FLYING";
-            float altitude = space != null ? space.SurfaceHeight(space.ToGlobe(Vessel.Body.Position).Length()) : Vessel.Body.Position.Y;
-            this.Text(UiTheme.Mono, 28, new Vector2(30, y), $"{Vessel.Body.Velocity.Length():F0} m/s   ALT {altitude:F0} m   {state}{(Vessel.Flight.State.Cruise ? "  CRUISE" : "")}", C.Text);
+            // Over the cap you are in space: the HUD's own flight line there.
+            string state = c == null ? "" : c.Frozen ? "LANDED" : c.Gear?.Deployed == true ? "GEAR DOWN" : "FLYING";
+            string line = Vessel.Zone is Slice.Orbit.OrbitZone ? Game.Spaceflight.FlightLine(Vessel)
+                : $"{Vessel.Body.Velocity.Length():F0} m/s   ALT {Vessel.Body.Position.Y:F0} m   {state}{(Vessel.Flight.State.Cruise ? "  CRUISE" : "")}";
+            this.Text(UiTheme.Mono, 28, new Vector2(30, y), line, C.Text);
             string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : st.LiftWarning;
             if (!string.IsNullOrEmpty(message)) this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(30, y + 44), message, C.Warn);
         }

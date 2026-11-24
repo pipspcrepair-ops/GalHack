@@ -27,6 +27,9 @@ public partial class Player : CharacterBody3D
     /// <summary>For tests: walk toward this point instead of reading the keyboard.</summary>
     public Vector3? AutoTarget;
 
+    /// <summary>For tests: crouch as a player would under something low (a jammed door's leaf).</summary>
+    public bool AutoCrouch;
+
     /// <summary>Asks the place whether there is a ladder at a point (global): then the body climbs.</summary>
     public System.Func<Vector3, bool> LadderQuery;
     public bool Climbing { get; private set; }
@@ -96,7 +99,7 @@ public partial class Player : CharacterBody3D
             v.Y = climb;
         }
         else if (!onFloor) v.Y -= Gravity * dt;
-        Crouch(onFloor && Held(Key.Ctrl));
+        Crouch(onFloor && (Held(Key.Ctrl) || AutoCrouch));
 
         var move = new Vector2(Axis(Key.D, Key.A), Axis(Key.S, Key.W)).LimitLength(1f);
         float speed = Crouching ? CrouchSpeed : Held(Key.Shift) ? SprintSpeed : WalkSpeed;
@@ -107,7 +110,8 @@ public partial class Player : CharacterBody3D
             Vector3 to = (target - GlobalPosition) with { Y = 0 };
             wish = to.Length() > 0.05f ? to.Normalized() * WalkSpeed : Vector3.Zero;
         }
-        float accel = onFloor ? GroundAccel : AirAccel;
+        // On a ladder you hold on: your feet don't carry you on past it as they would through the air.
+        float accel = onFloor || Climbing ? GroundAccel : AirAccel;
         v.X = Mathf.MoveToward(v.X, wish.X, accel * dt);
         v.Z = Mathf.MoveToward(v.Z, wish.Z, accel * dt);
         if ((onFloor || Climbing) && Held(Key.Space) && !Crouching && AutoTarget == null) v.Y = JumpSpeed;

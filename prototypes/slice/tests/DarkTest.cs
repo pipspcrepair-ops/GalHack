@@ -94,15 +94,17 @@ public partial class DarkTest : Node
         return Light.LightAt(p);
     }
 
-    /// <summary>A sealed box of large blocks, a core inside: 8 m across inside, and nothing in it that lights.</summary>
+    /// <summary>A sealed box of iron, a core inside: 10 m across inside, and nothing in it that lights.</summary>
     static string SealedRoom()
     {
-        var b = new StringBuilder("schema galhack.blueprint\nversion 1\nname \"Sealed\"\ngrid large\nmode base\ngravity off\n");
+        // The room it was on the 2 m grid, each of its cells two 1 m blocks a side: 10 m inside, 6 m floor to ceiling.
+        var b = new StringBuilder("schema galhack.blueprint\nversion 1\nname \"Sealed\"\ngrid 1m\nmode base\ngravity off\n");
         for (int y = 0; y <= 4; y++)
         for (int z = -3; z <= 3; z++)
         for (int x = -3; x <= 3; x++)
-            if (y == 0 || y == 4 || Math.Abs(x) == 3 || Math.Abs(z) == 3) b.Append($"block {x} {y} {z} steel\n");
-        b.Append("block 2 1 2 core\n");
+            if (y == 0 || y == 4 || Math.Abs(x) == 3 || Math.Abs(z) == 3)
+                b.Append($"block {2 * x}..{2 * x + 1} {2 * y}..{2 * y + 1} {2 * z}..{2 * z + 1} iron-plated\n");
+        b.Append("block 4 2 4 core\n");
         return b.ToString();
     }
 
@@ -165,10 +167,10 @@ public partial class DarkTest : Node
         Check(At(centre, noon) < NearZero, "with the lamp gone it's black again");
 
         // A hole in the wall: daylight comes in, the most near the hole.
-        for (int y = 1; y <= 2; y++) room.Structure.Clear(new Int3(3, y, 0));
+        for (int y = 2; y <= 5; y++) for (int x = 6; x <= 7; x++) for (int z = 0; z <= 1; z++) room.Structure.Clear(new Int3(x, y, z)); // the old 2 m cells (3, 1..2, 0)
         foreach (int x in Refreshed()) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
-        float byHole = At(wall, noon), farSide = At(room.ToWorld(new System.Numerics.Vector3(-5f, 4f, 0f)), noon);
+        float byHole = At(wall, noon), farSide = At(room.ToWorld(new System.Numerics.Vector3(-4.4f, 4f, 0f)), noon);
         Check(byHole > 0.15f, $"a breach lets daylight in ({byHole:F2} beside it)");
         Check(farSide < byHole, $"and it fades across the room ({farSide:F3} on the far side)");
 

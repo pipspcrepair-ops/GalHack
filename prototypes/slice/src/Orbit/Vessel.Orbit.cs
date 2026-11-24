@@ -24,7 +24,7 @@ public sealed partial class Vessel
     /// its floor), its hull and cabin world like any structure's, so it is boarded, walked or floated
     /// through, looted and taken apart the same way.
     /// </summary>
-    public static Vessel SpawnDerelict(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation)
+    public static Vessel SpawnDerelict(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation, System.Collections.Generic.List<GalHack.Physics.ChunkColliders> colliders = null, bool drawLater = false)
     {
         MassProperties mass = MassOf(s);
         Body body = zone.Physics.Register(new BodySpec
@@ -44,7 +44,7 @@ public sealed partial class Vessel
         zone.AddChild(hull);
         vessel.Binding = zone.Host.Bind(body, new HullBinding(hull));
         vessel.HullShapes = new StructureShapes(hull);
-        vessel.Furnish(hull);
+        vessel.Furnish(hull, drawLater, colliders); // drawn and made solid a chunk at a time later, if it is set adrift in play
         vessel.Binding.Teleport();
         vessel.Register();
         return vessel;
@@ -52,15 +52,19 @@ public sealed partial class Vessel
 
     /// <summary>
     /// A core placed in a wreck claims it (design: any wreck with no core can be claimed): it is
-    /// yours, and its core's gravity holds whoever is aboard to its floor. A Big Core makes it a
-    /// station in Base Mode, holding still in space; a Small Core a craft in Vessel Mode, ready to fly.
+    /// yours, and its core's gravity holds whoever is aboard to its floor. A wreck claimed in orbit
+    /// is a craft in Flight Mode, ready to fly; a grounded one a base where it lies.
     /// </summary>
-    public void Claimed(float gravity)
+    public void Claimed(float gravity, bool inOrbit)
     {
         Structure.GravityOn = true;
         Body.Core = new CoreGravity { On = true, Strength = gravity };
         Cabin.SetGravity(Body.Core);
-        if (BuildingBridge.IsSmall(Structure)) TakeFlight();
+        if (inOrbit)
+        {
+            Structure.Mode = CoreMode.Flight;
+            TakeFlight();
+        }
         else
         {
             Structure.Mode = CoreMode.Base;

@@ -39,9 +39,9 @@ public static class Dressing
     static string? SpotTag(string purpose) => purpose switch
     {
         "market-hall" or "shop" or "market" or "stall" => "stall",
-        "office" or "workshop" or "control" or "galley" or "storage" or "warehouse" or "parts-store" or "loading-dock" or "plant" or "generator" => "work",
-        "mess" or "canteen" or "lobby" or "farm-kitchen" => "sit",
-        "quarters" or "apartment" or "shack" or "washroom" => "home",
+        "office" or "workshop" or "control" or "galley" or "storage" or "warehouse" or "parts-store" or "loading-dock" or "plant" or "generator" or "garage" or "store" => "work",
+        "mess" or "canteen" or "lobby" or "farm-kitchen" or "kitchen" or "living-room" => "sit",
+        "quarters" or "apartment" or "shack" or "washroom" or "bedroom" or "bathroom" or "study" => "home",
         "greenhouse" or "hydroponic shed" or "grow-room" or "hydroponics" or "garden" => "garden",
         "yard" or "corridor" or "square" or "plaza" => "chat",
         _ => null,
@@ -109,7 +109,7 @@ public static class Dressing
         // Animals by tech level: working beasts only where tech is low; stock where tech is low or
         // on any farm; elsewhere machines do that work. Pets anywhere. On a world, the living keep
         // the animals of its post-collapse level, whatever the ruins round them were.
-        string tech = inst.World is { } world && WorldProfile.Living(f, inst.State) ? WorldProfile.Tag(world.Now)
+        string tech = inst.World is { } world ? WorldProfile.Tag(world.LevelFor(f, inst.State))
             : layout.Variant?.Tech is { Length: > 0 } t ? t : settlement ? "low" : "mid";
         bool farm = f.Tags.Contains("farm");
         if (tech == "low" || farm)
@@ -149,7 +149,10 @@ public static class Dressing
         int tier = (int)inst.Rarity;
         var lvl = Decay.LevelAt(inst.Layout, cache.Cell.Y);
         tier += (int)MathF.Round(lvl.Wrongness * 2f);
+        // Deeper is richer by the level's own depth, not only its share of the place's: the fourth level down of a deep silo beats
+        // the bottom of a shallow bunker.
         if (lvl.Depth >= 2) tier++;
+        if (lvl.Depth >= 4) tier++;
         if (cache.InVault) tier += 1;
         if (cache.Secret) tier += 1 + (lvl.Depth >= 2 ? 1 : 0);
         if (inst.State == PoiState.Infested) tier += 1;   // danger pays
@@ -261,6 +264,22 @@ public static class Dressing
                 {
                     var d = rng.Pick(guards);
                     Spawn(d, EnemyKind.Guard, d.Name, true, (rng.Pick(vaultFloor), layout.VaultModule));
+                }
+                // The core's vault holds the place's heaviest guard (rule E5, owner 13 Nov), a gun covering its way in, and
+                // a guard in each room that leads to it.
+                if (inst.HasCore && layout.CoreModule >= 0 && layout.Modules[layout.CoreModule].Purpose == "core-vault")
+                {
+                    int cm = layout.CoreModule;
+                    var coreFloor = StateTransforms.FloorCells(inst, layout.Modules[cm], nav).Where(c => !used.Contains(c) && !inst.CoreCase.Contains(c) && c != inst.CoreCell && !nav.LadderAt(c)).ToList();
+                    rng.Shuffle(coreFloor);
+                    int heavy = 3 + Math.Min(2, (int)inst.Rarity);
+                    foreach (Int3 c in coreFloor.Take(heavy)) { var d = rng.Pick(guards); Spawn(d, EnemyKind.Guard, d.Name, true, (c, cm)); }
+                    if (turrets.Count > 0 && coreFloor.Skip(heavy).FirstOrDefault() is var gun && gun != default) { var d = rng.Pick(turrets); Spawn(d, EnemyKind.Turret, d.Name, true, (gun, cm)); }
+                    foreach (int n in layout.Links.Where(k => k.A == cm || k.B == cm).Select(k => k.A == cm ? k.B : k.A).Distinct())
+                    {
+                        var floor = StateTransforms.FloorCells(inst, layout.Modules[n], nav).Where(c => !used.Contains(c) && !nav.LadderAt(c) && !nav.LiftAt(c)).ToList();
+                        if (floor.Count > 0) { var d = rng.Pick(guards); Spawn(d, EnemyKind.Guard, d.Name, true, (rng.Pick(floor), n)); }
+                    }
                 }
                 Int3 side = layout.EntranceFacing.RotateCw(1).Vec();
                 foreach (int s in new[] { -2, 3 })

@@ -25,6 +25,9 @@ public sealed class RoomReport
     public IEnumerable<Room> Sealed => Rooms.Where(r => r.Sealed);
     public IEnumerable<Room> Leaking => Rooms.Where(r => !r.Sealed);
     public IEnumerable<Face> LeakFaces => Rooms.SelectMany(r => r.Leaks);
+
+    /// <summary>Open doors holding the outside back with a field (the structure's <see cref="Structure.DoorFields"/>), by anchor.</summary>
+    public readonly HashSet<Int3> FieldDoors = new();
 }
 
 /// <summary>
@@ -38,6 +41,10 @@ public sealed class RoomReport
 ///    and the outside (max-flow over unit faces), taken nearest the outside. That is exactly
 ///    the fewest faces to fill to seal the room: a missing hull block reports its own face, an
 ///    open door reports the doorway.
+///
+/// A force field that holds seals its cells like a wall. With door fields on, the outside is
+/// flooded with every open door held shut; the ones it meets are the outer doors and keep their
+/// field, the rest open again, so air still passes between rooms through an open inner door.
 /// </summary>
 public static class Rooms
 {
@@ -60,6 +67,14 @@ public static class Rooms
         for (int i = 0; i < grid.N; i++)
             if (grid.IsEdge(i) && grid.IsAir(i)) { label[i] = Outside; queue.Enqueue(i); }
         Flood(grid, label, queue, Outside, _ => true);
+
+        // Door fields: a door the outside reaches holds it back; any other opens again (the outside never touches it).
+        foreach (var anchor in grid.Doors.GroupBy(d => s.AnchorOf(grid.CellOf(d.Key))))
+        {
+            if (anchor.Any(d => Enumerable.Range(0, 6).Any(k => grid.Neighbour(d.Key, k) is var n && n >= 0 && label[n] == Outside)))
+                report.FieldDoors.Add(anchor.Key);
+            else foreach (var (i, open) in anchor) grid.Reopen(i, open);
+        }
 
         // Whatever is left is sealed.
         int next = Outside + 1;
@@ -235,13 +250,35 @@ public static class Rooms
             if (n > MaxCells) return;
             _seal = new byte[N];
             _occupied = new bool[N];
-            foreach (var (p, b) in s.Blocks())
+            foreach (var (p, b) in s.Cells())
             {
                 int i = Index(p - min);
                 _occupied[i] = true;
                 _seal[i] = s.Catalogue.SealMask(b);
+                if (!s.DoorFields || !b.Open || !s.TypeOf(b).IsDoor) continue;
+                Block shut = b;
+                shut.Flags &= ~BlockFlags.Open;
+                Doors[i] = _seal[i];
+                _seal[i] = s.Catalogue.SealMask(shut);
             }
+            foreach (ForceField f in s.Fields)
+                if (f.Holding)
+                    foreach (Int3 c in f.Cells())
+                    {
+                        if (!Inside(c - min)) continue;
+                        int i = Index(c - min);
+                        _occupied[i] = true;
+                        _seal[i] = 0x3f;
+                    }
         }
+
+        /// <summary>Open doors held shut by their fields (door fields on), with the faces they seal open.</summary>
+        public readonly Dictionary<int, byte> Doors = new();
+
+        /// <summary>An open door the outside never reaches: its own faces again.</summary>
+        public void Reopen(int i, byte open) => _seal[i] = open;
+
+        bool Inside(Int3 l) => l.X >= 0 && l.Y >= 0 && l.Z >= 0 && l.X < _nx && l.Y < _ny && l.Z < _nz;
 
         int Index(Int3 local) => local.X + _nx * (local.Y + _ny * local.Z);
 
@@ -256,7 +293,8 @@ public static class Rooms
         /// <summary>Air can be in this cell unless its block seals all six faces (a solid block).</summary>
         public bool IsAir(int i) => _seal[i] != 0x3f;
 
-        public bool IsOccupied(int i) => _occupied[i];
+        /// <summary>A block's shape takes this cell's air: it seals some face. A chair or ladder seals none and leaves room for a person.</summary>
+        public bool IsOccupied(int i) => _occupied[i] && _seal[i] != 0;
 
         public int Neighbour(int i, int d)
         {

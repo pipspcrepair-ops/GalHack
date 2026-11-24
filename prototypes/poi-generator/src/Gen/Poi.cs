@@ -60,18 +60,28 @@ public sealed class PoiInstance
     {
         if (Age != Age.OldWorld || module < 0 || module >= Layout.Modules.Count) return Age;
         var m = Layout.Modules[module];
-        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
-                          || Layout.Extras.Locks.Any(l => l.Blast && (Layout.Doorways[l.Doorway].ModuleA == module || Layout.Doorways[l.Doorway].ModuleB == module));
+        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cryo-niche" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
+                          || Layout.Extras.BlastDoors.Any(i => Layout.Doorways[i].ModuleA == module || Layout.Doorways[i].ModuleB == module);
         return sealedRoom ? Age.Preserved : Age.OldWorld;
     }
 
     /// <summary>Out in the weather: a yard, or a room open to the sky (a collapse breach, a ruin that lost its roof).</summary>
     /// <summary>A lived-in place's temper (settlements roll it; faction civilian places are peaceful until provoked).</summary>
     public Mood Mood;
+    /// <summary>Who's in it, where the world's theme decided (null: whoever its state left there).</summary>
+    public OccupancyRoll? Occupancy;
     /// <summary>Not hostile by default: its guards keep order and turn on you only if you start shooting (the standing system).</summary>
     public bool Friendly;
     /// <summary>Townsfolk as data for the ambient routine to come; null where nobody lives.</summary>
     public Townsfolk? Townsfolk;
+    /// <summary>How long ago and how hard its world fell (from the world's roll, or a century of neglect off one): how far decay has gone.</summary>
+    public RuinAge Ruin = RuinAge.Default;
+    /// <summary>The cells decay took out of the structure: torn edges show their bars beside them.</summary>
+    public readonly List<Int3> Fallen = new();
+    /// <summary>The ornament laid on it, element by element (<see cref="Ornament"/>).</summary>
+    public readonly List<Ornament.Piece> Ornaments = new();
+    /// <summary>What the shaping found of it, for the ornament (null until shaped).</summary>
+    public Shaping.Survey? Survey;
     /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>
     public float Blasted;
     /// <summary>Where something could have rooted, best first, and how many trees it wants at most (see <see cref="GrowthSpot"/>).</summary>
@@ -79,6 +89,8 @@ public sealed class PoiInstance
     public int GrowthWanted;
     /// <summary>The world it stands on, when placed on one: its tech levels decide the living's animals and gear.</summary>
     public WorldProfile? World;
+    /// <summary>The colours its world gives made things (set by <see cref="WorldPaint.Apply"/>), for anything dressed in it later: null off a world.</summary>
+    public WorldPaint? Paint;
     /// <summary>"New on old": held by people of a higher level than the ruins round it (the world round it shows the old level).</summary>
     public bool NewOnOld => World != null && World.NewOnOld(Layout.Family, State);
     /// <summary>The tech level it is built at on its world (the living at the post-collapse level, the old world at the pre-collapse one), or null off a world.</summary>
@@ -114,6 +126,11 @@ public sealed class PoiInstance
     public CellMask Protected = null!;
     public bool HasCore;
     public Int3 CoreCell;
+    /// <summary>The armoured glass round the core in its vault, if it stands in a case (empty if not).</summary>
+    public List<Int3> CoreCase = new();
+
+    /// <summary>Whether the core can be walked up to from what the way in reaches: itself, or (in a glass case, reached by breaking it) some pane of its case.</summary>
+    public bool CoreReached(NavGrid nav, HashSet<Int3> reach) => nav.AccessCell(CoreCell, reach) is Int3 || CoreCase.Any(c => nav.AccessCell(c, reach) is Int3);
     public List<Int3> CriticalPath = new();
     public List<LootCache> Caches = new();
     public List<TerminalLog> Terminals = new();
@@ -121,6 +138,10 @@ public sealed class PoiInstance
     public List<StoryProp> Story = new();
     public List<Int3> Growths = new();
     public List<LightSpot> Lights = new();
+    /// <summary>Faces painted to glow (a strip, a panel, a border): see PoiLights.PaintFace.</summary>
+    public List<LitFace> LitFaces = new();
+    /// <summary>The crops standing now: all of them where somebody farms, the hardiest third gone wild in a dead place.</summary>
+    public List<CropSpot> Crops = new();
     public List<SoundHook> Sounds = new();
     /// <summary>Tags for the view and a later pass: smoke, vents, spawn and patrol points.</summary>
     public List<Marker> Markers = new();
@@ -132,6 +153,8 @@ public sealed class PoiInstance
     public LayoutExtras Extras => Layout.Extras;
     public int LootValue => Caches.Sum(c => c.Value);
     public NavGrid Nav() => new(Blocks, Layout.Occupied, Layout.Extras.Lifts, Layout.Extras.InSpace);
+    /// <summary>The object a cell's block was built as (0: the place as a whole).</summary>
+    public int ObjectOf(Int3 q) => Layout.Objects.TryGetValue(q, out int o) ? o : 0;
     public float RemovedFraction => StructureBefore == 0 ? 0f : 1f - StructureAfter / (float)StructureBefore;
 }
 
@@ -148,9 +171,52 @@ public static class PoiFactory
                 ? Assembler.Build(lib, family, v, rarity, customSeed ?? v.Seed)
                 : Architect.Build(lib, family, v, rarity, customSeed ?? v.Seed, hints);
         if (customSeed != null) layout.Name = $"{v.Name} (seed {customSeed})";
+        RoofSlopes.Smooth(layout.Blocks, Round.Rims(layout.Extras.Rounds));
+        Structure.HeadFloors(layout);
+        Structure.LadderWalls(layout);
         Facade.Apply(layout, lib);
+        // On a world, the age it was built in (data/eras.txt): its materials, windows, roofs and corners.
+        if (hints?.Tech is TechLevel tech && EraPass.Enabled)
+            using (Prof.Time("era"))
+                EraPass.Apply(layout, tech);
+        // Last, with the walls as they will stand: each pane faces along the wall it is set in and keeps it through the years.
+        PaneFacing.Apply(layout.Blocks);
         return layout;
     }
+
+    /// <summary>
+    /// A place for one spawn on a world: laid out afresh from the spawn's own seed, so no two of a family's
+    /// places are one building (the family's variants are the plans and styles it draws from). If that seed
+    /// won't lay out, a few more are tried, then the variant's authored seed, then nothing.
+    /// </summary>
+    public static Layout? SpawnLayout(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, ulong spawn, LayoutHints? hints, out string? why)
+    {
+        why = null;
+        for (ulong k = 0; k < 3; k++)
+            try { return BuildLayout(lib, family, variant, rarity, Hash.Combine(spawn, 0x6A11UL, k), hints); }
+            catch (System.Exception e) { why ??= e.Message; System.Threading.Interlocked.Increment(ref Skipped); }
+        Layout? authored = TryLayout(lib, family, variant, rarity, null, hints, out string? whyAuthored);
+        if (authored == null) why ??= whyAuthored;
+        return authored;
+    }
+
+    /// <summary>
+    /// A layout for the world, which never throws: the rolled variant, then each of the family's others in
+    /// turn as the simpler fallback, and if none lays out (a broken roll, or data newer than the code that
+    /// reads it), nothing: the caller leaves the site out and <paramref name="why"/> says what went wrong.
+    /// </summary>
+    public static Layout? TryLayout(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, ulong? customSeed, LayoutHints? hints, out string? why)
+    {
+        why = null;
+        int n = System.Math.Max(1, family.Variants.Count);
+        for (int k = 0; k < n; k++)
+            try { return BuildLayout(lib, family, (variant + k) % n, rarity, customSeed, hints); }
+            catch (System.Exception e) { why ??= e.Message; System.Threading.Interlocked.Increment(ref Skipped); }
+        return null;
+    }
+
+    /// <summary>How many layouts the world asked for failed and fell back or were left out (tests read it).</summary>
+    public static int Skipped;
 
     /// <summary>How many spawns were rolled again because decay cut the way to the vault or the core (tests read it).</summary>
     public static int Respawns;
@@ -160,13 +226,13 @@ public static class PoiFactory
     /// vault or the core (it shouldn't: those paths are protected), the spawn is rolled again from a
     /// new sub-seed, up to three times.
     /// </summary>
-    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world = null)
+    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world = null, OccupancyRoll? occupancy = null)
     {
-        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed, world);
+        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed, world, occupancy);
         for (int attempt = 1; attempt <= 3 && !Reaches(inst); attempt++)
         {
             System.Threading.Interlocked.Increment(ref Respawns);
-            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL), world);
+            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL), world, occupancy);
         }
         return inst;
     }
@@ -255,10 +321,10 @@ public static class PoiFactory
         if (!nav.Standable(inst.Layout.EntranceCell)) return false;
         var reach = nav.Reachable(inst.Layout.EntranceCell);
         if (inst.Caches.Any(c => !c.Secret && nav.AccessCell(c.Cell, reach) is not Int3)) return false;
-        return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
+        return !inst.HasCore || inst.CoreReached(nav, reach);
     }
 
-    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world)
+    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world, OccupancyRoll? occupancy = null)
     {
         var inst = new PoiInstance
         {
@@ -266,6 +332,7 @@ public static class PoiFactory
             HasCore = layout.Family.HasCore(state), World = world,
         };
         inst.Age = PoiInstance.AgeFor(layout.Family, state, layout.Extras.InSpace);
+        inst.Ruin = world?.Ruin ?? RuinAge.Fallback;
         var rng = new Rng(Hash.Combine(layout.Seed ^ (ulong)layout.Rarity, spawnSeed, (ulong)state + 11));
 
         using (Prof.Time("fixtures")) Fixtures.Place(inst, rng.Fork("fixtures"));
@@ -283,6 +350,11 @@ public static class PoiFactory
         StateTransforms.Weather(inst, rng.Fork("weather")); // a century or two after the fall
         using (Prof.Time("decay")) Decay.Apply(inst, rng.Fork("decay"));
         using (Prof.Time("dressing")) Dressing.Apply(lib, inst, rng.Fork("dressing"));
+        // The core is not where the loot is (rule E5): no cache within 10 m of it, but the vault keeps one.
+        if (inst.HasCore)
+            foreach (var k in inst.Caches.Where(k => (k.Cell - inst.CoreCell) is var o && o.X * o.X + o.Y * o.Y + o.Z * o.Z < 100).ToList())
+                if (!k.InVault || inst.Caches.Count(v => v.InVault) > 1) { inst.Blocks.Set(k.Cell, Block.Air); inst.Caches.Remove(k); }
+        using (Prof.Time("aftermath")) StateTransforms.Aftermath(inst, rng.Fork("aftermath"));
         Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something
         // Repair after decay: anything the passes above left hanging in the air (a canopy cut off by a
         // ruin, a wall stub after the timber rotted) comes down. The flood fill in Spawn then checks the way in.
@@ -292,7 +364,28 @@ public static class PoiFactory
         // A plain ruin's weeds and moss come last, on what's left.
         if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
         if (state != PoiState.Active) StateTransforms.Rest(inst);
+        // What the rest pass took down may have been all a strand hung from: it comes down too.
+        Structure.DropUntethered(inst.Blocks);
         inst.Growth.RemoveAll(s => !Growth.Rootable(inst, s.Cell));
+        foreach (CropSpot c in layout.Extras.Crops)
+            if (inst.Blocks.Get(c.Cell).IsAir && (state == PoiState.Active || Hash.Cell(c.Cell, 0xC409) % 3 == 0)) inst.Crops.Add(c);
+        // Who's in it comes last, on the place as the years left it: the layout is whoever's.
+        if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
+        // Loose things come to rest, and nothing is left in the rock; then every directional piece faces as its spot says, whoever set it down.
+        using (Prof.Time("settle"))
+        {
+            Settle.Apply(inst);
+            PieceFacing.Apply(inst.Blocks, layout.Occupied, layout.Extras.InSpace);
+        }
+        // Then its plain cubes take the shapes its builders used (rule P6), round what is set down, not under it.
+        using (Prof.Time("shaping")) Shaping.Apply(inst);
+        // And the ornament its builders add, whole elements set out from its own lines (fins, masts, hoods, frames, bars).
+        using (Prof.Time("ornament")) Ornament.Apply(inst);
+        // How its faces are finished and how far the years took them, the walls' and roofs' fixed while their colours are their own.
+        PlaceLook.Stamp(inst);
+        // Made things in the world's own paint, as worn as the world: places, houses and city lots alike.
+        world?.Paint?.Apply(inst, spawnSeed);
+        PlaceLights.Tune(inst);
         return inst;
     }
 
@@ -331,6 +424,22 @@ public static class Fixtures
             Int3 core = coreSlot?.Cell ?? FreeCell(inst, coreModule, rng);
             g.Set(core, new Block(BlockType.Core, Material.Lumen, CoreColor, Role.Core));
             inst.CoreCell = core;
+            // In a core vault, one in two cores stands in a case of armoured glass to its ceiling: seen from the whole
+            // room, reached only by breaking through (never walled in where it can't be seen, never locked: owner, 13 Nov).
+            if (coreModule >= 0 && layout.Modules[coreModule].Purpose == "core-vault" && rng.Chance(0.5f))
+            {
+                var ring = new List<Int3>();
+                for (int y = 0; y <= 2; y++)
+                    for (int z = -1; z <= 1; z++)
+                        for (int x = -1; x <= 1; x++)
+                            if (x != 0 || z != 0 || y == 2) ring.Add(core + new Int3(x, y, z));
+                if (ring.All(c => g.Get(c).IsAir && layout.Occupied[c]) && ring.Where(c => c.Y == core.Y).All(c => Settle.Holds(g, inst.Nav(), c + Int3.Down)))
+                {
+                    var glass = new Block(BlockType.Cube, Material.Glass, new Rgb(0xa8, 0xdc, 0xe8), Role.Window);
+                    foreach (Int3 c in ring) g.Set(c, glass);
+                    inst.CoreCase = ring;
+                }
+            }
         }
 
         // Loot: every slot in the vault and every planned slot; about half of a kit's others.
@@ -338,12 +447,12 @@ public static class Fixtures
         {
             bool vault = slot.Module == layout.VaultModule;
             if (!vault && !slot.Sure && !rng.Chance(0.55f)) continue;
-            if (!g.Get(slot.Cell).IsAir) continue;
+            if (!g.Get(slot.Cell).IsAir || Passage(g, slot.Cell)) continue;
             var color = slot.Secret ? SecretViolet : vault ? CacheGold : accent;
             g.Set(slot.Cell, new Block(BlockType.Cache, Material.Alloy, color, Role.Loot, Dir.North, (byte)(vault || slot.Secret ? 1 : 0)));
             inst.Caches.Add(new LootCache { Cell = slot.Cell, Module = slot.Module, InVault = vault, Secret = slot.Secret });
         }
-        if (!inst.Caches.Any(c => c.InVault))
+        if (!inst.Caches.Any(c => c.InVault) && !Fences.Only(g))
         {
             Int3 c = FreeCell(inst, layout.VaultModule, rng);
             g.Set(c, new Block(BlockType.Cache, Material.Alloy, CacheGold, Role.Loot, Dir.North, 1));
@@ -357,39 +466,34 @@ public static class Fixtures
         if (chosen.Count == 0 && termSlots.Count > 0) chosen.Add(termSlots[0]);
         foreach (var s in chosen)
         {
-            if (!g.Get(s.Cell).IsAir) continue;
+            if (!g.Get(s.Cell).IsAir || Passage(g, s.Cell)) continue;
             g.Set(s.Cell, new Block(BlockType.Terminal, Material.Alloy, accent, Role.Terminal, FaceOpen(inst, s.Cell)));
             inst.Terminals.Add(new TerminalLog { Cell = s.Cell, Module = s.Module });
         }
 
-        // Doors in every doorway, and at the way in. They never block a path; locked ones need a
-        // keycard (or a hack, or a charge).
-        var locks = layout.Extras.Locks.ToDictionary(l => l.Doorway);
+        // Doors in every doorway, and at the way in. They never block a path: every one opens by hand.
         for (int i = 0; i < layout.Doorways.Count; i++)
         {
             var d = layout.Doorways[i];
             bool vaultDoor = d.ModuleB == layout.VaultModule;
-            byte state = locks.TryGetValue(i, out var lk) ? (lk.Blast ? DoorState.Blast : DoorState.Locked) : vaultDoor ? (byte)1 : (byte)0;
-            if (vaultDoor && state == 1 && layout.Family.Generator != Generator.Kit) state = DoorState.Locked;
-            var color = lk != null ? (lk.Blast ? new Rgb(0x5a, 0x5c, 0x58) : ClearanceColor(lk.Clearance)) : vaultDoor ? CacheGold.Scale(0.8f) : accent.Scale(0.85f);
-            var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
+            bool blast = layout.Extras.BlastDoors.Contains(i);
+            byte state = blast ? DoorState.Blast : vaultDoor && layout.Family.Generator == Generator.Kit ? (byte)1 : (byte)0;
+            var color = blast ? new Rgb(0x5a, 0x5c, 0x58) : vaultDoor ? CacheGold.Scale(0.8f) : accent.Scale(0.85f);
+            var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, layout.Extras.PlainDoorSteel ? Material.Steel : Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
             foreach (Int3 c in d.Cells) g.Set(c, b);
         }
         foreach (Int3 c in layout.ExitCells)
             g.Set(c, new Block(BlockType.Door, Material.Steel, accent.Scale(0.85f), Role.Door, layout.EntranceFacing));
     }
 
-    /// <summary>Keycard colours, shared with the doors they open.</summary>
-    public static Rgb ClearanceColor(string clearance) => clearance switch
-    {
-        "staff" => new Rgb(0x3f, 0xcf, 0x5e),
-        "science" => new Rgb(0x3d, 0x8b, 0xff),
-        "security" => new Rgb(0xff, 0xbf, 0x2e),
-        "command" => new Rgb(0xe0, 0x30, 0x30),
-        _ => new Rgb(0x9a, 0xa3, 0xad),
-    };
-
     /// <summary>Faces a terminal toward open floor, so its screen looks into the room.</summary>
+    /// <summary>A cell that is a way through, walled either side across it (a gap in a wall): nothing is set down in one, or it shuts the way.</summary>
+    static bool Passage(BlockGrid g, Int3 c)
+    {
+        bool S(Dir d) => BlockInfo.Collides(g.Get(c + d.Vec()).Type);
+        return S(Dir.East) && S(Dir.West) && !S(Dir.North) && !S(Dir.South) || S(Dir.North) && S(Dir.South) && !S(Dir.East) && !S(Dir.West);
+    }
+
     static Dir FaceOpen(PoiInstance inst, Int3 c)
     {
         var nav = inst.Nav();
@@ -404,13 +508,14 @@ public static class Fixtures
         var m = inst.Layout.Modules[module];
         var nav = inst.Nav();
         Int3 mid = new((m.Min.X + m.Max.X) / 2, m.Min.Y + 1, (m.Min.Z + m.Max.Z) / 2);
-        return m.Cells.Where(c => inst.Blocks.Get(c).IsAir && nav.Standable(c) && !nav.LadderAt(c) && !nav.LiftAt(c))
+        // Never on the way in itself (a yard that is only its approach, such as a warning post's, would wall it off).
+        return m.Cells.Where(c => c != inst.Layout.EntranceCell && inst.Blocks.Get(c).IsAir && nav.Standable(c) && !nav.LadderAt(c) && !nav.LiftAt(c))
             .OrderBy(c => c.Manhattan(mid)).FirstOrDefault(new Int3(m.Min.X + 1, m.Min.Y + 1, m.Min.Z + 1));
     }
 
     /// <summary>
     /// Marks the cells that keep every key place reachable: shortest paths from the way in to
-    /// the vault, the core, each cache, each terminal, each keycard and each key room, with
+    /// the vault, the core, each cache, each terminal and each key room, with
     /// headroom and the floor under them. Later passes may scar a place but never touch these cells.
     /// </summary>
     public static void Protect(PoiInstance inst)
@@ -434,7 +539,7 @@ public static class Fixtures
                 if (cache.InVault) vaultAccess ??= ac;
             }
         }
-        var fixtures = inst.Terminals.Select(t => t.Cell).Concat(layout.Extras.Keys.Select(k => k.Cell));
+        IEnumerable<Int3> fixtures = inst.Terminals.Select(t => t.Cell);
         if (inst.HasCore) fixtures = fixtures.Append(inst.CoreCell);
         foreach (Int3 fixture in fixtures)
         {

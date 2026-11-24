@@ -20,6 +20,8 @@ public sealed class PlacedModule
     public bool OnPath;
     /// <summary>The storey it stands on: 0 ground, positive up, negative below ground.</summary>
     public int Storey;
+    /// <summary>The object it is a room of (<see cref="Layout.Objects"/>; 0: the place's as a whole).</summary>
+    public int Object;
     /// <summary>Its purpose (architect rooms: lab, quarters, reactor...), or the template id.</summary>
     public string Purpose = "";
 
@@ -51,6 +53,8 @@ public sealed class Doorway
     public List<Int3> Cells = new();
     public Dir Facing;
     public int ModuleA, ModuleB;
+    /// <summary>A dangerous opening (an airlock): its door wears hazard stripes, as a blast door's does. A person's door never does.</summary>
+    public bool Hazard;
 }
 
 /// <summary>A socket nobody connected to, walled up.</summary>
@@ -74,6 +78,9 @@ public sealed class Layout
     public List<int> CriticalPath = new();
     public BlockGrid Blocks = null!;
     public CellMask Occupied = null!;
+    /// <summary>Which object each block was built as (a building with its wings, one tank, one container), where a site
+    /// builds more than one; a cell missing is the place's as a whole. An object's shape comes from the object alone.</summary>
+    public Dictionary<Int3, int> Objects = new();
     public Int3 EntranceCell;      // standing outside the way in
     public Dir EntranceFacing;     // pointing out of the building
     public List<Int3> ExitCells = new();
@@ -85,6 +92,10 @@ public sealed class Layout
     public int Attempts;
     public Kit Kit = null!;
     public LayoutExtras Extras = new();
+    /// <summary>The age it was built in on its world (data/eras.txt), or null off a world (as the kits drew it).</summary>
+    public TechLevel? Tech;
+    /// <summary>What its lamps glow in that age, or null for its kit's own light.</summary>
+    public Rgb? Lamp;
     /// <summary>Whether the generator had to repair or regenerate it (counted by the tests).</summary>
     public int Repairs, Regenerations;
 
@@ -338,14 +349,27 @@ public static class Assembler
             m.Purpose = m.Template.Id;
         }
 
-        // Doorways and the way in.
+        // Doorways and the way in. A socket may stand taller than the one door (DoorSize): the door takes its
+        // foot, and the wall closes over it in the module's own stuff, on both sides of the join.
+        List<Int3> Door(PlacedModule m, SocketDef sock)
+        {
+            var kit = m.Template.Kit;
+            int top = sock.Min.Y + DoorSize.Tall;
+            foreach (Int3 c in sock.Cells.Where(c => c.Y >= top))
+            {
+                Int3 w = m.World(c);
+                layout.Blocks.Set(w, kit.Palette[kit.CapEntry].Make(w, Dir.North));
+            }
+            return sock.Cells.Where(c => c.Y < top).Select(m.World).ToList();
+        }
         foreach (var link in s.Links)
         {
             var child = s.Modules[link.B];
             var sock = child.Shape.Sockets[link.SocketB];
+            if (link.SocketA >= 0) Door(s.Modules[link.A], s.Modules[link.A].Shape.Sockets[link.SocketA]);
             layout.Doorways.Add(new Doorway
             {
-                Cells = sock.Cells.Select(child.World).ToList(),
+                Cells = Door(child, sock),
                 Facing = sock.Facing,
                 ModuleA = link.A,
                 ModuleB = link.B,
@@ -353,7 +377,7 @@ public static class Assembler
         }
         var entrance = s.Modules[0];
         var exit = entrance.Shape.Sockets.First(k => k.Exterior);
-        layout.ExitCells = exit.Cells.Select(entrance.World).ToList();
+        layout.ExitCells = Door(entrance, exit);
         layout.EntranceFacing = exit.Facing;
         Int3 exitMin = layout.ExitCells.Aggregate(Int3.Min);
         layout.EntranceCell = exitMin + exit.Facing.Vec() * 2;

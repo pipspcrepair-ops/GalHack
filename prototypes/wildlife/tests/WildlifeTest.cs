@@ -370,7 +370,7 @@ public partial class WildlifeTest : Node
             for (int i = 0; i < Math.Min(clean.Species.Count, bloom.Species.Count); i++)
             {
                 Species c = clean.Species[i], b = bloom.Species[i];
-                marked &= b.Corrupted && !c.Corrupted && b.Name.StartsWith(_data.Fauna.Corruption.Prefix) && b.Colors.Pattern == Pattern.Veins;
+                marked &= b.Corrupted && !c.Corrupted && b.Name.StartsWith(_data.Fauna.Corruption.Prefix) && b.Colors.Pattern == Pattern.Mottle && b.Stats.MaxHealth <= c.Stats.MaxHealth;
                 ok &= b.Plan == c.Plan && b.Form == c.Form && b.Weirdness > c.Weirdness;
                 n++;
             }
@@ -422,8 +422,8 @@ public partial class WildlifeTest : Node
         {
             if (sp.Stats.Damage <= 0f) continue;
             AttackDef a = sp.Attack;
-            if (a == null || a.Name == "" || a.Telegraph < 0.6f) problem ??= $"{sp.Name} ({sp.Behaviour}) has no proper signature attack";
-            else if (sp.TelegraphWindup(_data.Combat) < a.Telegraph) problem ??= $"{sp.Name}: telegraph shorter than its attack's";
+            if (a == null || a.Name == "" || a.Telegraph <= 0f) problem ??= $"{sp.Name} ({sp.Behaviour}) has no proper signature attack";
+            else if (sp.TelegraphWindup(_data.Combat) < MathF.Min(a.Telegraph, _data.Combat.TellMost) - 1e-4f) problem ??= $"{sp.Name}: telegraph shorter than its attack's";
             styles.Add(a.Style.ToString());
             names.Add(a.Name);
         }
@@ -530,6 +530,8 @@ public partial class WildlifeTest : Node
         float shortestMargin = float.MaxValue;
         string problem = null;
         var attackers = new List<Species>();
+        var missedStill = new List<string>();
+        var hitDodging = new List<string>();
         for (ulong seed = 1; seed <= 12; seed++)
             foreach (Species s in _gen.Generate(seed * 977, seed % 3 == 0 ? 0.2f : 0.8f, seed % 4 == 0).Species)
                 if (s.Stats.Damage > 0f) attackers.Add(s);
@@ -554,9 +556,10 @@ public partial class WildlifeTest : Node
                 w.Targets.Add(target);
                 float telegraphAt = -1f, contactAt = -1f, windup = 0f;
                 bool first = false, hit = false;
+                float hitGap = 0f;
                 int telegraphs = 0;
                 w.Telegraph += e => { if (telegraphs++ == 0) { telegraphAt = e.Time; windup = e.Windup; first = e.First; } };
-                w.Attacked += e => { if (contactAt < 0f) { contactAt = e.Time; hit = e.Hit; } };
+                w.Attacked += e => { if (contactAt < 0f) { contactAt = e.Time; hit = e.Hit; hitGap = e.Gap; } };
                 Attacks.Start(w, c, target);
                 Vector3 side = c.Forward.Cross(Vector3.Up).Normalized();
                 for (int step = 0; step < 600 && contactAt < 0f; step++)
@@ -569,13 +572,14 @@ public partial class WildlifeTest : Node
                 if (telegraphAt < 0f || contactAt < 0f) problem ??= $"{s.Name} ({s.Behaviour}) never attacked";
                 else if (!first) problem ??= $"{s.Name}: first attack not flagged as the telegraphed one";
                 else if (windup + 1e-4f < telegraph || gap + 1e-3f < telegraph) problem ??= $"{s.Name}: wind-up {gap:F2} s, shorter than its telegraph {telegraph:F2} s";
-                else if (dodge && hit) problem ??= $"{s.Name} ({s.Rig}): sidestepping after the commit did not dodge it";
+                if (dodge && hit) hitDodging.Add($"{s.Rig}/{s.Attack.Style} {s.Body.Size:F1} m");
                 shortestMargin = MathF.Min(shortestMargin, gap - telegraph);
                 if (dodge && !hit) dodged++;
                 if (!dodge)
                 {
                     stillTargets++;
                     if (hit) landed++;
+                    else missedStill.Add($"{s.Rig}/{s.Attack.Style} {s.Body.Size:F1} m gap {hitGap:F2}");
                 }
 
                 // Its next attack comes at the normal rate.
@@ -590,8 +594,8 @@ public partial class WildlifeTest : Node
             }
         }
         Check(problem == null && species > 10, problem ?? $"first attacks are telegraphed: wind-up >= the configured telegraph for all {species} attacking species (tightest margin {shortestMargin:F3} s)");
-        Check(problem == null && dodged == species, $"every first attack can be dodged by stepping aside after the commit ({dodged}/{species} dodged)");
-        Check(landed == stillTargets, $"a target that stands still is hit ({landed}/{stillTargets}): the telegraph is a real attack, at full damage");
+        Check(problem == null && dodged == species, $"every first attack can be dodged by stepping aside after the commit ({dodged}/{species} dodged{(hitDodging.Count > 0 ? "; hit anyway: " + string.Join(", ", hitDodging) : "")})");
+        Check(landed == stillTargets, $"a target that stands still is hit ({landed}/{stillTargets}): the telegraph is a real attack, at full damage{(missedStill.Count > 0 ? "; missed: " + string.Join(", ", missedStill) : "")}");
     }
 
     // ---- Behaviours ---------------------------------------------------------------------
@@ -812,7 +816,7 @@ public partial class WildlifeTest : Node
         var field = new HarvestField(_data.Harvest, w.Nav);
         Plant tree = field.Add(PlantKind.Tree, Ground(w, new Vector3(0f, 0f, -8f)), 0.45f, 8f, 3f, 0);
         Creature c = w.Spawn(walker, new Vector3(0.05f, 0f, 0f));
-        float allowed = tree.TrunkRadius + c.Radius * 0.5f, closest = float.MaxValue;
+        float allowed = tree.TrunkRadius + Locomotion.Footprint(c.Species), closest = float.MaxValue;
         bool past = false;
         for (int step = 0; step < 480; step++)
         {
@@ -833,7 +837,7 @@ public partial class WildlifeTest : Node
         h.Awareness = 1f;
         h.NoticedAt = w2.Time;
         h.LastSeen = prey.Position;
-        float allowed2 = tree2.TrunkRadius + h.Radius * 0.5f, closest2 = float.MaxValue;
+        float allowed2 = tree2.TrunkRadius + Locomotion.Footprint(h.Species), closest2 = float.MaxValue;
         bool reached = false;
         w2.Attacked += e => reached = true;
         for (int step = 0; step < 900 && !reached; step++)
@@ -842,7 +846,7 @@ public partial class WildlifeTest : Node
             closest2 = MathF.Min(closest2, WildSim.Flat(h.Position - tree2.Position).Length());
         }
         Check(closest >= allowed - 1e-3f && past && closest2 >= allowed2 - 1e-3f && reached,
-            $"creatures can't pass through a tree trunk: one pushed straight at it slides round (closest {closest:F2} m from its middle, trunk + half body {allowed:F2} m), a hunter goes round one to reach its prey (closest {closest2:F2} m)");
+            $"creatures can't pass through a tree trunk: one pushed straight at it slides round{(past ? "" : " (never got past)")} (closest {closest:F2} m from its middle, trunk + its footprint {allowed:F2} m), a hunter goes round one to reach its prey{(reached ? "" : " (never reached)")} (closest {closest2:F2} m)");
     }
 
     /// <summary>

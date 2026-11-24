@@ -13,7 +13,7 @@ GalHack is an open-world space survival sandbox: the player wakes from cryosleep
 | World | Seeded procedural galaxy of star systems; every planet, orbit and space sector is its own instanced zone (a "playfield") |
 | Modes | Survival and Creative; single player and co-op over Steam for a group of friends; all players share one faction |
 | Session shape | Open-ended; an experienced player flies a small vessel within 1–2 hours and a capital ship within about 10, and exploring the galaxy never runs out |
-| Player fantasy | "From castaway to captain": find what's out there, survive it, and build the ship that takes you further |
+| Player fantasy | "From sleeper to captain": find what's out there, survive it, and build the ship that takes you further |
 | Primary platform | PC, mouse and keyboard |
 | Visual style | 1970s sci-fi paperback art inspired by Chris Foss: huge, chunky, boldly painted ships; alien designs get stranger the more alien their builders (section 5) |
 
@@ -50,7 +50,7 @@ GalHack is an open-world space survival sandbox: the player wakes from cryosleep
 
 ## 2. Design pillars
 
-Five pillars, led by discovery, carry one player fantasy, "from castaway to captain," and stand on a foundation of a persistent, shared universe. Every feature should serve at least one pillar and break none; when two pillars conflict, discovery wins. One rule sits above all of them: smooth play first (guiding rules below).
+Five pillars, led by discovery, carry one player fantasy, "from sleeper to captain," and stand on a foundation of a persistent, shared universe. Every feature should serve at least one pillar and break none; when two pillars conflict, discovery wins. One rule sits above all of them: smooth play first (guiding rules below).
 
 &#91;embedded content: design pillars · 1 fantasy, 5 pillars, 1 foundation\]
 
@@ -514,7 +514,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 
 - **XP sources:** exploring, discovering (first visits to planets, systems and POI types pay a bonus), looting, crafting, building, fighting, mining and harvesting. Automated turret kills give no XP, so the player must be present to grow.
 - **Level cap:** 25 (reference). Unlock points keep accruing past the cap, so veterans can eventually open the whole tree, but a player at the cap has had to specialise.
-- **Tech tree:** tabs for Base and Capital Vessel (one tab, since they share every block and component), Small and Hover Vessel (one tab, likewise, with hover plates a prerequisite for thrusters), Tools, Weapons and Misc. Each node has an unlock level, a point cost and a parent node. Everything is unlocked this way, guns included: skill points come from levelling up, and nodes sit behind their parent nodes and level bands. A player can unlock the whole tree by max level (this can be tuned down later if needed). Player levels run to 25, matching Empyrion and Reforged Eden 2, with something new to unlock at every level and more on offer than the player can afford at once, so each level is a choice. The player starts with 3 points, and levels alone cover the whole tree by 25. Unique alien equipment sits outside the tree: discovering and consuming a cyber module unlocks it for building, for the whole crew. Modules are hard to get, not tied to the late game: they sit in dangerous places, so a bold or skilled player can reach one early.
+- **Tech tree:** tabs for Structures, Tools, Weapons, Deco and Misc. Structures is one tree from the core (level 1, free): the base block and its shapes come with the core, each plate material is its own node, and each device is a chain of tiers, each tier under the one below, with bigger parts at higher tiers. Hover and flight are parallel branches, with hover plates a prerequisite for thrusters. Each node has an unlock level, a point cost and a parent node. Everything is unlocked this way, guns included: skill points come from levelling up, and nodes sit behind their parent nodes and level bands. A player can unlock the whole tree by max level (this can be tuned down later if needed). Player levels run to 25, matching Empyrion and Reforged Eden 2, with something new to unlock at every level and more on offer than the player can afford at once, so each level is a choice. The player starts with 3 points, and levels alone cover the whole tree by 25. Unique alien equipment sits outside the tree: discovering and consuming a cyber module unlocks it for building, for the whole crew. Modules are hard to get, not tied to the late game: they sit in dangerous places, so a bold or skilled player can reach one early.
 - **Reference gates:** hover vessel at level 1, portable constructor at 3, small vessel at 5, capital vessel at 7. Higher-tier devices sit deeper in each tab.
 
 **Exploration-gated items** (no recipe; found or bought only)

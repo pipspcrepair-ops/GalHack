@@ -16,22 +16,34 @@ public static class MeshBenchmark
 {
     public static void Run(Catalogue cat, Action<bool, string> check)
     {
-        GridDef large = cat.Grid(GridSize.Large);
         BlockType steel = cat.Type("steel"), hardened = cat.Type("hardened"), combat = cat.Type("combat"), glass = cat.Type("glass");
 
         // Exact counts on tiny cases.
-        var one = new Structure(cat, large);
+        var one = new Structure(cat);
         one.Set(Int3.Zero, Building.Make(one, steel));
         check(Triangles(one) == 12, "a lone cube is 6 quads");
         for (int x = 1; x < 8; x++) one.Set(new Int3(x, 0, 0), Building.Make(one, steel));
         check(Triangles(one) == 12, "a row of 8 identical cubes greedy-merges to 6 quads");
         one.Set(new Int3(3, 0, 0), Building.Make(one, hardened));
         check(Triangles(one) > 12 && Triangles(one) <= 28, $"a different material splits the merge ({Triangles(one)} triangles)");
-        var slope = new Structure(cat, large);
+        var slope = new Structure(cat);
         slope.Set(Int3.Zero, Building.Make(slope, steel, cat.Shape("slope")));
         check(Triangles(slope) == 8, "a slope is 2 squares, 1 ramp and 2 triangles (8 triangles)");
         slope.Set(new Int3(0, 0, 1), Building.Make(slope, steel));
         check(Triangles(slope) == 16, "a slope's full back face hides the cube face behind it, and vice versa");
+
+        // A 1,000-block hull in paint: what a hull costs the renderer (one surface is one draw call).
+        var hull = BigStructure(cat, 1000);
+        int hullTris = 0, hullDraws = 0;
+        foreach (Int3 c in hull.Chunks.Keys.ToList())
+        {
+            ChunkMeshData data = ChunkMesher.Build(hull, c);
+            hullTris += (data.Opaque.Indices.Count + data.Glass.Indices.Count) / 3;
+            ArrayMesh mesh = ChunkMesher.ToMesh(data);
+            hullDraws += mesh?.GetSurfaceCount() ?? 0;
+            mesh?.Dispose();
+        }
+        GD.Print($"      1,000-block hull: {hull.Count} blocks, {hullTris} triangles, {hullDraws} draw calls in {hull.Chunks.Count} chunks");
 
         // The big one.
         var s = BigStructure(cat, 20_000);
@@ -112,11 +124,11 @@ public static class MeshBenchmark
     /// </summary>
     public static Structure BigStructure(Catalogue cat, int target)
     {
-        var s = new Structure(cat, cat.Grid(GridSize.Large)) { Name = "Benchmark" };
+        var s = new Structure(cat) { Name = "Benchmark" };
         var rng = new Random(1977);
         BlockType[] armour = { cat.Type("steel"), cat.Type("hardened"), cat.Type("combat") };
         BlockType glass = cat.Type("glass");
-        BlockType[] parts = { cat.Type("thruster"), cat.Type("generator"), cat.Type("container"), cat.Type("cpuext") };
+        BlockType[] parts = { cat.Type("thruster"), cat.Type("generator"), cat.Type("container"), cat.Type("container-t4") };
         ushort[] paints =
         {
             0,

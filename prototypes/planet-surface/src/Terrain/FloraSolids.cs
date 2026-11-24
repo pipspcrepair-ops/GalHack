@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using GalHack.Plants;
 using Godot;
 using Planets.Look;
 
@@ -59,6 +60,74 @@ public sealed class FloraSolidRules
     public KindRule Of(Flora kind) => _byKind[(int)kind];
 
     /// <summary>
+    /// The collider a rolled species' instance gets: its own trunk, read from its body, and wood by
+    /// how much trunk it has against its kind's base in data/flora-solids.json. False if you walk through it.
+    /// </summary>
+    public bool TryMake(Flora kind, Plant plant, long id, Vector3 foot, float scale, float angle, out FloraSolid solid)
+    {
+        if (plant == null) return TryMake(kind, id, foot, scale, angle, out solid);
+        solid = default;
+        KindRule rule = _byKind[(int)kind];
+        if (!plant.Solid || rule?.Trunk == null) return false;
+        var turn = new Basis(Vector3.Up, angle);
+        Vector3 axis = turn * new Vector3(plant.TrunkAxis.X, plant.TrunkAxis.Y, plant.TrunkAxis.Z).Normalized();
+        float height = plant.TrunkHeight * scale, radius = plant.TrunkRadius * scale;
+        Basis lean = new Basis(new Quaternion(Vector3.Up, axis)) * turn;
+        float mass = plant.TrunkHeight / rule.Trunk.Height * Mathf.Pow(plant.TrunkRadius / rule.Trunk.Radius, 2f);
+        int wood = rule.Wood > 0 ? Math.Max(1, Mathf.RoundToInt(rule.Wood * Math.Clamp(mass, 0.5f, 3f))) : 0;
+        solid = new FloraSolid(id, kind, true, foot + axis * (height * 0.5f), lean.Orthonormalized(), new Vector3(radius, height * 0.5f, radius), wood, plant.Index);
+        return true;
+    }
+
+
+    /// <summary>
+    /// A tree's canopy as colliders: one convex hull per canopy part of the near mesh drawn (its real
+    /// shape, scaled and turned with the tree). False if the species has none.
+    /// </summary>
+    static bool AddCanopy(Flora kind, Plant plant, int variant, long id, Vector3 foot, float scale, float angle, List<FloraSolid> into)
+    {
+        if (plant?.Canopy is not { Length: > 0 } all) return false;
+        var hulls = all[Math.Clamp(variant, 0, all.Length - 1)];
+        if (hulls == null || hulls.Length == 0) return false;
+        var turn = new Basis(Vector3.Up, angle);
+        for (int h = 0; h < hulls.Length; h++)
+            into.Add(new FloraSolid(id, kind, false, foot, turn, Vector3.One * scale, 0, plant.Index, Math.Clamp(variant, 0, all.Length - 1), h, scale));
+        return true;
+    }
+    /// <summary>
+    /// The colliders a rolled species' instance gets: one round each solid part of the near mesh drawn
+    /// there (<paramref name="variant"/>): a tree's trunk and its thick limbs, every pipe of a cluster of
+    /// tubes, a trumpet's stalk and bell, a cap, each shard of a crystal; so you meet the plant where you see
+    /// it, whatever its form. The first (the main stem) carries the wood. False if you walk through it.
+    /// </summary>
+    public bool MakeAll(Flora kind, Plant plant, int variant, long id, Vector3 foot, float scale, float angle, List<FloraSolid> into)
+    {
+        bool canopy = AddCanopy(kind, plant, variant, id, foot, scale, angle, into);
+        if (!TryMake(kind, plant, id, foot, scale, angle, out FloraSolid main)) return canopy;
+        PlantColumn[] columns = plant?.Columns is { Length: > 0 } all ? all[Math.Clamp(variant, 0, all.Length - 1)] : null;
+        if (columns == null || columns.Length == 0)
+        {
+            into.Add(main);
+            return true;
+        }
+        var turn = new Basis(Vector3.Up, angle);
+        bool first = true;
+        foreach (PlantColumn c in columns)
+        {
+            Vector3 a = foot + turn * new Vector3(c.A.X, c.A.Y, c.A.Z) * scale, b = foot + turn * new Vector3(c.B.X, c.B.Y, c.B.Z) * scale;
+            Vector3 along = b - a;
+            float length = along.Length();
+            if (length < 0.02f) continue;
+            along /= length;
+            Basis basis = along.Y < -0.999f ? new Basis(Vector3.Right, Mathf.Pi) : new Basis(new Quaternion(Vector3.Up, along));
+            into.Add(new FloraSolid(id, kind, true, (a + b) * 0.5f, basis.Orthonormalized(), new Vector3(c.Radius * scale, length * 0.5f, c.Radius * scale), first ? main.Wood : 0, plant.Index));
+            first = false;
+        }
+        if (first) into.Add(main);
+        return true;
+    }
+
+    /// <summary>
     /// The collider one scatter instance gets (its mesh's foot at <paramref name="foot"/>, scaled and
     /// turned), or false if this kind is never solid or this one is too small (a pebble).
     /// </summary>
@@ -108,7 +177,15 @@ public readonly struct FloraSolid
     public readonly Vector3 Extents;
     public readonly int Wood;
 
-    public FloraSolid(long id, Flora kind, bool trunk, Vector3 center, Basis basis, Vector3 extents, int wood)
+    /// <summary>The species it is in the world's herbarium, or -1 for a rock.</summary>
+    public readonly int Plant;
+
+    /// <summary>A canopy hull: which near mesh of the species (variant), which hull of it (part, 0 up), and the tree's scale. Part is -1 for trunks and boulders.</summary>
+    public readonly int Variant, Part;
+    public readonly float Scale;
+    public bool IsCanopy => Part >= 0;
+
+    public FloraSolid(long id, Flora kind, bool trunk, Vector3 center, Basis basis, Vector3 extents, int wood, int plant = -1, int variant = 0, int part = -1, float scale = 1f)
     {
         Id = id;
         Kind = kind;
@@ -117,14 +194,22 @@ public readonly struct FloraSolid
         Basis = basis;
         Extents = extents;
         Wood = wood;
+        Plant = plant;
+        Variant = variant;
+        Part = part;
+        Scale = scale;
     }
 
     public bool Fellable => Wood > 0;
     public Transform3D Transform => new(Basis, Center);
 
+    /// <summary>The transform of its collision shape: a canopy hull is kept at scale 1 and scaled here.</summary>
+    public Transform3D ShapeTransform => IsCanopy ? new(Basis.Scaled(Vector3.One * Scale), Center) : Transform;
+
     /// <summary>A point genuinely inside it: within a trunk's radius of its axis (and along it), or inside a box.</summary>
     public bool Contains(Vector3 p)
     {
+        if (IsCanopy) return false;
         Vector3 l = Basis.Transposed() * (p - Center);
         if (Mathf.Abs(l.Y) > Extents.Y) return false;
         return IsTrunk ? l.X * l.X + l.Z * l.Z < Extents.X * Extents.X : Mathf.Abs(l.X) < Extents.X && Mathf.Abs(l.Z) < Extents.Z;
@@ -133,6 +218,7 @@ public readonly struct FloraSolid
     /// <summary>The nearest point beside it, sideways (never over the top), <paramref name="clearance"/> clear of it.</summary>
     public Vector3 Beside(Vector3 p, float clearance)
     {
+        if (IsCanopy) return p;
         Vector3 l = Basis.Transposed() * (p - Center);
         if (IsTrunk)
         {

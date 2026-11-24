@@ -12,10 +12,13 @@ uniform float cover = 0.4;
 uniform float dark = 0.0;
 uniform float seen = 0.0;
 uniform float light = 1.0;
+uniform float bend = 0.0; // 1 / m: the ground's own curve as it climbs; none on the way up from the ground, so the deck lies flat
+
 
 varying vec3 wpos;
 
 void vertex() {
+	VERTEX.y -= bend * 0.5 * dot(VERTEX.xz, VERTEX.xz);
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
@@ -27,5 +30,7 @@ void fragment() {
 	float tops = smoothstep(0.05, 0.4, coverage + texture(noise, uv * 9.0).r * 0.12);
 	vec3 col = mix(vec3(0.62, 0.66, 0.72), vec3(1.0, 0.98, 0.95), tops) * (1.0 - dark * 0.6);
 	ALBEDO = col * (0.2 + 0.8 * light);
-	ALPHA = body * seen;
+	// Thinned away well inside the mesh's square, so from over it no straight edge or corner ever shows.
+	float out_to = length(wpos.xz - NODE_POSITION_WORLD.xz) / 12000.0;
+	ALPHA = body * seen * (1.0 - smoothstep(0.55, 0.95, out_to));
 }

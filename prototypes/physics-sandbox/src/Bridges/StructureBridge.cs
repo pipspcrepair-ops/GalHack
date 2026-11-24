@@ -21,9 +21,9 @@ public static class StructureBridge
 {
     /// <summary>
     /// Loads building's catalogue from where it lives, with the sandbox's vessel parts (gyros,
-    /// hover pads, landing legs) appended to its components. Nothing is copied.
+    /// hover pads, landing legs), and any other parts files given, appended to its components. Nothing is copied.
     /// </summary>
-    public static Catalogue LoadCatalogue(string buildingData, string vesselParts)
+    public static Catalogue LoadCatalogue(string buildingData, params string[] partFiles)
     {
         return Catalogue.Load(name =>
         {
@@ -35,10 +35,10 @@ public static class StructureBridge
                 AllowTrailingCommas = true,
             };
             JsonNode root = JsonNode.Parse(text, documentOptions: options);
-            JsonNode extra = JsonNode.Parse(File.ReadAllText(vesselParts), documentOptions: options);
             JsonArray list = root["components"].AsArray();
-            foreach (JsonNode c in extra["components"].AsArray().ToList())
-                list.Add(c.DeepClone());
+            foreach (string file in partFiles)
+                foreach (JsonNode c in JsonNode.Parse(File.ReadAllText(file), documentOptions: options)["components"].AsArray().ToList())
+                    list.Add(c.DeepClone());
             return root.ToJsonString();
         });
     }
@@ -57,6 +57,9 @@ public static class StructureBridge
     /// <summary>A cell's centre in the structure's frame, metres. Cell (0,0,0) is centred on the origin.</summary>
     public static N.Vector3 CellCenter(Structure s, Int3 p) => p.ToVector3() * s.Grid.CellSize;
 
+    /// <summary>A block's centre in the structure's frame, metres: the middle of all its cells when it spans several.</summary>
+    public static N.Vector3 BlockCenter(Structure s, Int3 anchor, in Block b) => s.CentreOf(anchor, b) * s.Grid.CellSize;
+
     /// <summary>The cell a structure-frame point falls in.</summary>
     public static Int3 CellAt(Structure s, N.Vector3 local) => Int3.Round(local / s.Grid.CellSize);
 
@@ -67,8 +70,8 @@ public static class StructureBridge
         var containers = new List<N.Vector3>();
         foreach (var (p, b) in s.Blocks())
         {
-            points.Add((CellCenter(s, p), Units.Kilograms(s.StatsOf(b).Mass)));
-            if (s.TypeOf(b).IsContainer) containers.Add(CellCenter(s, p));
+            points.Add((MassPoint(s, p, b), Units.Kilograms(s.StatsOf(b).Mass)));
+            if (s.TypeOf(b).IsContainer) containers.Add(BlockCenter(s, p, b));
         }
         float cargo = Units.Kilograms((float)(s.CargoSu * s.Catalogue.CargoMassPerSu));
         if (cargo > 0f && containers.Count > 0)
@@ -76,21 +79,45 @@ public static class StructureBridge
         return MassProperties.Of(points);
     }
 
+    /// <summary>
+    /// Where a block's own mass sits: a full cell's middle, but a fitting (a lamp plate on a wall's face, an open door's frame) is
+    /// where its parts are, so a lamp cut off lies as the thin plate it is and its centre of mass is inside it, not a cell's width away.
+    /// </summary>
+    static N.Vector3 MassPoint(Structure s, Int3 p, Block b)
+    {
+        BlockType t = s.TypeOf(b);
+        N.Vector3 centre = BlockCenter(s, p, b);
+        if (t.IsArmor || (s.IsSolid(b) && t.Collide != Collide.Parts) || t.Parts == null || t.Parts.Count == 0) return centre;
+        float volume = 0f;
+        N.Vector3 sum = N.Vector3.Zero;
+        foreach (Part part in t.Parts)
+        {
+            N.Vector3 size = part.Max - part.Min;
+            float v = MathF.Max(1e-6f, MathF.Abs(size.X * size.Y * size.Z));
+            sum += (part.Min + part.Max) * 0.5f * v;
+            volume += v;
+        }
+        N.Vector3 local = sum / volume;
+        return centre + Orientations.Matrix(b.Rot).Apply(local * t.Size.ToVector3()) * s.Grid.CellSize; // parts span the whole footprint
+    }
+
     /// <summary>Colliders for some of a structure's chunks (all of them when <paramref name="chunks"/> is null).</summary>
-    public static List<ChunkColliders> Colliders(Structure s, IEnumerable<Int3> chunks = null)
+    public static List<ChunkColliders> Colliders(Structure s, IEnumerable<Int3> chunks = null, bool fittings = false)
     {
         var list = new List<ChunkColliders>();
         foreach (Int3 c in chunks ?? s.Chunks.Keys)
-            list.Add(ChunkColliders(s, c));
+            list.Add(ChunkColliders(s, c, fittings));
         return list;
     }
 
     /// <summary>
     /// One chunk: full cells (cubes, cell-colliding components, closed doors) merged into boxes;
     /// one convex hull per sloped block; part boxes for components that collide by their parts.
-    /// Open doors, ladders and lights don't collide.
+    /// Open doors, ladders and lights don't collide, while they hang on something you walk through: a body that is loose
+    /// (a wreck, cut off and free) asks for <paramref name="fittings"/>, and every part of them then collides in its real shape,
+    /// so a lamp cut off a wall lies on the ground instead of falling through it.
     /// </summary>
-    public static ChunkColliders ChunkColliders(Structure s, Int3 chunk)
+    public static ChunkColliders ChunkColliders(Structure s, Int3 chunk, bool fittings = false)
     {
         var result = new ChunkColliders { Chunk = new ChunkKey(chunk.X, chunk.Y, chunk.Z) };
         float cell = s.Grid.CellSize;
@@ -102,11 +129,23 @@ public static class StructureBridge
             for (int i = 0; i < Chunk.Volume; i++)
             {
                 Block b = data.Cells[i];
-                if (b.IsEmpty || !s.IsSolid(b)) continue;
+                if (b.IsEmpty) continue;
                 var local = new Int3(i & Chunk.Mask, (i >> Chunk.Bits) & Chunk.Mask, i >> (2 * Chunk.Bits));
                 Int3 p = origin + local;
                 BlockType t = s.TypeOf(b);
                 Mat3 rot = Orientations.Matrix(b.Rot);
+                if (!s.IsSolid(b))
+                {
+                    if (!fittings || t.IsArmor || t.Parts == null) continue;
+                    foreach (Part part in t.Parts)
+                    {
+                        if (part.ClosedOnly && b.Open) continue;
+                        N.Vector3 a = rot.Apply(part.Min), z = rot.Apply(part.Max);
+                        N.Vector3 min = N.Vector3.Min(a, z), max = N.Vector3.Max(a, z);
+                        result.Boxes.Add(new BoxCollider((p.ToVector3() + (min + max) * 0.5f) * cell, (max - min) * cell));
+                    }
+                    continue;
+                }
                 if (t.IsArmor && !s.ShapeOf(b).IsCube)
                 {
                     // Sloped blocks: one convex hull per straight run of the same shape and turn,
@@ -133,10 +172,12 @@ public static class StructureBridge
                 }
                 else if (!t.IsArmor && t.Collide == Collide.Parts)
                 {
+                    // A block spanning several cells: its parts, stretched over all of them, from the anchor only.
+                    if (b.IsFiller) continue;
                     foreach (Part part in t.Parts)
                     {
                         if (part.ClosedOnly && b.Open) continue;
-                        N.Vector3 a = rot.Apply(part.Min), z = rot.Apply(part.Max);
+                        N.Vector3 a = rot.Apply(Footprint.PartPoint(t, part.Min)), z = rot.Apply(Footprint.PartPoint(t, part.Max));
                         N.Vector3 min = N.Vector3.Min(a, z), max = N.Vector3.Max(a, z);
                         result.Boxes.Add(new BoxCollider((p.ToVector3() + (min + max) * 0.5f) * cell, (max - min) * cell));
                     }
@@ -195,32 +236,62 @@ public static class StructureBridge
     {
         var (min, max) = s.Bounds();
         float cell = s.Grid.CellSize;
-        return (max.X - min.X + 1) * (max.Y - min.Y + 1) * cell * cell * 0.8f;
+        return (max.X - min.X + 1) * (max.Y - min.Y + 1) * cell * cell * Body.DragCoefficient;
     }
 
-    /// <summary>The shared module's class for a vessel: the handling model's own (hover, small, capital).</summary>
-    public static StructureClass ClassOf(StructureVessel vessel) => vessel.Class switch
+    /// <summary>Every box that makes up a loose structure's shape, structure frame, metres: solid cells whole, fittings and parts as their parts.</summary>
+    public static IEnumerable<(N.Vector3 Min, N.Vector3 Max)> ShapeBoxes(Structure s)
     {
-        VesselClass.Hover => StructureClass.Hover,
-        VesselClass.Capital => StructureClass.Capital,
-        _ => StructureClass.Small,
-    };
+        float cell = s.Grid.CellSize;
+        foreach (var (p, b) in s.Blocks())
+        {
+            N.Vector3 centre = CellCenter(s, p);
+            BlockType t = s.TypeOf(b);
+            if (s.IsSolid(b) && t.Collide != Collide.Parts)
+            {
+                yield return (centre - new N.Vector3(cell * 0.5f), centre + new N.Vector3(cell * 0.5f));
+                continue;
+            }
+            Mat3 rot = Orientations.Matrix(b.Rot);
+            foreach (Part part in t.Parts)
+            {
+                if (part.ClosedOnly && b.Open) continue;
+                N.Vector3 lo = rot.Apply(part.Min), hi = rot.Apply(part.Max);
+                yield return (centre + N.Vector3.Min(lo, hi) * cell, centre + N.Vector3.Max(lo, hi) * cell);
+            }
+        }
+    }
 
-    /// <summary>Where the command chair is (structure frame, metres), or the origin if there is none.</summary>
+    /// <summary>The size of the box round a loose structure's real shape, m: what the wind meets (<see cref="Body.WindArea"/>).</summary>
+    public static N.Vector3 DragBox(Structure s)
+    {
+        N.Vector3 min = new(float.MaxValue), max = new(float.MinValue);
+        foreach (var (lo, hi) in ShapeBoxes(s))
+        {
+            min = N.Vector3.Min(min, lo);
+            max = N.Vector3.Max(max, hi);
+        }
+        return max.X >= min.X ? max - min : N.Vector3.Zero;
+    }
+
+    /// <summary>Where the first command chair's seat is (structure frame, metres), or the origin if there is none.</summary>
     public static N.Vector3 SeatOf(Structure s)
     {
         foreach (var (p, b) in s.Blocks())
-            if (s.TypeOf(b).IsCommandChair) return CellCenter(s, p);
+            if (s.TypeOf(b).IsCommandChair) return SeatPoint(s, p, b);
         return N.Vector3.Zero;
     }
+
+    /// <summary>Where a chair's sitter rests and where their eyes are (structure frame, metres), from the chair's data.</summary>
+    public static N.Vector3 SeatPoint(Structure s, Int3 anchor, in Block b) => s.PointOf(anchor, b, s.TypeOf(b).Seat) * s.Grid.CellSize;
+    public static N.Vector3 EyePoint(Structure s, Int3 anchor, in Block b) => s.PointOf(anchor, b, s.TypeOf(b).Eye) * s.Grid.CellSize;
 }
 
 /// <summary>
 /// The handling model's view of a structure: its mass, and its thrusters, gyros, hover pads and
-/// landing legs as component data. Thrust per thruster is the building catalogue's (after the
-/// grid's scale and the CPU efficiency); torque, hover lift, ride height and leg length come from
-/// the handling model's parts table by grid size. Mass is the structure's whole mass, so the
-/// handling model's thrust / mass is exactly the build's.
+/// landing legs as component data. Thrust, torque, hover lift, ride height and leg length are each
+/// block's own, from the building data. Mass is the structure's whole mass, so the handling
+/// model's thrust / mass is exactly the build's.
 /// </summary>
 public sealed class StructureVessel : IVesselStructure
 {
@@ -235,7 +306,7 @@ public sealed class StructureVessel : IVesselStructure
     readonly List<HoverEngineSpec> _hover = new();
     readonly List<GearSpec> _gear = new();
     float _mass;
-    VesselClass _class;
+    bool _hoverMode;
     GVector3 _cockpit;
 
     /// <param name="asMode">Reads the structure as if its core were in this mode, to ask what that mode would do; null: its own mode.</param>
@@ -250,7 +321,7 @@ public sealed class StructureVessel : IVesselStructure
     public Structure Structure => _s;
     public string Name => _s.Name;
 
-    public VesselClass Class { get { Refresh(); return _class; } }
+    public bool HoverMode { get { Refresh(); return _hoverMode; } }
     public float HullMass { get { Refresh(); return _mass; } }
     public float CargoMass => 0f;
     public IReadOnlyList<ThrusterSpec> Thrusters { get { Refresh(); return _thrusters; } }
@@ -264,8 +335,8 @@ public sealed class StructureVessel : IVesselStructure
     /// <summary>Hover plate positions for the shared hover controller: the bottom face of each plate (none outside Hover Mode).</summary>
     public N.Vector3[] HoverPoints => HoverEngines.Select(h => new N.Vector3(h.Position.X, h.Position.Y, h.Position.Z)).ToArray();
 
-    /// <summary>Landing legs for the shared gear, each hanging from the bottom face of its housing. They stay folded in Hover Mode.</summary>
-    public GearLeg[] Legs => Class == VesselClass.Hover ? Array.Empty<GearLeg>() : LandingGear.Select(g => new GearLeg(new N.Vector3(g.Position.X, g.Position.Y, g.Position.Z), g.Length)).ToArray();
+    /// <summary>Landing pads for the shared gear, each on the bottom face of its block. They stay folded in Hover Mode.</summary>
+    public GearLeg[] Legs => HoverMode ? Array.Empty<GearLeg>() : LandingGear.Select(g => new GearLeg(new N.Vector3(g.Position.X, g.Position.Y, g.Position.Z), g.Length)).ToArray();
 
     void Refresh()
     {
@@ -281,36 +352,35 @@ public sealed class StructureVessel : IVesselStructure
         StructureStats stats = StructureStats.Compute(_s);
         _mass = (float)stats.Mass;
         float cell = _s.Grid.CellSize;
-        string size = _s.Grid.Size == GridSize.Small ? "small" : "large";
         // Base Mode leaves its thrusters idle; hover plates lift in Hover Mode and do nothing in any other.
-        float efficiency = mode != CoreMode.Base && stats.HasCore && stats.Powered ? (float)stats.Efficiency : 0f;
-        bool hovering = mode == CoreMode.Hover && _s.Grid.Size == GridSize.Small;
+        bool running = mode != CoreMode.Base && stats.HasCore && stats.Powered;
+        bool hovering = mode == CoreMode.Hover;
         _cockpit = GVector3.Zero;
 
         foreach (var (p, b) in _s.Blocks())
         {
             BlockType t = _s.TypeOf(b);
-            GVector3 at = new GVector3(p.X, p.Y, p.Z) * cell;
-            GVector3 underside = at + GVector3.Down * (cell * 0.5f);
+            N.Vector3 centre = StructureBridge.BlockCenter(_s, p, b);
+            GVector3 at = new GVector3(centre.X, centre.Y, centre.Z);
+            GVector3 underside = at + GVector3.Down * (cell * 0.5f * Footprint.WorldSize(t, b.Rot).Y);
             if (t.IsThruster)
             {
                 // A thruster's exhaust leaves through its back (+Z), pushing the structure toward its local -Z.
                 N.Vector3 push = Orientations.ToWorld(b.Rot, Dir.NegZ).Normal();
-                _thrusters.Add(new ThrusterSpec(size, at, new GVector3(push.X, push.Y, push.Z),
-                    t.Thrust * _s.Grid.FunctionScale * efficiency, 0f));
+                _thrusters.Add(new ThrusterSpec(t.Id, at, new GVector3(push.X, push.Y, push.Z),
+                    running ? t.Thrust : 0f, 0f));
             }
-            else if (t.Function == "gyro") _gyros.Add(new GyroSpec(size, at, _t.Parts.Gyros[size].Torque, 0f));
-            else if (t.Function == "hover" && hovering)
+            else if (t.Function == "gyro") _gyros.Add(new GyroSpec(t.Id, at, t.Torque, 0f));
+            else if (t.Function == "hover" && hovering) _hover.Add(new HoverEngineSpec(t.Id, underside, t.Lift, t.RideHeight, 0f));
+            else if (t.Function == "gear") _gear.Add(new GearSpec(t.Id, underside, t.LegLength, 0f));
+            else if (t.IsCommandChair)
             {
-                var part = _t.Parts.HoverEngines[size];
-                _hover.Add(new HoverEngineSpec(size, underside, part.Lift, part.RideHeight, 0f));
+                N.Vector3 eye = StructureBridge.EyePoint(_s, p, b);
+                _cockpit = new GVector3(eye.X, eye.Y, eye.Z);
             }
-            else if (t.Function == "gear") _gear.Add(new GearSpec(size, underside, _t.Parts.LandingGear[size].Length, 0f));
-            else if (t.IsCommandChair) _cockpit = at + GVector3.Up * 0.8f;
         }
 
-        // A structure's class is its core and that core's mode, never the blocks on it.
-        _class = hovering ? VesselClass.Hover : _s.Grid.Size == GridSize.Small ? VesselClass.Small : VesselClass.Capital;
+        _hoverMode = hovering;
     }
 }
 
@@ -375,10 +445,11 @@ public sealed class InteriorMap
 
 /// <summary>
 /// Keeps bodies out of a structure's blocks (stuck-safety after structure edits): a point is
-/// inside if it falls in a solid block's cell. It keeps out everything in the zone's world and
-/// its own riders (inside or on its hull: a block placed where someone stands); a rider rescued
-/// from its own ship's blocks stays aboard. A structure never rescues itself, and riders of other
-/// ships are their ships' business.
+/// inside if it is inside a block's real shape, exactly as it collides (<see cref="Structure.SolidAt"/>):
+/// the air over a half block, a slope or a stair's step is open, so standing on one is never being
+/// inside it. It keeps out everything in the zone's world and its own riders (inside or on its hull:
+/// a block placed where someone stands); a rider rescued from its own ship's blocks stays aboard. A
+/// structure never rescues itself, and riders of other ships are their ships' business.
 /// </summary>
 public sealed class StructureField : IStuckField
 {
@@ -398,13 +469,9 @@ public sealed class StructureField : IStuckField
     public bool Applies(Body body) =>
         body.Kind is not (BodyKind.Vessel or BodyKind.Wreck) && (body.Frame == null ? body != Body : body.Frame == Body);
 
-    public bool IsSolid(Body body, N.Vector3 point)
-    {
-        N.Vector3 local = Body.ToLocal(point);
-        return Structure.TryGet(StructureBridge.CellAt(Structure, local), out Block b) && Structure.IsSolid(b);
-    }
+    public bool IsSolid(Body body, N.Vector3 point) => Structure.SolidAt(Body.ToLocal(point) / Structure.Grid.CellSize);
 
-    /// <summary>Inside: any point on the body's core axis (a radius in from each end) is in a solid block.</summary>
+    /// <summary>Inside: any point on the body's core axis (a radius in from each end) is in a block.</summary>
     public bool IsInside(Body body, N.Vector3 feet, StuckShape shape)
     {
         float bottom = shape.Radius, top = MathF.Max(shape.Height - shape.Radius, shape.Radius);
@@ -427,17 +494,24 @@ public sealed class StructureField : IStuckField
         return true;
     }
 
-    public bool Supports(Body body, N.Vector3 feet) => IsSolid(body, feet - N.Vector3.UnitY * 0.3f);
+    /// <summary>Something to stand on within a step's reach below the feet (a thin plate counts).</summary>
+    public bool Supports(Body body, N.Vector3 feet)
+    {
+        for (float d = 0.05f; d <= 0.3f; d += 0.05f)
+            if (IsSolid(body, feet - N.Vector3.UnitY * d)) return true;
+        return false;
+    }
 
+    /// <summary>The top of the highest block's real shape in a column, to within 2 cm.</summary>
     public float TopAt(Body body, float x, float z)
     {
-        // Straight down through the structure from well above it.
+        // Straight down through the structure from well above it (only rescues ask, so a fine step is cheap enough).
         var (min, max) = Structure.Bounds();
-        float cell = Structure.Grid.CellSize;
+        float cell = Structure.Grid.CellSize, fine = 0.02f;
         float above = (max.Y + 2) * cell, below = (min.Y - 1) * cell;
         N.Vector3 top = Body.ToParent(new N.Vector3(0, above, 0)), bottom = Body.ToParent(new N.Vector3(0, below, 0));
-        for (float y = MathF.Max(top.Y, bottom.Y); y >= MathF.Min(top.Y, bottom.Y); y -= cell * 0.5f)
-            if (IsSolid(body, new N.Vector3(x, y, z))) return y + cell * 0.5f;
+        for (float y = MathF.Max(top.Y, bottom.Y); y >= MathF.Min(top.Y, bottom.Y); y -= fine)
+            if (IsSolid(body, new N.Vector3(x, y, z))) return y + fine;
         return float.NegativeInfinity;
     }
 

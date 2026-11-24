@@ -27,17 +27,43 @@ public sealed partial class Staging
         foreach (int x in Play.PlaceOnGround(2, spot)) yield return x;
         Device fab = _game.Zone.Devices.FirstOrDefault();
         if (fab == null) yield break;
-        fab.Storage.AddAll(new Bill().Add("iron-ore", 160).Add("carbon-ore", 120).Add("copper-ore", 60).Add("silicon-ore", 20).Add(Play.BlockItem("steel", false), 6));
+        fab.Storage.AddAll(new Bill().Add("iron-ore", 160).Add("carbon-ore", 120).Add("copper-ore", 60).Add("silicon-ore", 20).Add(Play.BlockItem("steel"), 6));
         foreach (int x in Play.OpenMenu(MenuTab.Core)) yield return x;
-        foreach (int x in Play.Order("core", Play.BlockItem("container", false), 1)) yield return x;
-        foreach (int x in Play.Order("core", Play.BlockItem("steel", false), 5)) yield return x;
+        foreach (int x in Play.Order("core", Play.BlockItem("container"), 1)) yield return x;
+        foreach (int x in Play.Order("core", Play.BlockItem("steel"), 5)) yield return x;
         foreach (int x in _drive.ClickWidget("recipes:core:cat:all")) yield return x;
         foreach (int x in _drive.ClickWidget("recipes:core:cat:blocks")) yield return x;
         fab.Tick(2.5);
         foreach (int x in _drive.Wait(4)) yield return x;
-        if (_game.Menu.RectOf($"order:core:{Play.BlockItem("steel", false)}:1") is Rect2 r)
+        if (_game.Menu.RectOf($"order:core:{Play.BlockItem("steel")}:1") is Rect2 r)
             _game.Controls.Mouse = r.Position + new Vector2(-200, 12);
         foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The owner's angle: standing at a base's small constructor, looking at its screen, with markers about and the use prompt up.</summary>
+    IEnumerable<int> MachineScreenView()
+    {
+        foreach (int x in BaseView(survival: true)) yield return x;
+        Vessel b0 = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
+        if (b0 == null) yield break;
+        _game.FixedCamera = null;
+        _game.MachineScreens.Sync();
+        foreach (int x in _drive.Wait(10)) yield return x;
+        var m = _game.MachineScreens.Screens.FirstOrDefault(e => e.Key.owner == b0 && b0.Machines.ContainsKey(e.Key.cell)).Value;
+        if (m == null) yield break;
+        Vector3 normal = m.Screen.GlobalBasis.Z.Normalized();
+        Vector3 face = m.Screen.GlobalPosition;
+        foreach (int x in StandAndLook(new Vector3(face.X, 0f, face.Z) + normal * 1.3f, face, 20)) yield return x;
+        Vector3 eye = _game.Camera.GlobalPosition;
+        Vector3 flat = new Vector3(-normal.X, 0f, -normal.Z).Normalized();
+        for (int k = -2; k <= 2; k++)
+        {
+            Vector3 w = eye + flat.Rotated(Vector3.Up, k * 0.1f) * (35f + 5f * System.Math.Abs(k));
+            _game.Spaceflight.Charts.Mark(w.X, w.Z);
+        }
+        _game.Scan();
+        foreach (int x in _drive.Wait(150)) yield return x;
+        GD.Print($"(the screen at {face}, facing {normal}; the prompt \"{_game.UsePrompt()}\"; {_game.Visor.Drawn.Count} markers up, {_game.Visor.ScreenBoxes(new Vector2(1920, 1080), 1f).Count} screen boxes)");
     }
 
     /// <summary>The visor with a block family in hand: a long name, the count from the chosen source, the shape picker.</summary>
@@ -47,7 +73,7 @@ public sealed partial class Staging
         Vessel b0 = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
         if (b0 == null) yield break;
         _game.FixedCamera = null;
-        string hardened = Play.BlockItem("hardened", false);
+        string hardened = Play.BlockItem("hardened");
         Hand((hardened, 12));
         b0.Storage.Add(hardened, 340);
         foreach (int x in Play.ToToolbar(hardened, 1)) yield return x;
@@ -83,3 +109,4 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 }
+

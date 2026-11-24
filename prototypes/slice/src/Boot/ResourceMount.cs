@@ -22,6 +22,7 @@ public static class ResourceMount
         ("diegetic-ui", "shaders"),
         ("diegetic-ui", "fonts"),
         ("wildlife", "shaders"),
+        ("../shared/Bestiary", "shaders"),
     };
 
     static bool _mounted;

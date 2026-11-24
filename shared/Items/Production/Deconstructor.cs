@@ -114,15 +114,16 @@ public sealed class Deconstructor
 
     /// <summary>
     /// Queues blocks salvaged from a wreck, already taken off it by the caller: their summed bill
-    /// comes back at the return rate (whole components, not ore).
+    /// comes back at the return rate (whole components, not ore), taking as long as fitting them took
+    /// (<paramref name="fitSeconds"/>, the blocks' assembly seconds) at its speed.
     /// </summary>
-    public DeconJob BreakBlocks(Bill blocksBill, int blockCount, bool smallGrid, string label)
+    public DeconJob BreakBlocks(Bill blocksBill, double fitSeconds, string label)
     {
         var job = new DeconJob
         {
             Label = label,
             Returns = ReturnsOfBlocks(blocksBill),
-            Seconds = Items.Blocks.AssemblySeconds(smallGrid) * blockCount / Def.Speed,
+            Seconds = fitSeconds / Def.Speed,
         };
         _queue.Enqueue(job);
         Version++;

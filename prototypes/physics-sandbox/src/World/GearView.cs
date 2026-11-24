@@ -36,7 +36,7 @@ public partial class GearView : Node3D
         for (int i = 0; i < gear.Count; i++)
         {
             GearLeg leg = gear.Leg(i);
-            float reach = Mathf.Max(0.05f, leg.Length * gear.Extension);
+            float reach = Mathf.Max(0.05f, gear.Reach(i)); // the leg telescopes onto its own ground
             Vector3 hip = leg.Hip.ToGodot();
             _struts[i].Position = hip + Vector3.Down * (reach * 0.5f);
             _struts[i].Scale = new Vector3(1f, reach, 1f);

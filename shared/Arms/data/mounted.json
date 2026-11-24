@@ -1,0 +1,28 @@
+// The guns mounted on structures, as data in weapons.json's format (that file's header says what each
+// field means): fixed guns fire along their block's facing from its muzzle, selected on the pilot's
+// toolbar and fired with the trigger. "item" is the block the row is (shared/Items/data/
+// building-parts.json); its ammo comes from the structure's core storage. Figures follow Empyrion's
+// small-vessel minigun and rocket launcher (ItemsConfig: MinigunSSWeapon ROF 0.2 s, range 400 m,
+// damage 160, 300 rounds, reload 2 s; RocketLauncherSSWeapon ROF 2 s, range 425 m, 10 rockets,
+// reload 8 s); shots travel at the design's visible speeds (section 13: small-craft guns about
+// 600 m/s, slower for heavy rounds). Turrets have no row: they don't fire from the toolbar.
+{
+  "schema": "galhack.weapons",
+  "version": 1,
+  "weapons": [
+    { "id": "mount-gatling", "code": "SV-G", "name": "Gatling gun", "item": "gatling",
+      "trigger": "auto", "delivery": "bolt", "class": "kin",
+      "damage": 160, "rpm": 300, "magazine": 200, "reload": 2.0, "speed": 600, "life": 0.75,
+      "spread": 0.3, "spreadMoving": 0.3, "recoil": 0, "noise": 120, "blocks": 1.0,
+      "ammo": { "item": "belt-12mm" },
+      "feel": "rifle", "tracer": { "colour": "ffb04a", "width": 0.05, "length": 6.0, "body": "tracer", "light": true },
+      "look": { "band": "mid", "calibre": 0.6, "barrel": 0.5, "body": 0.4, "stock": "none", "mag": "box", "sight": "none", "vents": 2, "accent": "3a3f47" } },
+    { "id": "mount-rocketpod", "code": "SV-R", "name": "Rocket pod", "item": "rocketpod",
+      "trigger": "auto", "delivery": "bolt", "class": "exp",
+      "damage": 80, "rpm": 30, "magazine": 10, "reload": 8.0, "speed": 300, "life": 1.5,
+      "spread": 0.4, "spreadMoving": 0.4, "recoil": 0, "noise": 140, "blocks": 1.0,
+      "ammo": { "item": "rocket" }, "blast": { "radius": 4, "damage": 320, "blocks": 6 },
+      "feel": "rocket", "tracer": { "colour": "ffb04a", "width": 0.08, "length": 0.0, "body": "rocket", "light": true },
+      "look": { "band": "mid", "calibre": 1.0, "barrel": 0.5, "body": 0.4, "stock": "none", "mag": "none", "sight": "none", "vents": 0, "fins": 0, "accent": "e85d04" } }
+  ]
+}

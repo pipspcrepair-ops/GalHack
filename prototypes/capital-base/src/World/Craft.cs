@@ -42,8 +42,12 @@ public enum CraftState
 /// model has any thrust, and a <see cref="Pinned"/> controller stands in for the vessel controller
 /// while it is anchored or parked. No block ever changes when it switches.
 /// </summary>
-public sealed class Craft
+public sealed class Craft : ILiftHull
 {
+    Body ILiftHull.Body => Body;
+    HandlingFlight ILiftHull.Flight => Flight;
+    void ILiftHull.LetGoOfGround() { if (Pin is { Docked: false }) Release(); }
+
     public readonly CapitalWorld World;
 
     /// <summary>The save record's id: lower case, digits and dashes.</summary>
@@ -115,8 +119,7 @@ public sealed class Craft
     }
 
     public CharacterBody3D Hull => Binding.Hull;
-    public bool IsLarge => Structure.Grid.Size == GridSize.Large;
-    public bool IsBase => Structure.Mode == CoreMode.Base && IsLarge;
+    public bool IsBase => Structure.Mode == CoreMode.Base;
     public string Name => Structure.Name;
 
     public CraftState State
@@ -201,7 +204,7 @@ public sealed class Craft
     /// <summary>Every block's box (components and slopes count as whole cells).</summary>
     public IEnumerable<BlockBox> Boxes()
     {
-        foreach (var (p, _) in Structure.Blocks()) yield return BoxOf(p);
+        foreach (var (p, _) in Structure.Cells()) yield return BoxOf(p);
     }
 
     /// <summary>How far the hull is tilted from level, radians.</summary>
@@ -223,6 +226,11 @@ public sealed class Craft
     {
         Pin = pin;
         Body.Controller = pin;
+        // Anchored (a base, or a hull keyed into the ground), nothing moves it: Fixed, so the host never
+        // sweeps it or pushes it out of the ground it is built into. Pushed up and put back by its pin
+        // every tick, it would carry whatever is parked on it up by the push each tick, into the sky.
+        // A docked vessel rides its host, so it stays kinematic.
+        Body.Motion = pin.Docked ? GalHack.Physics.Motion.Kinematic : GalHack.Physics.Motion.Fixed;
         pin.Hold(Body);
         _restingFor = 0f;
     }
@@ -237,6 +245,7 @@ public sealed class Craft
         N.Vector3 velocity = Body.Velocity;
         Pin = null;
         Body.Controller = Vessel;
+        Body.Motion = GalHack.Physics.Motion.Kinematic;
         PlaceLanded(Body.Position, Body.Rotation);
         Body.Velocity = velocity;
     }
@@ -279,7 +288,7 @@ public sealed class Craft
     /// </summary>
     public bool CheckRestingOnHull(float dt)
     {
-        bool near = Pin == null && !Vessel.Frozen && !Vessel.Settling && !Body.Asleep && IsLarge
+        bool near = Pin == null && !Vessel.Frozen && !Vessel.Settling && !Body.Asleep
                     && Body.Velocity.Length() < 6f && (Vessel.Gear == null || Vessel.Gear.FootAltitude < 6f);
         HullClearance = near ? MeasureClearance() : float.PositiveInfinity;
 
@@ -309,7 +318,7 @@ public sealed class Craft
     {
         const float Step = 0.05f, Reach = 1f;
         float half = Structure.Grid.CellSize * 0.5f, inset = half * 0.95f, best = float.PositiveInfinity;
-        foreach (var (p, b) in Structure.Blocks())
+        foreach (var (p, b) in Structure.Cells())
         {
             if (!Structure.IsSolid(b) || Structure.Has(new GalHack.Structures.Int3(p.X, p.Y - 1, p.Z))) continue;
             N.Vector3 centre = StructureBridge.CellCenter(Structure, p) - N.Vector3.UnitY * half;
@@ -422,7 +431,7 @@ public partial class CraftView : Node3D
         foreach (var (p, b) in s.Blocks())
         {
             BlockType t = s.TypeOf(b);
-            N.Vector3 centre = StructureBridge.CellCenter(s, p);
+            N.Vector3 centre = StructureBridge.BlockCenter(s, p, b);
             if (t.IsThruster)
             {
                 N.Vector3 push = Orientations.ToWorld(b.Rot, Dir.NegZ).Normal();
@@ -455,12 +464,7 @@ public partial class CraftView : Node3D
         for (int i = 0; i < _legs.Count && gear != null; i++)
         {
             GearLeg leg = gear.Leg(i);
-            float reach = Mathf.Max(0.05f, leg.Length * gear.Extension);
-            if (gear.Extension > 0.99f && gear.FootFound[i])
-            {
-                float drop = body.ToParent(leg.Hip).Y - gear.FootGround[i].Y;
-                if (drop > 0f && drop < leg.Length + 1f) reach = Mathf.Max(0.05f, drop); // the foot telescopes onto its own ground
-            }
+            float reach = Mathf.Max(0.05f, gear.Reach(i)); // the foot telescopes onto its own ground
             Vector3 hip = leg.Hip.ToGodot();
             var (strut, foot) = _legs[i];
             strut.Position = hip + Vector3.Down * (reach * 0.5f);

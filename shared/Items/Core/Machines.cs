@@ -27,8 +27,8 @@ public sealed class MachineDef
     public override string ToString() => Id;
 }
 
-/// <summary>One line of a build list: so many of a block on a grid.</summary>
-public readonly record struct BlockCount(string BlockId, bool Small, int Count);
+/// <summary>One line of a build list: so many of a block (in its item's units: a door family counts its doors' units).</summary>
+public readonly record struct BlockCount(string BlockId, int Count);
 
 /// <summary>Pacing reference used by the tests and the starter-vessel estimate.</summary>
 public sealed class ReferenceRates

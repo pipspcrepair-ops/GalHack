@@ -30,7 +30,7 @@ public sealed partial class Staging
     }
 
     /// <summary>
-    /// The two cores, shot by shot into --dir: both tech tabs, a craft in Hover Mode and in Vessel
+    /// The one core, shot by shot into --dir: the Structures tech tab, a craft in Hover Mode and in Vessel
     /// Mode (the one craft, switched on the CORE tab), the striped switch, and the seated indicator
     /// in all four modes. The structures are set down whole (STAGING); the switch is clicked.
     /// </summary>
@@ -43,12 +43,9 @@ public sealed partial class Staging
         _game.Zone.Wildlife.Frozen = true;
 
         foreach (int x in Play.OpenMenu(MenuTab.Tech)) yield return x;
-        foreach (int x in _drive.ClickWidget("tech:tab:base")) yield return x;
+        foreach (int x in _drive.ClickWidget("tech:tab:structures")) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        foreach (int x in Shot($"{dir}/tech-base-capital.png")) yield return x;
-        foreach (int x in _drive.ClickWidget("tech:tab:small")) yield return x;
-        foreach (int x in _drive.Wait(4)) yield return x;
-        foreach (int x in Shot($"{dir}/tech-small-hover.png")) yield return x;
+        foreach (int x in Shot($"{dir}/tech-structures.png")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
 
         Vector3 site = Play.FlatSpot(_game.Start, 40f, 0.6f, 0.4f, span: 14f);
@@ -80,7 +77,7 @@ public sealed partial class Staging
         foreach (int x in Shot($"{dir}/core-tab-small-core.png")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
 
-        foreach (int x in ClickMode(CoreMode.Vessel)) yield return x;
+        foreach (int x in ClickMode(CoreMode.Flight)) yield return x;
         _game.Controls.Hold(Key.Space);
         foreach (int x in _drive.Wait(30)) yield return x;
         _game.Controls.Hold(Key.Space, false);
@@ -101,7 +98,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(60)) yield return x;
         var tune = _game.Zone.Data.Handling;
         float g = _game.Zone.Physics.Zone.Strength;
-        Structure big = CoreCraft.Ship(_game.Zone.Data.Catalogue, true, x => ModeFit.Missing(x, CoreMode.Capital, tune, g).Count == 0);
+        Structure big = CoreCraft.Ship(_game.Zone.Data.Catalogue, true, x => ModeFit.Missing(x, CoreMode.Flight, tune, g).Count == 0);
         big.DirtyChunks.Clear();
         Vessel b = Vessel.SpawnBase(_game.Zone, big, (ground + Vector3.Up * 1.4f).ToNumerics(), 0f);
         foreach (var (p, _) in big.Blocks().ToList()) b.ClearGround(p);
@@ -113,7 +110,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(4)) yield return x;
         foreach (int x in Shot($"{dir}/core-tab-big-core.png")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
-        foreach (int x in ClickMode(CoreMode.Capital)) yield return x;
+        foreach (int x in ClickMode(CoreMode.Flight)) yield return x;
         _game.Controls.Hold(Key.Space);
         foreach (int x in _drive.Wait(24)) yield return x;
         _game.Controls.Hold(Key.Space, false);

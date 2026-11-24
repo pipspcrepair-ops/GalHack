@@ -284,7 +284,7 @@ public partial class VitalsTest : Node
         sim.Player.Position = sink;
         sim.Player.Gear.HelmetOn = false;
         sim.Tick(Dt, new Activity(Pace.Walk));
-        Check(sim.Player.Gear.HelmetOn && sim.Events.Any(e => e.StartsWith("Helmet sealed")),
+        Check(sim.Player.Gear.HelmetOn && sim.Events.Any(e => e.StartsWith("HELMET SEALED")),
             "walking into no air seals the helmet by itself");
         v.Oxygen = 50;
         inv.LargeBottles = 1;
@@ -703,7 +703,7 @@ public partial class VitalsTest : Node
                 if (_tick == 32) Tap(Key.B);
                 if (_tick == 36)
                 {
-                    Check(sim.Replicators.Count == _count && LastMessage().StartsWith("Can't set down"),
+                    Check(sim.Replicators.Count == _count && LastMessage().StartsWith("CAN'T SET DOWN"),
                         $"B inside faction territory is refused: \"{LastMessage()}\"");
                     _main.DebugPlace(planet.Start.Position.X, planet.Start.Position.Z, 0f);
                     Tap(Key.B);

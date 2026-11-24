@@ -21,12 +21,16 @@ public sealed class OrbitRules
         public int Segments { get; set; } = 192;
         public int Rings { get; set; } = 96;
         public int TextureWidth { get; set; } = 4096;
+        public double TexelMetres { get; set; } = 4.0;
+        public double NearMetres { get; set; } = 2.0;
+        public int NearTexels { get; set; } = 1536;
         public int CloudWidth { get; set; } = 1024;
         public double CloudHeight { get; set; } = 0.012;
         public double ReliefFar { get; set; } = 0.12;
         public double SphereReach { get; set; } = 105;
         public double MapDaysPerTurn { get; set; } = 1.0;
         public double TemperateYearDays { get; set; } = 24.0;
+        public double StarSkyScale { get; set; } = 3.0;
         public double CloudOpacity { get; set; } = 0.55;
         public double CloudCoverAtLeast { get; set; } = 0.38;
     }
@@ -39,13 +43,7 @@ public sealed class OrbitRules
         public float FadeFrom { get; set; } = 700f;
         public float Band { get; set; } = 1000f;
         public float SwapFrom { get; set; } = 960f;
-        public float ShroudFrom { get; set; } = 760f;
-        public float ShroudHolds { get; set; } = 30f;
-        public float ShroudThins { get; set; } = 620f;
-        public float ShroudThickness { get; set; } = 0.9f;
-        public float FarLandFrom { get; set; } = 220f;
         public float FlatCurve { get; set; } = 300000f;
-        public float TrueGlobeAt { get; set; } = 7000f;
         public float MapWrapsBy { get; set; } = 2400f;
         public float StreamAhead { get; set; } = 1.5f;
     }
@@ -71,6 +69,24 @@ public sealed class OrbitRules
         public float SunEnergy { get; set; } = 1.6f;
         public double VacuumC { get; set; } = 4;
         public double Radiation { get; set; } = 0.4;
+        /// <summary>The jetpack in zero g: the top speed it pushes to, with sprint held, and how hard, m/s and m/s².</summary>
+        public float JetpackSpeed { get; set; } = 12f;
+        public float JetpackSprint { get; set; } = 20f;
+        public float JetpackAccel { get; set; } = 8f;
+        /// <summary>How far past the top of a moon's crossing band it takes over as the frame you fly in, m.</summary>
+        public float TakesOverWithin { get; set; } = 2500f;
+        /// <summary>A moon's own globe fades in over its far look between these distances from its ground, m.</summary>
+        public float[] MoonGlobeFrom { get; set; } = { 9000f, 7000f };
+        /// <summary>A moon's surface starts being made once you are this near its ground, m: a few minutes out at a small vessel's top speed (the thruster moon's is made from the start).</summary>
+        public float MakeMoonWithin { get; set; } = 45000f;
+    }
+
+    public FoldRules Fold { get; set; } = new();
+
+    public sealed class FoldRules
+    {
+        /// <summary>The least time in a fold's tunnel, s: longer still while the destination is made.</summary>
+        public double Tunnel { get; set; } = 4;
     }
 
     static readonly JsonSerializerOptions Json = new()

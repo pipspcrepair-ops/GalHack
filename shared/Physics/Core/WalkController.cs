@@ -52,17 +52,49 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// </summary>
     public ClimbMode Climb;
 
+    /// <summary>
+    /// The ladder being climbed, as the game sees it, set each tick with <see cref="Climb"/>. Left
+    /// unknown (default), forward is up and the walk carries on across. Known, it is climbed as a
+    /// person climbs one: forward or up climbs, back or down goes down, and on it the climber keeps
+    /// to its line (a free-standing one is never walked through); over its top any way steps off;
+    /// at its foot, back, aside, or away from its wall walks off it.
+    /// </summary>
+    public LadderHold Ladder;
+
     public float ClimbSpeed = 2.6f, ShaftSpeed = 3.5f;
 
     public float CrouchSpeed = 2.4f, CrouchJumpShare = 0.7f;
     public float WalkSpeed = 5.5f, SprintSpeed = 9f, GroundAccel = 45f, AirAccel = 10f, JumpSpeed = 4.8f;
     public float JetpackAccel = 18f, JetpackFuelMax = 3f, ZeroGSpeed = 5f, ZeroGAccel = 7f;
 
-    /// <summary>
-    /// How hard feet can hold against outside forces, m/s² of the body's mass. Enough to stand
-    /// in a gale; a tornado's pull is stronger and drags you.
-    /// </summary>
+    /// <summary>How hard the legs can push, m/s² of the body's mass: walking, and holding against outside forces.</summary>
     public float Grip = 60f;
+
+    /// <summary>
+    /// The gravity the walk is tuned for, m/s². In less, a stride scales as a person's does (by its Froude number): the
+    /// speeds by the square root of the share of it, the feet's push along the ground by the share, so a stride let go
+    /// stops in the same distance, and a hop off a bump carries as far, as under the tuned gravity. In more it slows (the
+    /// design: heavy gravity slows; Empyrion's wiki speaks only of jumps shrinking): the speeds by the square
+    /// root of the tuned over the pull, so 2.2 g walks at two thirds and 5 g at under half.
+    /// </summary>
+    public float TunedGravity = 9.8f;
+
+    /// <summary>
+    /// How hard an outside push along the ground the feet can stand against before they lose their
+    /// footing, m/s² of the body's mass (about the friction of boots on rough ground). Enough to stand
+    /// in a gale; hurricane-force wind on a body standing tall slides it (crouching halves the push),
+    /// and a tornado's pull drags you. Past it the feet slip: they hold back only a share of it.
+    /// </summary>
+    public float Footing = 5f, SlipHold = 0.5f;
+
+    /// <summary>The feet lost their footing this tick: an outside push was too strong to stand against.</summary>
+    public bool Slipping { get; private set; }
+
+    /// <summary>
+    /// The jetpack also pushes along the way the body is steered in the air, this share of its thrust:
+    /// enough to fight clear of the edge of a weak tornado, never out of a strong core.
+    /// </summary>
+    public float JetpackSide = 0.6f;
 
     public float JetpackFuel { get; internal set; } = 3f;
 
@@ -82,6 +114,16 @@ public sealed class WalkController : IBodyController, IForceReactor
     public bool Jumped { get; private set; }
 
     /// <summary>
+    /// How long a fresh press of <see cref="Jump"/> waits for the feet, s: pressed just before touchdown it still jumps on
+    /// landing, so tapping chains jumps and jetpack bursts across touchdowns (jetpack surfing). A key held on through a
+    /// landing is no fresh press: it jumped once, fires the jetpack in the air, and stands when it lands.
+    /// </summary>
+    public float JumpBuffer = 0.12f;
+
+    float _jumpWaiting;
+    bool _jumpWas;
+
+    /// <summary>
     /// In water deep enough to swim: more than the rules' swimDepth of the body is under (and it
     /// wades again below wadeDepth). Swimming, <see cref="Move"/> strokes along the heading and
     /// <see cref="Vertical"/> goes up or down (Space and Ctrl): no other controls. Left alone, a
@@ -95,7 +137,11 @@ public sealed class WalkController : IBodyController, IForceReactor
     public void React(PhysicsWorld world, Body body, float dt)
     {
         Jumped = false;
+        bool fired = JetpackFiring;
         JetpackFiring = false;
+        Slipping = false;
+        _jumpWaiting = Jump && !_jumpWas ? JumpBuffer : MathF.Max(0f, _jumpWaiting - dt);
+        _jumpWas = Jump;
         if (body.Asleep) return;
         Vector3 v = body.Velocity, up = Vector3.Normalize(body.Up);
         float m = body.Mass;
@@ -119,15 +165,35 @@ public sealed class WalkController : IBodyController, IForceReactor
             return;
         }
 
-        if (Climb != ClimbMode.None)
+        Vector2 cm = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
+        LadderHold hold = Ladder;
+        bool known = Climb == ClimbMode.Ladder && hold.Known;
+        Vector3 outward = known ? Vector3.Normalize(hold.Out - up * Vector3.Dot(hold.Out, up)) : Vector3.Zero;
+        Vector3 wishAcross = MathX.Rotate(heading, new Vector3(cm.X, 0f, cm.Y));
+        // At a ladder's foot (the feet down at the floor it stands on): back, aside, nothing, or forward
+        // away from its wall is the ordinary walk. That is how you step off it at the bottom.
+        bool offAtFoot = known && !hold.Below && Vertical <= 0f
+                         && (cm.Y >= 0f || hold.Backed && Vector3.Dot(wishAcross, outward) > 0.5f);
+        if (Climb != ClimbMode.None && !offAtFoot)
         {
-            // On a ladder forward is up (so walking into it climbs it, and over its top); in a shaft
-            // only up and down ride it. Across, a climber moves at a climb on a ladder and at a walk
-            // in a shaft, so stepping off at the top or out of a shaft door is the ordinary walk.
-            Vector2 cm = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
+            // On a ladder forward or up climbs (walking into it climbs it, and over its top), back or
+            // down goes down; in a shaft only up and down ride it. Across, a climber moves at a climb on
+            // a ladder and at a walk in a shaft, so stepping off at the top or out of a shaft door is the
+            // ordinary walk. On a known ladder below its top, and on the way down from it, the climber
+            // keeps hold: drawn to its line, moving only along its face.
             bool ladder = Climb == ClimbMode.Ladder;
             float rise = ladder ? Math.Clamp(-cm.Y + Vertical, -1f, 1f) * ClimbSpeed : Math.Clamp(Vertical, -1f, 1f) * ShaftSpeed;
-            Vector3 across = MathX.Rotate(heading, new Vector3(cm.X, 0f, cm.Y)) * (ladder ? ClimbSpeed : Sprint ? SprintSpeed : WalkSpeed);
+            Vector3 across = wishAcross * (ladder ? ClimbSpeed : Sprint ? SprintSpeed : WalkSpeed);
+            if (known && !(hold.Top && rise > 0f))
+            {
+                Vector3 toLine = hold.Centre - body.Position;
+                toLine -= up * Vector3.Dot(toLine, up);
+                Vector3 side = Vector3.Normalize(Vector3.Cross(up, outward));
+                float sideways = Vector3.Dot(across, side);
+                // Off its line along its face only when asked to; to and from its wall, always back to it.
+                Vector3 pull = outward * Vector3.Dot(toLine, outward) + (cm.X == 0f ? side * Vector3.Dot(toLine, side) : Vector3.Zero);
+                across = side * sideways + MathX.LimitLength(pull * 4f, ClimbSpeed);
+            }
             Vector3 climbed = Toward(v, across + up * rise, GroundAccel * dt);
             world.AddForce(body, MathX.LimitLength(m * (climbed - v) / dt - body.PendingTotalForce, m * Grip), ForceKind.Walk);
             return;
@@ -143,14 +209,17 @@ public sealed class WalkController : IBodyController, IForceReactor
         }
 
         bool onFloor = body.OnFloor;
-        // Refilled on the ground, but not while the pack is held on: a body that touches down and lifts
-        // off every tick (wedged under a ceiling, on an edge) must not earn back the fuel it burns.
-        if (onFloor && !Jetpack)
+        // Refilled on the ground, Space held or not (a held Space neither jumps again nor fires on the ground), but not
+        // straight after the pack fired: a body that touches down and lifts off every tick (wedged under a ceiling, on an
+        // edge) must not earn back the fuel it burns.
+        if (onFloor && !fired)
         {
             JetpackFuel = MathX.MoveToward(JetpackFuel, JetpackFuelMax, dt);
             if (JetpackSpent && JetpackFuel >= MathF.Min(JetpackMinRefill, JetpackFuelMax)) JetpackSpent = false;
         }
-        float speed = Crouch ? CrouchSpeed : Sprint ? SprintSpeed : WalkSpeed;
+        float g = world.GravityAt(body).Length(), share = g > 1e-3f ? MathF.Min(g / TunedGravity, 1f) : 1f;
+        float heavy = g > TunedGravity ? MathF.Sqrt(TunedGravity / g) : 1f;
+        float speed = (Crouch ? CrouchSpeed : Sprint ? SprintSpeed : WalkSpeed) * MathF.Sqrt(share) * heavy;
         Vector2 move = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
         Vector3 wishDir = MathX.Rotate(heading, new Vector3(move.X, 0f, move.Y));
         Vector3 h = v - up * Vector3.Dot(v, up); // velocity along the face underfoot
@@ -162,11 +231,13 @@ public sealed class WalkController : IBodyController, IForceReactor
             // so far that runs along it is all outside forces. Worked out in the walk frame, axis by
             // axis, exactly as on flat ground.
             Vector3 hf = MathX.Unrotate(frame, h), wf = MathX.Unrotate(frame, wishDir * speed);
-            var nextF = new Vector3(MathX.MoveToward(hf.X, wf.X, GroundAccel * dt), 0f, MathX.MoveToward(hf.Z, wf.Z, GroundAccel * dt));
+            var nextF = new Vector3(MathX.MoveToward(hf.X, wf.X, GroundAccel * share * dt), 0f, MathX.MoveToward(hf.Z, wf.Z, GroundAccel * share * dt));
             Vector3 next = MathX.Rotate(frame, nextF);
             Vector3 outside = body.PendingTotalForce - up * Vector3.Dot(body.PendingTotalForce, up);
             Vector3 legs = m * (next - h) / dt - outside;
-            world.AddForce(body, MathX.LimitLength(legs, m * Grip), ForceKind.Walk);
+            // Pushed harder than the feet can stand: they slip, holding back only part of it.
+            Slipping = outside.Length() > m * Footing;
+            world.AddForce(body, MathX.LimitLength(legs, Slipping ? m * Footing * SlipHold : m * Grip), ForceKind.Walk);
         }
         else if (move != Vector2.Zero)
         {
@@ -176,17 +247,26 @@ public sealed class WalkController : IBodyController, IForceReactor
             world.AddForce(body, m * (MathX.LimitLength(steered, cap) - h) / dt, ForceKind.Walk);
         }
 
-        if (Jump && onFloor)
+        if (_jumpWaiting > 0f && onFloor)
         {
             world.AddImpulse(body, up * m * MathF.Max(0f, JumpSpeed * (Crouch ? CrouchJumpShare : 1f) - Vector3.Dot(v, up)), ForceKind.Walk);
             Jumped = true;
+            _jumpWaiting = 0f;
         }
-        else if (Jetpack && !onFloor && !JetpackSpent && JetpackFuel > 0f && Vector3.Dot(v, up) < 8f)
+        else if (Jetpack && !onFloor && !JetpackSpent && JetpackFuel > 0f)
         {
-            world.AddForce(body, up * m * JetpackAccel, ForceKind.Walk);
-            JetpackFiring = true;
-            JetpackFuel = MathF.Max(0f, JetpackFuel - dt);
-            if (JetpackFuel <= 0f) JetpackSpent = true;
+            // Up (until climbing fast), and along the way it is steered: whatever else has hold of the
+            // body (a tornado's pull, a fall), the pack fires as a force on the one path, so it brakes a
+            // fall and can fight a pull. Nothing locks it out.
+            Vector3 thrust = Vector3.Dot(v, up) < 8f ? up * JetpackAccel : Vector3.Zero;
+            if (move != Vector2.Zero) thrust += Vector3.Normalize(wishDir) * JetpackAccel * JetpackSide;
+            if (thrust != Vector3.Zero)
+            {
+                world.AddForce(body, thrust * m, ForceKind.Walk);
+                JetpackFiring = true;
+                JetpackFuel = MathF.Max(0f, JetpackFuel - dt);
+                if (JetpackFuel <= 0f) JetpackSpent = true;
+            }
         }
     }
 
@@ -202,3 +282,20 @@ public sealed class WalkController : IBodyController, IForceReactor
 
 /// <summary>What holds a walking body up besides its feet (see <see cref="WalkController.Climb"/>).</summary>
 public enum ClimbMode { None, Ladder, Shaft }
+
+/// <summary>A ladder at a climber's feet (see <see cref="WalkController.Ladder"/>), in the climber's world.</summary>
+public struct LadderHold
+{
+    /// <summary>Which way it looks out from what it is fixed to (level, unit); zero when unknown.</summary>
+    public Vector3 Out;
+    /// <summary>A point on its line, the middle of its cells.</summary>
+    public Vector3 Centre;
+    /// <summary>A wall behind it (not one standing free), so walking away from it at its foot is walking off it.</summary>
+    public bool Backed;
+    /// <summary>It goes on below the feet: false at its foot, once the feet are down within a hand of the floor it stands on.</summary>
+    public bool Below;
+    /// <summary>The feet are over its top (only the cell under them is ladder): from here any way steps off.</summary>
+    public bool Top;
+
+    public readonly bool Known => Out.LengthSquared() > 0.25f;
+}

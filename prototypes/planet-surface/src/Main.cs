@@ -91,7 +91,7 @@ public partial class Main : Node3D
         AddChild(Sky);
         Streamer = new TerrainStreamer { Name = "Terrain" };
         AddChild(Streamer);
-        Pois = new PoiLayer { Name = "Pois" };
+        Pois = new PoiLayer { Name = "Pois", Sky = Sky };
         AddChild(Pois);
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
         AddChild(Infra);
@@ -128,7 +128,7 @@ public partial class Main : Node3D
         Weather = new WeatherRig { Name = "Weather", Main = this };
         AddChild(Weather);
 
-        Sea = new MeshInstance3D { Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 0, SubdivideDepth = 0 }, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        Sea = new MeshInstance3D { Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 95, SubdivideDepth = 95 }, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, ExtraCullMargin = TerrainStreamer.RoundSink(17000f) }; // subdivided to sink over the horizon with the land
         AddChild(Sea);
 
         // Under water the view closes in: the liquid's own murk instead of the sky, and a tint.
@@ -145,8 +145,8 @@ public partial class Main : Node3D
 
     // ---- Planets --------------------------------------------------------------------------
 
-    /// <summary>Leaves the current planet (saving its edits) and starts building the next one.</summary>
-    public void Arrive(PlanetSpec spec)
+    /// <summary>Leaves the current planet (saving its edits) and starts building the next one (<paramref name="build"/> makes it, when it isn't the spec's own world: another body of a system).</summary>
+    public void Arrive(PlanetSpec spec, Func<PlanetWorld> build = null)
     {
         if (World != null) SaveQuietly();
         IsReady = false;
@@ -163,7 +163,7 @@ public partial class Main : Node3D
         _arriving = Stopwatch.StartNew();
         _settledHeap = false;
         PoiCatalog catalog = Catalog;
-        _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
+        _building = Task.Run(build ?? (() => PlanetWorld.Build(spec, catalog)));
     }
 
     void Arrived(PlanetWorld world)
@@ -183,9 +183,10 @@ public partial class Main : Node3D
         _water.SetShaderParameter("deep", look.Deep);
         _water.SetShaderParameter("lava", look.Lava);
         _water.SetShaderParameter("glow", look.LiquidGlow);
+        _water.SetShaderParameter("sea_map", world.SeaTexture());
+        _water.SetShaderParameter("sea_mask", WorldMap.SeaFrom);
         _seaMaterial = (ShaderMaterial)_water.Duplicate();
         _seaMaterial.SetShaderParameter("sea", true);
-        _seaMaterial.SetShaderParameter("sea_map", world.SeaTexture());
         Sea.MaterialOverride = _seaMaterial;
         _underwater = new Godot.Environment
         {

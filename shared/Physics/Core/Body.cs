@@ -9,12 +9,6 @@ namespace GalHack.Physics;
 /// </summary>
 public enum BodyKind { Vessel, Wreck, Crate, Player, Creature, Base }
 
-/// <summary>
-/// A structure's class, for the rules that care which: vessels parked on a base or a capital ship
-/// ride their host and feel no wind of their own. None for anything that isn't a vessel.
-/// </summary>
-public enum StructureClass { None, Hover, Small, Capital }
-
 /// <summary>Who integrates a body's motion.</summary>
 public enum Motion
 {
@@ -64,8 +58,8 @@ public sealed class BodySpec
     /// <summary>Drag coefficient × frontal area, m². Wind pushes with ½ρ·CdA·|v|·v.</summary>
     public float DragArea;
 
-    /// <summary>Vessels: hover, small or capital. Capital ships carry the vessels parked on them.</summary>
-    public StructureClass Class;
+    /// <summary>A loose body's shape as a box in its own frame, m (see <see cref="Body.WindArea"/>); zero: <see cref="DragArea"/> as given.</summary>
+    public Vector3 DragBox;
 
     /// <summary>
     /// kg per cubic metre of the water it displaces: below water's density it floats, above it
@@ -99,8 +93,7 @@ public interface IBodyController
 }
 
 /// <summary>
-/// Takes damage for a body that keeps its health somewhere else (a player's health with the
-/// tornado's fling floor). Returns what was actually dealt. The default just adds it up.
+/// Takes damage for a body that keeps its health somewhere else (a player's health). Returns what was actually dealt. The default just adds it up.
 /// </summary>
 public interface IDamageSink
 {
@@ -138,10 +131,34 @@ public sealed class Body
     /// <summary>CdA, m².</summary>
     public float DragArea { get; set; }
 
-    public StructureClass Class { get; set; }
+    /// <summary>A loose body's shape as a box in its own frame, m; zero for bodies whose <see cref="DragArea"/> is fixed.</summary>
+    public Vector3 DragBox { get; set; }
+
+    /// <summary>
+    /// CdA a level wind meets, m². With a <see cref="DragBox"/>, the side the box shows as it lies now: a lamp blown off a
+    /// wall lying flat shows its edge, not its face (its mass is a fraction of a kilogram, so the difference is whether a
+    /// breeze carries it off). Otherwise <see cref="DragArea"/>.
+    /// </summary>
+    public float WindArea()
+    {
+        if (DragBox == Vector3.Zero) return DragArea;
+        Matrix4x4 r = Matrix4x4.CreateFromQuaternion(Rotation);
+        Vector3 Axis(Vector3 local) => Vector3.Abs(Vector3.Transform(local, r));
+        Vector3 extent = Axis(Vector3.UnitX * DragBox.X) + Axis(Vector3.UnitY * DragBox.Y) + Axis(Vector3.UnitZ * DragBox.Z);
+        return extent.Y * (extent.X + extent.Z) * 0.5f * DragCoefficient;
+    }
+
+    /// <summary>The drag coefficient a structure's area is taken at (a blunt box).</summary>
+    public const float DragCoefficient = 0.8f;
 
     /// <summary>kg/m³ of displaced water: buoyancy is water's density / this × weight × the share under water.</summary>
     public float Density { get; set; }
+
+    /// <summary>
+    /// The height its share under water is reckoned by, if not its shape's: a person who crouches keeps
+    /// the body they have, so crouching in shallow water neither floats them nor sets them swimming.
+    /// </summary>
+    public float? WaterHeight { get; set; }
 
     /// <summary>
     /// How the body sits in water this tick (the world updates it before anything reacts to it):
@@ -151,11 +168,17 @@ public sealed class Body
     public WaterState Water { get; internal set; } = WaterState.Dry;
 
     /// <summary>
-    /// The host this vessel is parked on: a base or a capital ship it has landed on, rests on with
-    /// gear or contact, or is docked to. A parked body feels no wind and, while landed, moves with its
-    /// host. Null when it isn't parked. See <see cref="PhysicsWorld.Park"/>.
+    /// The host this vessel is parked on: another structure its gear is attached to, it rests on, or
+    /// it is docked to. A parked body feels no wind and, while landed, moves with its host. Null when
+    /// it isn't parked. See <see cref="PhysicsWorld.Park"/>.
     /// </summary>
     public Body ParkedOn { get; internal set; }
+
+    /// <summary>
+    /// The mass parked on this body, chains included (A on B on C: C carries both), kg. Its thrust
+    /// has to move that too. Worked out at the start of each tick.
+    /// </summary>
+    public float Carried { get; internal set; }
 
     // The host's pose at the start of this tick, so a landed body can be carried by exactly the
     // host's motion over the tick (turning and moving alike), whatever order the two step in.
@@ -192,6 +215,13 @@ public sealed class Body
 
     /// <summary>Not simulated this tick: a landed vessel or a sleeping rigid body. Costs nothing.</summary>
     public bool Asleep { get; set; }
+
+    /// <summary>
+    /// Seconds left that a vessel is at the weather's mercy: a tornado has hold of it or has just
+    /// thrown it, and its engines can't hold it (<see cref="VesselController"/>). It flies as thrown,
+    /// falls, and lands by the same impact rule as everything else.
+    /// </summary>
+    public float Tossed { get; set; }
 
     public StuckShape Shape { get; set; }
 

@@ -53,6 +53,13 @@ public sealed record WorldProfile
     public TechLevel Before { get; init; } = TechLevel.Mid;
     /// <summary>The post-collapse tech level: the living.</summary>
     public TechLevel Now { get; init; } = TechLevel.Low;
+    /// <summary>The words of a family's <c>is</c> line this world's facts rule out, from its roll: no open streets or farms where the air was never fit to build under.</summary>
+    public IReadOnlySet<string> Barred { get; init; } = Nothing;
+    /// <summary>How long ago and how hard the world fell, for its places' decay (from its roll; null: a century of neglect).</summary>
+    public RuinAge? Ruin { get; init; }
+    /// <summary>The colours its made things take, faded by its years and its fall (from its roll; null: as built).</summary>
+    public WorldPaint? Paint { get; init; }
+    static readonly HashSet<string> Nothing = new();
 
     /// <summary>The data tag of a level (low, mid, high), as families' variants and the deco library name them.</summary>
     public static string Tag(TechLevel t) => t switch { TechLevel.Low => "low", TechLevel.High => "high", _ => "mid" };
@@ -71,8 +78,44 @@ public sealed record WorldProfile
     /// <summary>Places no one from this world built: alien and precursor sites, and wrecks that fell from the sky. Any world can have them.</summary>
     public static bool Unbuilt(FamilyDef f) => f.Tags.Contains("alien") || f.Tags.Contains("precursor") || f.Tags.Contains("wreck");
 
-    /// <summary>The tech level a place in a state is built at: the living at <see cref="Now"/>, the old world at <see cref="Before"/>.</summary>
-    public TechLevel LevelFor(FamilyDef f, PoiState state) => Living(f, state) ? Now : Before;
+    /// <summary>Built by survivors after the fall (a scrap fort, a camp), lived in or not: it is of the living's age, never the old world's.</summary>
+    public static bool SurvivorBuilt(FamilyDef f) => f.Tags.Contains("settlement") || f.Tags.Contains("survivor");
+
+    /// <summary>The tech level a place in a state is built at: the living (and whatever survivors built) at <see cref="Now"/>, the old world at <see cref="Before"/>.</summary>
+    public TechLevel LevelFor(FamilyDef f, PoiState state) => Living(f, state) || SurvivorBuilt(f) ? Now : Before;
+
+    /// <summary>Whether a family's tech fits this world in any state it can take (its data tech line, any when empty).</summary>
+    public bool TechFits(FamilyDef f) =>
+        Unbuilt(f) || f.Techs.Count == 0 || Enumerable.Range(0, f.StateWeights.Length).Any(s => f.StateWeights[s] > 0f && f.Techs.Contains(Tag(LevelFor(f, (PoiState)s))));
+
+    /// <summary>
+    /// The world's port as its age built it, past or present: the first port family that can stand here in some state (a
+    /// spaceport where the age was high, a makeshift launch site where it was medium), else the age's own in its stead (a
+    /// low-tech world's airstrip); none on a world without one.
+    /// </summary>
+    public FamilyDef? PortFamily(PoiLibrary lib)
+    {
+        if (Starport == Starport.None) return null;
+        bool Stands(FamilyDef? f) => f != null && StateWeights(f).Any(w => w > 0f);
+        var ports = lib.Families.Where(f => f.Tier == PoiTier.Spaceport && !f.Tags.Contains("scrappy")).ToList();
+        return ports.FirstOrDefault(Stands) ?? ports.Select(f => ForAge(lib, f)).FirstOrDefault(Stands);
+    }
+
+    /// <summary>Its lesser ports: the port's own kind, or the kind its family names (a launch site's airports) where that can stand here.</summary>
+    public FamilyDef LesserPort(PoiLibrary lib, FamilyDef port) =>
+        port.Lesser != null && lib.Families.FirstOrDefault(f => f.Id == port.Lesser) is { } l && StateWeights(l).Any(w => w > 0f) ? l : port;
+
+    /// <summary>
+    /// What stands for a family on this world: the family itself where its tech fits, else the first of its
+    /// <c>instead</c> line that does (its age's equivalent: a caravan camp where a low-tech world has no launch
+    /// field), else null. By rule, so any fall, theme or plan that asks for it gets the right thing.
+    /// </summary>
+    public FamilyDef? ForAge(PoiLibrary lib, FamilyDef f, ulong salt = 0)
+    {
+        if (TechFits(f)) return f;
+        var fits = f.Instead.Select(id => lib.Families.FirstOrDefault(x => x.Id == id)).Where(x => x != null && TechFits(x)).ToList();
+        return fits.Count == 0 ? null : fits[(int)(Hash.Mix(salt) % (ulong)fits.Count)];
+    }
 
     /// <summary>
     /// Whether a family can stand here in a state: its tech levels (data: tech, any when empty)
@@ -83,12 +126,12 @@ public sealed record WorldProfile
     public bool Fits(FamilyDef f, PoiState state)
     {
         if (Unbuilt(f)) return true;
+        if (f.Is.Any(Barred.Contains)) return false;
         bool living = Living(f, state);
         if (!living && !Inhabited) return false;
         if (f.Tier == PoiTier.Spaceport && !living && Starport == Starport.None) return false;
         if (living && !LivingFits(f)) return false;
-        TechLevel level = living ? Now : Before;
-        return f.Techs.Count == 0 || f.Techs.Contains(Tag(level));
+        return f.Techs.Count == 0 || f.Techs.Contains(Tag(LevelFor(f, state)));
     }
 
     /// <summary>Whether this many people could keep a living place of this size: hamlets for survivors, nothing past a base for outposts.</summary>
@@ -161,12 +204,19 @@ public sealed record WorldProfile
 
     // ---- rolling one ----------------------------------------------------------------------------
 
+    /// <summary>How many lived on a world before the fall, in words, by its power of ten.</summary>
+    public static string PopulationWord(int pop) => pop switch
+    {
+        <= 0 => "none", 1 => "sparse", 2 => "hundreds", 3 => "thousands", 4 => "tens of thousands", 5 => "hundreds of thousands",
+        6 => "millions", 7 => "tens of millions", 8 => "hundreds of millions", 9 => "billions", _ => "tens of billions",
+    };
+
     /// <summary>
     /// A world's profile from its seed and kind (archetype, as the planet names it: temperate, arid,
     /// ice, lava, alien...). Start worlds were always inhabited. Neighbouring seeds differ widely:
     /// colonies developed unevenly.
     /// </summary>
-    public static WorldProfile Roll(ulong seed, string archetype, bool start = false)
+    public static WorldProfile Roll(ulong seed, string archetype, bool start = false, int? forcePopulation = null, PopulationNow? forceCurrent = null)
     {
         var rng = new Rng(Hash.Combine(seed, 0x50F11EUL));
         string a = archetype.ToLowerInvariant();
@@ -176,6 +226,12 @@ public sealed record WorldProfile
         float never = a switch { "temperate" => 0.06f, "arid" => 0.12f, "ice" => 0.2f, "lava" => 0.3f, "alien" => 0.4f, _ => 0.15f };
         bool inhabited = start || !rng.Chance(never);
         int pop = inhabited ? Math.Clamp(D6() + D6() - 2 - harsh + (start ? 1 : 0), 1, 10) : 0;
+        // A new game's pick stands in for the roll, and everything that follows from it follows from the pick.
+        if (forcePopulation is int forced)
+        {
+            pop = Math.Clamp(forced, 0, 10);
+            inhabited = pop > 0;
+        }
         Trade trade = a switch
         {
             "temperate" => rng.Pick(new[] { Trade.Agricultural, Trade.Agricultural, Trade.Industrial, Trade.Commerce, Trade.Research, Trade.Military }),
@@ -217,6 +273,7 @@ public sealed record WorldProfile
         // Nobody ever settled here, so whoever's here came lately: outposts at most. A start world always has someone to find.
         if (!inhabited) current = PopulationNow.Outposts;
         if (start) current = (PopulationNow)Math.Clamp((int)current, (int)PopulationNow.Survivors, (int)PopulationNow.Outposts);
+        if (forceCurrent is PopulationNow picked) current = picked;
         // The living: survivors usually fall a level or two below the ruins; now and then a faction
         // brings stellar tech to a world whose ruins are older (never on a start world, where no faction holds ground).
         int drop = rng.Range(0, 3);

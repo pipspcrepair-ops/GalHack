@@ -6,16 +6,23 @@
     // The globe's radius against the map: the map's width is the length of its equator, so 1 is
     // true scale (radius = width / 2π, about 2.5 km for a 16 km world).
     "radiusScale": 1.0,
-    // How high the rim of air drawn round the globe reaches, as a share of its radius. It thins
-    // away to nothing by there, and has to stay under the orbit's lowest height.
-    "atmosphere": 0.15,
+    // How high the rim of air drawn round the globe reaches, as a share of its radius: a thin layer
+    // hugging the globe from space, as a real world's is (owner, 22 Nov: no big shell round it).
+    "atmosphere": 0.04,
     // The sheet's polar grid: bearings and rings, spread closest under you.
     "segments": 256,
     "rings": 160,
-    // The colour map's width in pixels (planet-generator's ColorMap; half as tall) and the clouds'.
-    "textureWidth": 2048,
+    // The colour map: a texel this many metres round the equator, a power of two at most this many
+    // pixels wide (planet-generator's ColorMap; half as tall), and the clouds' width.
+    "texelMetres": 4,
+    "textureWidth": 4096,
     "cloudWidth": 1024,
-    // Clouds sit this share of the radius over the ground, at this share of the generator's
+    // The ground near you, painted finer while you are low over it (a square this many texels wide,
+    // this many metres each, on worker threads), so it is never blocky at the switch.
+    "nearMetres": 2,
+    "nearTexels": 1536,
+    // Clouds sit this share of the curve's radius over the ground (never over the clouds you climbed
+    // through), at this share of the generator's
     // cover (its cloud map is a stormy day's; thinned, the land under it reads from orbit).
     "cloudHeight": 0.012,
     // The share of the map's relief the true globe draws (it is a small world: at full height its
@@ -31,6 +38,10 @@
     // A temperate world's year, game days: every orbit's period follows from it, so this one number
     // is how fast the system runs. Short enough that planets can be seen to move in play.
     "temperateYearDays": 24,
+    // How much bigger stars stand in the sky than at the chart's plain scale: a yellow star from a
+    // temperate world about 3 degrees across, a scorched world's about three times that, an ice
+    // world's smaller. Its light stays the world's own.
+    "starSkyScale": 3.0,
     // The globe is painted once, from the sky's clouds as they stand, but a clear spell under you
     // shouldn't leave the whole world bare: its share of cloud is at least this.
     "cloudCoverAtLeast": 0.38,
@@ -39,8 +50,8 @@
 
   // Crossing between the surface and orbit is seamless: no loading, position, heading and velocity
   // carried straight across. What you see is set from your height alone, the same both ways: the
-  // air thickens to the cap in the world's own colours, the land hands over to the globe's sheet
-  // behind it, and it thins away to black space with the world curving away below.
+  // land hands over to the globe's sheet just under the cap, and the air thins away to black space
+  // with the world curving away below.
   "crossing": {
     // The cap, m: orbit starts here on every world, low, on Empyrion's scale, just over the clouds
     // (their tops are about 1,000 m). The design keeps the land under it (peaks to about 900 m).
@@ -57,22 +68,13 @@
     // The band, m over the cap: the surface's sky turning into space's, the star's light taking over.
     // The land is already gone: at its foot the sheet is all the ground there is.
     "band": 1000,
-    // From this height (m) the sheet is the far land past the surface's own, in every direction.
-    "farLandFrom": 220,
-    // The shroud: the air round you, from this height up to the cap (m), holding a little over it
-    // and thinning away over this many metres. Its thickness is this share at the most, times the
-    // share the world's air allows.
-    "shroudFrom": 760,
-    "shroudHolds": 30,
-    "shroudThins": 620,
-    "shroudThickness": 0.9,
-    // The swap, m: the sheet comes over the land from here up to the cap, behind the shroud.
+    // The swap, m: the sheet comes over the land from here up to the cap. Nothing covers it
+    // (owner, 22 Nov: no shrouding): it is the same land in the same place.
     "swapFrom": 960,
-    // The sheet's curve: its radius (m) up to the cap, nearly flat, tightening with height to the
-    // true globe at this height, m. The map wraps from the flat map onto the sphere over this many
-    // metres above the cap.
+    // The sheet's curve: its radius (m) up to the cap, nearly flat, tightening up the band to the
+    // true globe at the band's top, so in space every body is drawn at its true size. The map wraps
+    // from the flat map onto the sphere over this many metres above the cap.
     "flatCurve": 300000,
-    "trueGlobeAt": 7000,
     "mapWrapsBy": 2400,
     // A descent starts streaming the ground under it this many bands over the cap.
     "streamAhead": 1.5
@@ -88,7 +90,7 @@
     "orbit": [ 2600, 5400 ],
     // Sites keep within this latitude of the globe's equator, degrees.
     "maxLatitude": 55,
-    // What the survival tool's gather mode gets back from a wreck's block (design: about 33 %),
+    // What the Sleeper tool's gather mode gets back from a wreck's block (design: about 33 %),
     // and how long it takes to cut one free, seconds per tonne (a light block a second or two).
     "salvageReturn": 0.33,
     "salvageSecondsPerTonne": 0.6,
@@ -97,9 +99,9 @@
     // A wreck's hold, by its salvage grade: item, least, most (each container block holds one roll).
     "loot": {
       "scrap":    [ [ "iron-bar", 2, 8 ], [ "hull-plate", 1, 4 ], [ "copper-wire", 1, 5 ], [ "air-cell", 0, 2 ], [ "polymer", 0, 3 ] ],
-      "salvage":  [ [ "hull-plate", 2, 6 ], [ "circuit-board", 1, 3 ], [ "servo", 0, 2 ], [ "air-cell", 1, 3 ], [ "trail-ration", 0, 2 ], [ "patch-kit", 0, 2 ], [ "energy-cell", 0, 2 ] ],
+      "salvage":  [ [ "hull-plate", 2, 6 ], [ "circuit-board", 1, 3 ], [ "servo", 0, 2 ], [ "air-cell", 1, 3 ], [ "trail-ration", 0, 2 ], [ "patch-kit", 0, 2 ], [ "energy-cell", 0, 2 ], [ "warp-cell", 0, 2 ] ],
       "military": [ [ "hull-plate", 2, 6 ], [ "gun-barrel", 0, 2 ], [ "control-unit", 0, 1 ], [ "explosive-charge", 0, 2 ], [ "air-cell", 1, 2 ], [ "patch-kit", 1, 2 ] ],
-      "rare":     [ [ "circuit-board", 1, 4 ], [ "logic-module", 0, 2 ], [ "field-emitter", 0, 1 ], [ "fold-crystal", 0, 1 ], [ "air-cell", 1, 2 ] ]
+      "rare":     [ [ "circuit-board", 1, 4 ], [ "logic-module", 0, 2 ], [ "field-emitter", 0, 1 ], [ "fold-crystal", 0, 1 ], [ "warp-cell", 0, 3 ], [ "air-cell", 1, 2 ] ]
     }
   },
 
@@ -114,6 +116,26 @@
     // what a sealed suit feels, °C: in vacuum it loses heat slowly, so a cool day, not a deep
     // freeze. And space's background radiation, RAD (the visor warns above 3).
     "vacuumC": 4,
-    "radiation": 0.4
+    "radiation": 0.4,
+    // The jetpack in zero g (EVA): the same keys as on the ground, in any direction along your
+    // look (WASD, Space up, Ctrl down). The speed it pushes to, with sprint held, and how hard,
+    // m/s and m/s^2. Let go and you drift on.
+    "jetpackSpeed": 12,
+    "jetpackSprint": 20,
+    "jetpackAccel": 8,
+    // A moon takes over as the frame you fly in this far past the top of its crossing band, m:
+    // from there it holds still and the world you left moves round it, as the system has them.
+    "takesOverWithin": 2500,
+    // The moon's own globe, painted from the map you land on, fades in over its far look
+    // (the sky's coarse paint of it) between these distances from its ground, m.
+    "moonGlobeFrom": [ 9000, 7000 ]
+  },
+
+  // A fold between stars (docs/solar-systems.md section 8): it arrives in orbit of the target star,
+  // clear of it at its high orbit (warp.json's, the same as a warp to the star), on the side that
+  // faces the star it came from, its worlds where the one clock has them.
+  "fold": {
+    // The least time in the tunnel, s: it lasts longer while the destination is still being made.
+    "tunnel": 4
   }
 }

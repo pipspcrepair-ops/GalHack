@@ -21,8 +21,9 @@ public sealed record Planet(string Name, float Gravity, float AtmosphereCeiling)
 /// <summary>
 /// Where a vessel is flying. <see cref="PlanetGravity"/> is always the planet's, because the
 /// lift margin is about taking off from it; <see cref="Gravity"/> is what actually pulls.
+/// <see cref="Above"/>: how far over the crossing of the body whose reach it is in, m.
 /// </summary>
-public readonly record struct FlightConditions(float PlanetGravity, bool InAtmosphere)
+public readonly record struct FlightConditions(float PlanetGravity, bool InAtmosphere, float Above = float.PositiveInfinity)
 {
     public float Gravity => InAtmosphere ? PlanetGravity : 0f;
 }
@@ -33,8 +34,8 @@ public readonly record struct FlightConditions(float PlanetGravity, bool InAtmos
 /// </summary>
 public sealed class HandlingStats
 {
-    public VesselClass Class { get; init; }
-    public string ClassLabel { get; init; } = "";
+    /// <summary>In Hover Mode: lifted by its hover plates, at hover's top speeds.</summary>
+    public bool IsHover { get; init; }
     public float Mass { get; init; }
 
     /// <summary>Total thrust per direction, kN.</summary>
@@ -42,19 +43,30 @@ public sealed class HandlingStats
 
     public float GyroTorque { get; init; }
 
-    /// <summary>Gyro torque / mass in °/s, before the floor.</summary>
+    /// <summary>Gyro torque / mass in °/s, before the floor and the mass band's cap.</summary>
     public float RawTurnRate { get; init; }
 
     /// <summary>Number two: turn rate in °/s (pitch and yaw; roll is faster by the roll factor).</summary>
     public float TurnRate { get; init; }
     public bool TurnAtFloor => RawTurnRate < TurnRate;
+    public bool TurnCapped => RawTurnRate > TurnRate;
     public float RollFactor { get; init; }
 
-    /// <summary>Number three: top speed here, m/s. Mass never changes it.</summary>
+    /// <summary>Number three: top speed here, m/s: the mass band's (or Hover Mode's), not the thrust's.</summary>
     public float TopSpeed { get; init; }
     public float TopSpeedAir { get; init; }
     public float TopSpeedSpace { get; init; }
     public bool InAtmosphere { get; init; }
+
+    /// <summary>How hard speed over the cap is taken off, m/s², and how the cap over a crossing rises from the air's to space's with height.</summary>
+    public float Brake { get; init; }
+
+    /// <summary>
+    /// The cap here, m/s: the air's under the crossing (whatever the air); over it, what braking at <see cref="Brake"/>
+    /// brings down to the air's by the crossing, up to space's. One rule for every craft over every body.
+    /// </summary>
+    public float TopAt(FlightConditions where) => where.InAtmosphere ? TopSpeedAir
+        : Mathf.Min(TopSpeedSpace, Mathf.Sqrt(TopSpeedAir * TopSpeedAir + 2f * Brake * Mathf.Max(0f, where.Above)));
 
     /// <summary>What holds it up, kN: hover lift on a hover vessel, upward thrust on anything else.</summary>
     public float UpwardThrust { get; init; }
@@ -76,12 +88,10 @@ public sealed class HandlingStats
     /// <summary>How much more cargo it could lift, tonnes.</summary>
     public float SpareLift => PlanetGravity > 0f ? LiftMargin / PlanetGravity : float.PositiveInfinity;
 
-    public bool IsHover => Class == VesselClass.Hover;
-
     /// <summary>The console's warning, shown before anyone tries to take off. Null when all is well.</summary>
     public string LiftWarning => CanLiftOff ? null : IsHover
-        ? UpwardThrust <= 0f ? "NO HOVER LIFT: no hover plates fitted" : $"TOO HEAVY TO HOVER: lift margin {LiftMargin:+0;-0} kN. Drop {-SpareLift:F1} t"
-        : $"TOO HEAVY TO TAKE OFF: lift margin {LiftMargin:+0;-0} kN. Drop {-SpareLift:F1} t";
+        ? UpwardThrust <= 0f ? "NO HOVER LIFT · HOVER PLATES · 0" : $"TOO HEAVY TO HOVER · {LiftMargin:+0;-0} kN · -{-SpareLift:F1} t"
+        : $"TOO HEAVY TO TAKE OFF · {LiftMargin:+0;-0} kN · -{-SpareLift:F1} t";
 
     /// <summary>The four numbers as console lines, the same wherever they are shown.</summary>
     public IEnumerable<string> ConsoleLines()
@@ -89,7 +99,7 @@ public sealed class HandlingStats
         yield return $"ACCEL  fwd {Accel(Direction.Forward):F1}  back {Accel(Direction.Back):F1}  " +
                      $"up {Accel(Direction.Up):F1}  down {Accel(Direction.Down):F1}  " +
                      $"left {Accel(Direction.Left):F1}  right {Accel(Direction.Right):F1} m/s²";
-        yield return $"TURN   {TurnRate:F0}°/s" + (TurnAtFloor ? $"  (floor; gyros alone give {RawTurnRate:F1})" : "");
+        yield return $"TURN   {TurnRate:F0}°/s" + (TurnAtFloor ? $"  (floor; gyros alone give {RawTurnRate:F1})" : TurnCapped ? $"  (capped; gyros give {RawTurnRate:F0})" : "");
         yield return IsHover
             ? $"TOP    {TopSpeed:F0} m/s"
             : $"TOP    {TopSpeed:F0} m/s {(InAtmosphere ? "in air" : "in space")}  ({TopSpeedAir:F0} air, {TopSpeedSpace:F0} space)";
@@ -121,46 +131,50 @@ public static class HandlingModel
         return mass;
     }
 
-    public static HandlingStats Compute(IVesselStructure s, FlightConditions where, Tunables t)
+    /// <param name="carried">Tonnes parked on it (other craft riding it): its thrust has to move them too.</param>
+    /// <param name="power">The share of their power its devices get (1: all they ask for): thrusters, gyros and hover plates give that share of what they can.</param>
+    public static HandlingStats Compute(IVesselStructure s, FlightConditions where, Tunables t, float carried = 0f, float power = 1f)
     {
-        float mass = Mass(s);
+        float mass = Mass(s) + carried;
 
         // Each thruster pushes along its facing, so it counts towards the direction it faces.
         // Its position is never read: placement adds no torque, and a lopsided build flies true.
         var thrust = new float[6];
         foreach (var thruster in s.Thrusters)
             for (int d = 0; d < 6; d++)
-                thrust[d] += thruster.Thrust * Mathf.Max(0f, thruster.Facing.Normalized().Dot(Directions[d]));
+                thrust[d] += power * thruster.Thrust * Mathf.Max(0f, thruster.Facing.Normalized().Dot(Directions[d]));
 
         float torque = 0f;
-        foreach (var gyro in s.Gyros) torque += gyro.Torque;
+        foreach (var gyro in s.Gyros) torque += power * gyro.Torque;
         float rawTurn = mass > 0f ? torque / mass : 0f;
 
         float hoverLift = 0f, ride = 0f;
         foreach (var engine in s.HoverEngines)
         {
-            hoverLift += engine.Lift;
+            hoverLift += power * engine.Lift;
             ride += engine.RideHeight;
         }
         if (s.HoverEngines.Count > 0) ride /= s.HoverEngines.Count;
 
-        Tunables.ClassData cls = t.Class(s.Class);
+        // The turn cap by mass band; top speeds by mode (Flight or Hover), never by size or mass.
+        Tunables.BandData band = t.Band(mass);
+        Tunables.SpeedData speeds = s.HoverMode ? t.Speeds.Hover : t.Speeds.Flight;
         return new HandlingStats
         {
-            Class = s.Class,
-            ClassLabel = cls.Label,
+            IsHover = s.HoverMode,
             Mass = mass,
             Thrust = thrust,
             GyroTorque = torque,
             RawTurnRate = rawTurn,
-            TurnRate = Mathf.Max(rawTurn, t.Turning.Floor),
+            TurnRate = Mathf.Max(Mathf.Min(rawTurn, band.MaxTurn), t.Turning.Floor * power),
             RollFactor = t.Turning.RollFactor,
-            TopSpeedAir = cls.TopSpeedAir,
-            TopSpeedSpace = cls.TopSpeedSpace,
-            TopSpeed = where.InAtmosphere ? cls.TopSpeedAir : cls.TopSpeedSpace,
+            TopSpeedAir = speeds.TopSpeedAir,
+            TopSpeedSpace = speeds.TopSpeedSpace,
+            TopSpeed = where.InAtmosphere ? speeds.TopSpeedAir : speeds.TopSpeedSpace,
+            Brake = t.Speeds.Brake,
             InAtmosphere = where.InAtmosphere,
             // One mode lifts on plates, the other on thrusters: in Hover Mode thrusters only push the craft along.
-            UpwardThrust = s.Class == VesselClass.Hover ? hoverLift : thrust[(int)Direction.Up],
+            UpwardThrust = s.HoverMode ? hoverLift : thrust[(int)Direction.Up],
             Weight = mass * where.PlanetGravity,
             PlanetGravity = where.PlanetGravity,
             RideHeight = ride,

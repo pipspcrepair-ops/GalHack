@@ -73,6 +73,7 @@ public partial class MachineScreens : Node3D
         var want = new HashSet<(object, Int3)>();
         foreach (Device d in Game.Zone.Devices)
         {
+            if (d.Constructor == null) continue;
             var key = ((object)d, Int3.Zero);
             want.Add(key);
             if (!_screens.ContainsKey(key)) _screens[key] = OnDevice(d);
@@ -110,7 +111,7 @@ public partial class MachineScreens : Node3D
             _down = false;
             return false;
         }
-        bool shift = c.IsHeld(Key.Shift);
+        bool shift = c.ModifierHeld(Key.Shift);
         if (c.PrimaryPressed && !_down)
         {
             _down = true;
@@ -142,33 +143,81 @@ public partial class MachineScreens : Node3D
         var holder = new Node3D { Name = "Screen" };
         d.AddChild(holder);
         // In the device's own frame: its floor is y 0, its front faces -z.
-        Transform3D local = ScreenMount.OnFace(new Vector3(0f, 0f, -0.3f), Vector3.Forward, 0f, tipBackDegrees: 8f, rise: -0.02f);
+        Transform3D local = ScreenMount.OnFace(new Vector3(0f, 0f, -0.3f), Vector3.Forward, 0f, tipBackDegrees: 8f, rise: 0.04f);
         holder.Transform = local;
         var mast = new StandardMaterial3D { AlbedoColor = new Color("1b263b"), Roughness = 0.7f };
         holder.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.08f, 0.5f, 0.05f) }, Position = new Vector3(0f, -Size.Y * 0.5f - 0.1f, -0.06f), MaterialOverride = mast });
         return Hang(holder, new ConstructorSection(Game, () => d.Constructor, d.Label.ToUpperInvariant(), "screen"), () => MachineState(d.Constructor));
     }
 
+    /// <summary>
+    /// Where a base block's screen goes: a free side that is not the machine's own front (its work bay, gantry and
+    /// nozzle are on the front), hung far enough off the face to clear every fitting the block's model has on that
+    /// side. A machine closed in on its other sides takes the front, standing off past the gantry. Null: no free side.
+    /// </summary>
+    public static (Dir Face, float StandOff)? BlockScreenFace(Structure s, Int3 cell)
+    {
+        Block b = s.Get(cell);
+        var (lo, hi) = Footprint.Box(s.TypeOf(b), b.Rot);
+        // A side is free when nothing stands against any cell of it (a block spanning several cells: its whole side).
+        bool Free(Dir d)
+        {
+            int axis = d.Axis();
+            Int3 from = cell + lo, to = cell + hi;
+            int at = d.Sign() > 0 ? to[axis] + 1 : from[axis] - 1;
+            from = from.With(axis, at);
+            to = to.With(axis, at);
+            for (int z = from.Z; z <= to.Z; z++)
+                for (int y = from.Y; y <= to.Y; y++)
+                    for (int x = from.X; x <= to.X; x++)
+                        if (s.Has(new Int3(x, y, z))) return false;
+            return true;
+        }
+        Dir front = Orientations.ToWorld(b.Rot, Dir.NegZ);
+        Dir? pick = null;
+        var order = new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ };
+        foreach (Dir d in order)
+            if (d != front && Free(d)) { pick = d; break; }
+        if (pick == null && System.Array.IndexOf(order, front) >= 0 && Free(front)) pick = front;
+        if (pick is not Dir face) return null;
+        return (face, Protrusion(s, b, face) + 0.03f);
+    }
+
+    /// <summary>How far, in metres, the block's model stands out from the block's face on this world side (its gantry, nozzle, status screen, vents).</summary>
+    public static float Protrusion(Structure s, in Block b, Dir worldFace)
+    {
+        BlockType t = s.TypeOf(b);
+        Dir local = Orientations.ToLocal(b.Rot, worldFace);
+        Int3 c = local.Vec();
+        float most = 0f;
+        foreach (Part p in t.Detail)
+        {
+            float e = c.X > 0 ? p.Max.X : c.X < 0 ? -p.Min.X : c.Y > 0 ? p.Max.Y : c.Y < 0 ? -p.Min.Y : c.Z > 0 ? p.Max.Z : -p.Min.Z;
+            most = System.MathF.Max(most, e - 0.5f);
+        }
+        // Parts are in the -0.5..0.5 box that stands for the whole block: scaled by its size along that side.
+        return most * t.Size[local.Axis()] * s.Grid.CellSize;
+    }
+
+    /// <summary>A block's screen in its structure's frame: centre at eye height over the block's floor, straight out of the face, <paramref name="standOff"/> off it.</summary>
+    public static Transform3D BlockScreenLocal(Structure s, Int3 cell, Dir face, float standOff)
+    {
+        float size = s.Grid.CellSize;
+        Block b = s.Get(cell);
+        N.Vector3 centre = StructureBridge.BlockCenter(s, cell, b);
+        N.Vector3 half = Footprint.WorldSize(s.TypeOf(b), b.Rot).ToVector3() * size * 0.5f;
+        N.Vector3 n = face.Vec().ToVector3();
+        var facePoint = new Vector3(centre.X + n.X * half.X, 0f, centre.Z + n.Z * half.Z);
+        return ScreenMount.OnFace(facePoint, new Vector3(n.X, 0f, n.Z), centre.Y - half.Y, rise: -0.1f, standOff: standOff);
+    }
+
     /// <summary>A screen on a free side of a base's block, at eye height over the ground beside it.</summary>
     Mounted OnBlock(Vessel v, Int3 cell, IMenuSection section, System.Func<string> state)
     {
-        Dir? free = null;
-        foreach (Dir d in new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ })
-            if (!v.Structure.Has(cell + d.Vec()))
-            {
-                free = d;
-                break;
-            }
-        if (free is not Dir face) return null;
-        float size = v.Structure.Grid.CellSize;
-        N.Vector3 centre = StructureBridge.CellCenter(v.Structure, cell);
-        N.Vector3 n = face.Vec().ToVector3();
-        // In the base's own frame (its node carries it): the block's floor is half a cell under its centre.
-        var facePoint = new Vector3(centre.X + n.X * size * 0.5f, 0f, centre.Z + n.Z * size * 0.5f);
-        Transform3D local = ScreenMount.OnFace(facePoint, new Vector3(n.X, 0f, n.Z), centre.Y - size * 0.5f, rise: -0.1f);
+        if (BlockScreenFace(v.Structure, cell) is not var (face, standOff)) return null;
         var holder = new Node3D { Name = $"Screen{cell.X}_{cell.Y}_{cell.Z}" };
-        v.Node.AddChild(holder);
-        holder.Transform = local;
+        v.Node.AddChild(holder); // in the base's own frame (its node carries it)
+        holder.Transform = BlockScreenLocal(v.Structure, cell, face, standOff);
         return Hang(holder, section, state);
     }
 
@@ -181,9 +230,9 @@ public partial class MachineScreens : Node3D
         return new Mounted { Screen = screen, Panel = panel, Holder = holder };
     }
 
-    // What makes each panel look different (it redraws only then).
+    // What makes each panel look different (it redraws only then): the icons too, which render a few a frame.
     string MachineState(Constructor c) =>
-        c == null ? "" : $"{c.Status}|{c.Version}|{c.Current?.Item.Id}|{(int)((c.Current?.Progress ?? 0) * 40)}|{c.Storage.Version}|{Game.Progress.Points}|{Game.Progress.State.Unlocked.Count}";
+        c == null ? "" : $"{c.Status}|{c.Version}|{c.Current?.Item.Id}|{(int)((c.Current?.Progress ?? 0) * 40)}|{c.Storage.Version}|{Game.Progress.Points}|{Game.Progress.State.Unlocked.Count}|{ItemIcons.Shared?.Count}";
 
-    static string StructureState(Vessel v) => $"{v.PowerOn}|{v.LightsOn}|{v.Home}|{v.AutoTransmit}|{v.Powered}|{v.Structure.Count}|{v.Storage.Version}";
+    static string StructureState(Vessel v) => $"{v.PowerOn}|{v.LightsOn}|{v.Home}|{v.AutoTransmit}|{v.Powered}|{(int)v.Power.ChargeMJ}|{(int)(v.Power.DrawMW * 1000)}|{v.Structure.Count}|{v.Storage.Version}";
 }

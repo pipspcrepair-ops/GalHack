@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace PoiGenerator.Gen;
 
@@ -44,7 +45,7 @@ public enum BlockType : byte
     Crystal,
     // Added with the architect: vertical traversal, breakable walls and more props.
     Stair,      // walked like a ramp (rising toward Facing), drawn as steps
-    Ladder,     // climbable and never blocks; the rungs sit against the wall behind Facing
+    Ladder,     // climbable and never blocks; the rungs lie flat against the wall behind Facing (Facing looks out at the climber)
     Rail,       // a waist-high guard rail: collides, never stood on
     Breakable,  // a weak wall section hiding something; drawn as a wall with cracks
     Sign,       // a plate on a wall (warnings, directories); never blocks
@@ -58,7 +59,42 @@ public enum BlockType : byte
     Statue,     // a carved figure (temples, plazas)
     Pump,       // a fuel pump on a forecourt
     Plate,      // a thin slab laid on the ground: boards, a path, a painted line; never blocks
+    Pipe,       // a round pipe along Facing's axis (Up: standing); Variant 1 is a 2 m main drawn from this cell across the next
+    // The player's corner slopes, so a roof turns a corner or a cone a diagonal in planes, never in steps.
+    Corner,     // outer corner slope: a single raised corner, at the corner between Facing and the next direction anticlockwise (North: north-west)
+    InvCorner,  // inner corner slope: three raised corners, the low one opposite Corner's raised one
+    // Added with the decay pass.
+    Rebar,      // bent bars standing out of a torn concrete face, the face toward Facing; never blocks
+    // The places' own shaped blocks on the 1 m grid (Shaping lays them; docs/place-patterns.md rule P6). Each is
+    // solid to the walking grids and collides as its real shape; like a cube's, its Variant is its finish.
+    Half,       // half a cube, against the face toward Facing (Down: the lower half, Up: the upper half)
+    Quarter,    // a bar a quarter of the cube in section (0.5 by 0.5), along the bottom edge toward Facing
+    Partition,  // a thin wall (0.2 m) down the middle of its cell, across Facing (its normal, as a pane's)
+    Beam,       // a 0.3 m beam under the top of its cell, along Facing's axis
+    Column,     // a round column (eight flats, 0.8 m across), standing
+    Chamfer,    // a slope hung from the top of its cell, full height toward Facing: a ramp upside down
+    ChamferCorner,    // Corner upside down
+    ChamferInvCorner, // InvCorner upside down
+    // Round things' rims (Round lays them): full-height prisms cut in plan where a circle crosses the cell, so a tank, a
+    // stack or a dome reads round from above at every course. Each is drawn and collides as its plan (Shapes.Plan); the
+    // cut faces the way between Facing and the next way clockwise (North: north-east), or Facing's side for the slants.
+    Wedge,      // cut corner to corner: the half away from the cut
+    WedgeTip,   // cut across a corner from mid-edge to mid-edge: the small corner (an eighth) away from the cut
+    WedgeClip,  // the same cut: the rest of the cube, its corner clipped
+    Slant,      // cut from a corner to the middle of the far side (1 in 2): the quarter away from the cut
+    SlantM,     // Slant mirrored
+    SlantFill,  // the same cut: the three quarters away from it
+    SlantFillM, // SlantFill mirrored
+    RoundOut,   // a quarter round (radius 1) about a corner: Wedge's ends, bowed out
+    RoundIn,    // a cube less a quarter round about the opposite corner: Wedge's ends, bowed in
+    // A course of a round thing that runs in or out as it rises (a dome, a cone, a cooling tower's waist): the cell as cut by
+    // the round's own profile (Round.Pieces, from the round's centre and its radius every half metre up), so it reads round
+    // in section as well as in plan. Drawn and collided as that shape; its shape comes from the place's rounds, not the block.
+    RoundSlope,
 }
+
+/// <summary>What a block counts as in the place-patterns shape shares (docs/place-patterns.md section 1.5, rule P6).</summary>
+public enum ShapeClass : byte { Cube, Part, Plate, Slope, Corner, Round, Pole, Stair, Window, Rail, Other }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
 public enum Material : byte
@@ -107,12 +143,8 @@ public struct Block
 public static class DoorState
 {
     public const byte Closed = 0, Jammed = 1, Open = 2;
-    /// <summary>Shut until a keycard of the doorway's clearance is swiped, or it is hacked or breached.</summary>
-    public const byte Locked = 3;
-    /// <summary>A blast door: heavy, shut, and locked like a security door.</summary>
+    /// <summary>A blast door: heavy to look at, and opened by hand like any door.</summary>
     public const byte Blast = 4;
-
-    public static bool IsLocked(byte v) => v is Locked or Blast;
 }
 
 public static class BlockInfo
@@ -122,8 +154,48 @@ public static class BlockInfo
     {
         BlockType.Air or BlockType.Door or BlockType.Scorch or BlockType.Scatter or BlockType.Tendril
             or BlockType.Plant or BlockType.Vine or BlockType.Ash or BlockType.Remains
-            or BlockType.Ladder or BlockType.Sign or BlockType.Puddle or BlockType.Cable or BlockType.Plate => false,
+            or BlockType.Ladder or BlockType.Sign or BlockType.Puddle or BlockType.Cable or BlockType.Plate or BlockType.Rebar => false,
         _ => true,
+    };
+
+    /// <summary>
+    /// Collides, but fills only part of its cell (furniture, fittings, posts, crates, rubble): what moves
+    /// goes round or under its real shape (<see cref="Shapes.CollisionBoxes"/>), not round its whole cell.
+    /// Doors, glass, lattices and rails keep their own rules.
+    /// </summary>
+    public static bool IsPart(BlockType t) => Collides(t) && !IsFullCube(t) && !IsSlope(t) && !IsCornerSlope(t) && !IsShaped(t)
+        && t is not (BlockType.SealedDoor or BlockType.Growth or BlockType.Pane or BlockType.Lattice or BlockType.Rail or BlockType.Door);
+
+    /// <summary>
+    /// The places' own shaped structure (half and quarter cubes, thin walls, beams, hung slopes, round columns): part of
+    /// the building, so the walking grids take its whole cell as solid, while bodies collide with its real shape.
+    /// </summary>
+    public static bool IsShaped(BlockType t) => t is >= BlockType.Half and <= BlockType.RoundSlope;
+
+    /// <summary>A round thing's rim piece: a full-height prism cut in plan (<see cref="Shapes.Plan"/>).</summary>
+    public static bool IsPlanCut(BlockType t) => t is >= BlockType.Wedge and <= BlockType.RoundIn;
+
+    /// <summary>A round thing's rim piece of either kind: cut in plan, or cut by its profile as well (<see cref="BlockType.RoundSlope"/>).</summary>
+    public static bool IsRoundCut(BlockType t) => t is >= BlockType.Wedge and <= BlockType.RoundSlope;
+
+    /// <summary>A slope hung upside down from the top of its cell: a chamfer or one of its corners.</summary>
+    public static bool IsHung(BlockType t) => t is BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner;
+
+    /// <summary>What a block counts as in the shape shares (rule P6): the class of its shape, whatever its role.</summary>
+    public static ShapeClass ShapeOf(Block b) => b.Type switch
+    {
+        BlockType.Cube when IsTransparent(b.Material) => ShapeClass.Window, // a glass block is a window
+        BlockType.Cube or BlockType.Breakable => ShapeClass.Cube,
+        BlockType.Half or BlockType.Quarter => ShapeClass.Part,
+        BlockType.Partition => ShapeClass.Plate,
+        BlockType.Ramp or BlockType.Chamfer => ShapeClass.Slope,
+        BlockType.Corner or BlockType.InvCorner or BlockType.ChamferCorner or BlockType.ChamferInvCorner => ShapeClass.Corner,
+        BlockType.Column or BlockType.Pipe or >= BlockType.Wedge and <= BlockType.RoundSlope => ShapeClass.Round,
+        BlockType.Pillar or BlockType.Rib or BlockType.Beam or BlockType.Lattice => ShapeClass.Pole,
+        BlockType.Stair => ShapeClass.Stair,
+        BlockType.Pane => ShapeClass.Window,
+        BlockType.Rail => ShapeClass.Rail,
+        _ => ShapeClass.Other,
     };
 
     /// <summary>You can stand on top of it.</summary>
@@ -132,8 +204,21 @@ public static class BlockInfo
     /// <summary>Fills its cell completely, so it hides its neighbours' faces.</summary>
     public static bool IsFullCube(BlockType t) => t is BlockType.Cube or BlockType.Breakable;
 
+    /// <summary>
+    /// A floor's finish (tiles, boards, carpet, a path, a painted line): what the floor block under it is painted
+    /// with, drawn on that block's top face and nothing of its own. It stays recorded under whatever is put in its
+    /// cell (see <see cref="BlockGrid.Under"/>), so the floor under a table is painted the same as round it.
+    /// </summary>
+    public static bool IsFinish(BlockType t) => t == BlockType.Plate;
+
+    /// <summary>How thick a floor's finish is: what stands on it stands this much higher.</summary>
+    public const float FinishTop = Shapes.PlateTop; // paint: none
+
     /// <summary>Walked like a ramp: a 45-degree slope rising toward the block's facing.</summary>
     public static bool IsSlope(BlockType t) => t is BlockType.Ramp or BlockType.Stair;
+
+    /// <summary>The player's slope pieces that aren't walked: corner and inner corner, drawn and collided as their own shapes.</summary>
+    public static bool IsCornerSlope(BlockType t) => t is BlockType.Corner or BlockType.InvCorner;
 
     public static bool IsTransparent(Material m) => m == Material.Glass;
 
@@ -176,27 +261,48 @@ public interface IBlockStructure
     Block Get(Int3 p);
     void Set(Int3 p, Block b);
     int CountBlocks();
+    /// <summary>The floor's finish under what stands in a cell (<see cref="BlockGrid.Under"/>); air where there is none.</summary>
+    Block Under(Int3 p) => Block.Air;
 }
 
-/// <summary>A dense block grid over a box. Out-of-bounds reads are air.</summary>
+/// <summary>
+/// A block grid over a box, kept in 16 m chunks made only where something stands: a 300 m works is
+/// mostly air and open yard, so it costs what's in it, not its box. Out-of-bounds reads are air.
+/// </summary>
 public sealed class BlockGrid : IBlockStructure
 {
+    const int Bits = 4, Side = 1 << Bits, Mask = Side - 1, ChunkCells = Side * Side * Side;
     public Int3 Min { get; }
     public Int3 Size { get; }
     public Int3 Max => Min + Size - new Int3(1, 1, 1);
-    readonly Block[] _cells;
+    readonly int _cx, _cy, _cz;
+    readonly Block[]?[] _chunks;
+    Block _outside;
+    /// <summary>The floor finishes under what stands on them, by cell (see <see cref="Under"/>).</summary>
+    Dictionary<Int3, Block>? _under;
+
+    /// <summary>How the place's faces are finished and how far the years have taken them (set when it spawns; null: by material alone).</summary>
+    public PlaceLook? Look;
+
+    /// <summary>The place's round things as laid (<see cref="Round"/>): what a sloped course's pieces are cut by (none: drawn as cubes).</summary>
+    public IReadOnlyList<RoundBody>? Rounds;
 
     public BlockGrid(Int3 min, Int3 size)
     {
         Min = min;
         Size = size;
-        _cells = new Block[size.X * size.Y * size.Z];
+        _cx = (size.X + Mask) >> Bits;
+        _cy = (size.Y + Mask) >> Bits;
+        _cz = (size.Z + Mask) >> Bits;
+        _chunks = new Block[]?[_cx * _cy * _cz];
     }
 
     public BlockGrid Clone()
     {
-        var copy = new BlockGrid(Min, Size);
-        Array.Copy(_cells, copy._cells, _cells.Length);
+        var copy = new BlockGrid(Min, Size) { Look = Look, Rounds = Rounds };
+        for (int i = 0; i < _chunks.Length; i++)
+            if (_chunks[i] is { } c) copy._chunks[i] = (Block[])c.Clone();
+        if (_under != null) copy._under = new Dictionary<Int3, Block>(_under);
         return copy;
     }
 
@@ -206,25 +312,67 @@ public sealed class BlockGrid : IBlockStructure
         return (uint)l.X < (uint)Size.X && (uint)l.Y < (uint)Size.Y && (uint)l.Z < (uint)Size.Z;
     }
 
-    int Index(Int3 p)
+    int Chunk(Int3 l) => ((l.Y >> Bits) * _cz + (l.Z >> Bits)) * _cx + (l.X >> Bits);
+    static int Cell(Int3 l) => (l.Y & Mask) << (2 * Bits) | (l.Z & Mask) << Bits | l.X & Mask;
+
+    public Block Get(Int3 p)
     {
+        if (!InBounds(p)) return Block.Air;
         Int3 l = p - Min;
-        return (l.Y * Size.Z + l.Z) * Size.X + l.X;
+        return _chunks[Chunk(l)] is { } c ? c[Cell(l)] : Block.Air;
     }
 
-    public Block Get(Int3 p) => InBounds(p) ? _cells[Index(p)] : Block.Air;
-
+    /// <summary>
+    /// Puts a block in a cell. A floor's finish stays under what is set down on it: the tiles a table is put on are
+    /// kept (<see cref="Under"/>) and come back when the table goes; a new finish replaces the old one, and air
+    /// put on a bare finish takes the finish itself away.
+    /// </summary>
     public void Set(Int3 p, Block b)
     {
-        if (InBounds(p)) _cells[Index(p)] = b;
+        if (!InBounds(p)) return;
+        Int3 l = p - Min;
+        int k = Chunk(l);
+        Block was = _chunks[k] is { } held ? held[Cell(l)] : Block.Air;
+        if (BlockInfo.IsFinish(b.Type)) _under?.Remove(p);
+        else if (BlockInfo.IsFinish(was.Type) && !b.IsAir) (_under ??= new Dictionary<Int3, Block>())[p] = was;
+        else if (b.IsAir && _under != null && _under.Remove(p, out Block floor)) b = floor;
+        if (_chunks[k] == null)
+        {
+            if (b.IsAir) return;
+            _chunks[k] = new Block[ChunkCells];
+        }
+        _chunks[k]![Cell(l)] = b;
     }
 
-    public ref Block At(Int3 p) => ref _cells[Index(p)];
+    /// <summary>The floor's finish under what stands in a cell (the tiles under a table), or air: drawn under it, never in its way.</summary>
+    public Block Under(Int3 p) => _under != null && _under.TryGetValue(p, out Block b) ? b : Block.Air;
+
+    /// <summary>Lays a floor's finish under what already stands in a cell (or in the open cell itself).</summary>
+    public void SetUnder(Int3 p, Block finish)
+    {
+        if (!InBounds(p) || !BlockInfo.IsFinish(finish.Type)) return;
+        Block at = Get(p);
+        if (at.IsAir) Set(p, finish);
+        else if (!BlockInfo.IsFinish(at.Type)) (_under ??= new Dictionary<Int3, Block>())[p] = finish;
+    }
+
+    /// <summary>Every cell with a finish under what stands in it.</summary>
+    public IEnumerable<(Int3 Cell, Block Finish)> Unders() => _under == null ? Enumerable.Empty<(Int3, Block)>() : _under.Select(kv => (kv.Key, kv.Value));
+
+    public ref Block At(Int3 p)
+    {
+        if (!InBounds(p)) return ref _outside;
+        Int3 l = p - Min;
+        int k = Chunk(l);
+        return ref (_chunks[k] ??= new Block[ChunkCells])[Cell(l)];
+    }
 
     public int CountBlocks()
     {
         int n = 0;
-        foreach (var b in _cells) if (!b.IsAir) n++;
+        foreach (var c in _chunks)
+            if (c != null)
+                foreach (var b in c) if (!b.IsAir) n++;
         return n;
     }
 
@@ -233,11 +381,20 @@ public sealed class BlockGrid : IBlockStructure
     {
         for (int y = 0; y < Size.Y; y++)
             for (int z = 0; z < Size.Z; z++)
-                for (int x = 0; x < Size.X; x++)
+            {
+                int row = (y >> Bits) * _cz + (z >> Bits), at = (y & Mask) << (2 * Bits) | (z & Mask) << Bits;
+                for (int cx = 0; cx < _cx; cx++)
                 {
-                    var b = _cells[(y * Size.Z + z) * Size.X + x];
-                    if (!b.IsAir) yield return (Min + new Int3(x, y, z), b);
+                    var c = _chunks[row * _cx + cx];
+                    if (c == null) continue;
+                    int end = Math.Min(Side, Size.X - (cx << Bits));
+                    for (int x = 0; x < end; x++)
+                    {
+                        var b = c[at | x];
+                        if (!b.IsAir) yield return (Min + new Int3((cx << Bits) + x, y, z), b);
+                    }
                 }
+            }
     }
 
     /// <summary>Every cell position, in the same fixed order.</summary>
@@ -255,13 +412,13 @@ public sealed class CellMask
 {
     public Int3 Min { get; }
     public Int3 Size { get; }
-    readonly bool[] _bits;
+    readonly ulong[] _bits;
 
     public CellMask(Int3 min, Int3 size)
     {
         Min = min;
         Size = size;
-        _bits = new bool[size.X * size.Y * size.Z];
+        _bits = new ulong[(size.X * size.Y * size.Z + 63) / 64];
     }
 
     public CellMask Clone()
@@ -285,7 +442,12 @@ public sealed class CellMask
 
     public bool this[Int3 p]
     {
-        get => In(p, out int i) && _bits[i];
-        set { if (In(p, out int i)) _bits[i] = value; }
+        get => In(p, out int i) && (_bits[i >> 6] >> (i & 63) & 1) != 0;
+        set
+        {
+            if (!In(p, out int i)) return;
+            if (value) _bits[i >> 6] |= 1UL << (i & 63);
+            else _bits[i >> 6] &= ~(1UL << (i & 63));
+        }
     }
 }

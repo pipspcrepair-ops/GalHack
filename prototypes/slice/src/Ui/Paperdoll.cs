@@ -45,6 +45,8 @@ public partial class Paperdoll : SubViewport
     {
         bool open = Game?.Menu?.IsOpen == true && Game.Menu.Tab == MenuTab.You;
         RenderTargetUpdateMode = open ? UpdateMode.Always : UpdateMode.Disabled;
-        if (open) _model.RotateY((float)delta * 0.4f);
+        if (!open) return;
+        _model.RotateY((float)delta * 0.4f);
+        CharacterModel.SetHelmet(_model, !Game.Suit.Sim.Player.Gear.HelmetOn, (float)delta);
     }
 }

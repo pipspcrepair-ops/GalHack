@@ -93,17 +93,88 @@ public sealed partial class Vessel
         {
             _lightsOn = value;
             SetDecoLights(value);
-            bool changed = false;
-            foreach (var (cell, block) in Structure.Blocks().ToList())
-            {
-                Block b = block;
-                if (!Structure.TypeOf(b).IsLight || b.Off == !value) continue;
-                b.Flags ^= BlockFlags.Off;
-                Structure.Set(cell, b);
-                changed = true;
-            }
-            if (changed) ApplyEdits();
+            SwitchBlocks(t => t.IsLight, value);
         }
+    }
+
+    /// <summary>Switches every block of a kind with a switch of its own (lamps, turrets) on or off: its Off flag, which its glow, its light, its parts and its draw follow.</summary>
+    public void SwitchBlocks(Func<BlockType, bool> which, bool on)
+    {
+        bool changed = false, others = Structure.DirtyChunks.Count > 0, lampsOnly = true;
+        foreach (var (cell, block) in Structure.Blocks().ToList())
+        {
+            Block b = block;
+            BlockType t = Structure.TypeOf(b);
+            if (!t.Switches || !which(t) || b.Off == !on) continue;
+            b.Flags ^= BlockFlags.Off;
+            Structure.Set(cell, b);
+            changed = true;
+            lampsOnly &= t.IsLight;
+        }
+        if (!changed) return;
+        if (others || !lampsOnly) ApplyEdits();
+        else
+        {
+            // Only lamps switched: nothing collides or weighs differently, so only their chunks are redrawn, within the frame's budget.
+            View.Queue(Structure.DirtyChunks);
+            Structure.DirtyChunks.Clear();
+        }
+    }
+
+    /// <summary>Switches its core's artificial gravity (it also needs power to work: an outage drops it).</summary>
+    public void SetGravity(bool on)
+    {
+        Structure.GravityOn = on;
+        if (Body.Core == null) return;
+        Body.Core.On = on && Powered;
+        Cabin.SetGravity(Body.Core);
+    }
+
+    /// <summary>Is one of its systems switched on (the toolbar's toggles by name: "life-support", "fabricators", "shields")? The power model reads these.</summary>
+    public bool SystemOn(string system) => !Structure.SystemsOff.Contains(system);
+
+    public void SetSystem(string system, bool on)
+    {
+        if (on) Structure.SystemsOff.Remove(system);
+        else Structure.SystemsOff.Add(system);
+    }
+
+    bool _hasPod;
+    int _podVersion = -1;
+
+    /// <summary>A life support pod is on it.</summary>
+    public bool HasLifeSupportPod
+    {
+        get
+        {
+            if (_podVersion != Structure.Version)
+            {
+                _podVersion = Structure.Version;
+                _hasPod = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsLifeSupport);
+            }
+            return _hasPod;
+        }
+    }
+
+    /// <summary>Its life support keeps its sealed rooms' air and warmth: a pod aboard, powered and switched on. Off, or with no pod, they drift as they would unpowered.</summary>
+    public bool LifeSupport => Powered && SystemOn(StructureBar.LifeSupport) && HasLifeSupportPod;
+
+    StructureBar _bar;
+
+    /// <summary>Its toolbar in a command chair: the functions its blocks bring, their arrangement, its guns.</summary>
+    public StructureBar Bar => _bar ??= new StructureBar(this);
+
+    /// <summary>Gives one light block (or, with no cell, every light block) new colour and animation settings; <paramref name="change"/> maps what a light has now to what it should have.</summary>
+    public int StyleLights(Int3? cell, System.Func<LightSettings, LightSettings> change)
+    {
+        int n = 0;
+        foreach (var (at, block) in Structure.Blocks().ToList())
+        {
+            if (!Structure.TypeOf(block).IsLight || (cell != null && at != cell.Value)) continue;
+            if (Structure.SetLight(at, change(Structure.LightAt(at)))) n++;
+        }
+        if (n > 0) ApplyEdits();
+        return n;
     }
 
     /// <summary>E on a light block: switches that one light. False if the cell is not a light.</summary>
@@ -116,7 +187,8 @@ public sealed partial class Vessel
         return true;
     }
 
-    public bool IsWreck => Body.Kind == BodyKind.Wreck;
+    /// <summary>A wreck: adrift in space, or lying on a planet with no core yet (fixed like a base, but nobody's base till claimed).</summary>
+    public bool IsWreck => Body.Kind == BodyKind.Wreck || GroundWreck && Structure.Core == null;
 
     /// <summary>
     /// The start's bunker: an ordinary structure of ordinary blocks, flagged only so it is named
@@ -124,13 +196,28 @@ public sealed partial class Vessel
     /// for its materials (every block refunds its bill).
     /// </summary>
     public bool IsRuin { get; set; }
-    /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). A Big Core switched to Base Mode in flight is anchored only once it has come to rest.</summary>
+
+    /// <summary>One of the player's core structures: cored, the player's, not a wreck or the bunker.</summary>
+    public bool IsPlayers => !IsWreck && !IsRuin && Structure.Core != null && Structure.Owner == Building.DefaultOwner;
+    /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). One switched to Base Mode in flight is anchored only once it has come to rest.</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
 
-    /// <summary>The command chair (structure frame, metres), or null if it has none.</summary>
+    /// <summary>The chair in use: where its sitter rests (structure frame, metres), or null if it has none.</summary>
     public N.Vector3? Seat { get; private set; }
+
+    /// <summary>The seated eye in that chair (structure frame, metres), from the chair's data.</summary>
+    public N.Vector3 Eye { get; private set; }
+
+    /// <summary>The chair's console top, middle of its edge on the sitter's side (structure frame, metres): the cockpit screen stands there.</summary>
+    public N.Vector3 ConsoleEdge { get; private set; }
+
+    /// <summary>Where getting up from the chair in use puts you, in the order to try them (offsets from the seat, structure frame, m): see <see cref="StandSpotsOf"/>.</summary>
+    public N.Vector3[] StandSpots { get; private set; } = Array.Empty<N.Vector3>();
+
+    /// <summary>How far the seat stands above the floor its sitter's feet rest on, m (the figure's legs reach down to it).</summary>
+    public float SeatDrop { get; private set; }
 
     string _legsKey = "";
 
@@ -150,6 +237,7 @@ public sealed partial class Vessel
         }
         Storage = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
         StorageGrid = new ItemGrid(Storage, 8, 6, growable: true);
+        Power = new StructurePower(zone.Data.Power, structure, Storage);
         Roles.PilotChanged += FollowPilot;
         RefreshSeat();
         RefreshMachines();
@@ -175,20 +263,48 @@ public sealed partial class Vessel
         }
     }
 
-    /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
-    public bool Powered => PowerOn && Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsGenerator);
+    bool _hasForecast;
+    int _forecastVersion = -1;
 
-    /// <summary>Runs its machines for a tick (when powered; the time scale is the tests' marked speed-up).</summary>
+    RoomReport _rooms;
+    int _roomsVersion = -1;
+
+    /// <summary>Its rooms, force fields and door fields counted (building's flood fill), worked out again only when the structure has changed.</summary>
+    public RoomReport Rooms
+    {
+        get
+        {
+            if (_roomsVersion != Structure.Version) (_rooms, _roomsVersion) = (GalHack.Structures.Rooms.Detect(Structure), Structure.Version);
+            return _rooms;
+        }
+    }
+
+    /// <summary>Whether a working weather forecast block is on it: one aboard, and power to it.</summary>
+    public bool Forecasting
+    {
+        get
+        {
+            if (_forecastVersion != Structure.Version)
+            {
+                _forecastVersion = Structure.Version;
+                _hasForecast = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsForecast);
+            }
+            return Powered && _hasForecast;
+        }
+    }
+
+    /// <summary>Runs its machines for a tick at the share of power they get, when its fabricators are switched on (the time scale is the tests' marked speed-up): short of power they slow, without any they stop.</summary>
     public void TickMachines(double dt)
     {
-        if (!Powered) return;
-        foreach (Constructor c in Machines.Values) c.Tick(dt);
+        if (!Powered || !SystemOn(StructureBar.Fabricators)) return; // switched off, their jobs wait where they stand
+        foreach (Constructor c in Machines.Values) c.Tick(dt * Power.Supply);
     }
 
     // ---- Spawning ---------------------------------------------------------------------------
 
     /// <summary>A structure as a vessel: one kinematic hull swept through the world, landed (asleep) or flying.</summary>
-    public static Vessel Spawn(SurfaceZone zone, Structure s, N.Vector3 at, float heading, bool landed)
+    /// <param name="drawLater">Its look is drawn over the next frames, within their budget (a big structure set down whole).</param>
+    public static Vessel Spawn(SurfaceZone zone, Structure s, N.Vector3 at, float heading, bool landed, bool drawLater = false)
     {
         MassProperties mass = MassOf(s);
         Body body = zone.Physics.Register(new BodySpec
@@ -203,17 +319,16 @@ public sealed partial class Vessel
             Position = at,
             Rotation = MathX.Yaw(heading),
         });
-        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
+        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Data.Rules.Planet.Gravity }; // 1 g on any world (design: core gravity)
         var vessel = new Vessel(zone, s, body);
-        body.Class = StructureBridge.ClassOf(vessel.Spec);
         vessel._legsKey = vessel.LegsKey();
-        body.Controller = new VesselController(vessel.Flight, vessel.Spec.HoverPoints, vessel.Spec.Legs);
+        body.Controller = vessel.NewController();
 
         var hull = new CharacterBody3D { Name = s.Name.Replace(" ", "") };
         zone.AddChild(hull);
         vessel.Binding = zone.Host.Bind(body, new HullBinding(hull));
         vessel.HullShapes = new StructureShapes(hull);
-        vessel.Furnish(hull);
+        vessel.Furnish(hull, drawLater);
         if (landed) vessel.Controller.PlaceLanded(body, at, heading);
         else vessel.Controller.Place(body, at, heading);
         vessel.Binding.Teleport();
@@ -225,7 +340,7 @@ public sealed partial class Vessel
     /// A structure in base mode set down on the ground: one fixed body (shared physics' base:
     /// nothing ever moves it, no gravity, wind or rescue), walked on in the zone's own world.
     /// </summary>
-    public static Vessel SpawnBase(SurfaceZone zone, Structure s, N.Vector3 at, float heading)
+    public static Vessel SpawnBase(SurfaceZone zone, Structure s, N.Vector3 at, float heading, bool drawLater = false)
     {
         s.Mode = CoreMode.Base;
         MassProperties mass = MassOf(s);
@@ -242,13 +357,13 @@ public sealed partial class Vessel
             Position = at,
             Rotation = MathX.Yaw(heading),
         });
-        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
+        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Data.Rules.Planet.Gravity }; // 1 g on any world (design: core gravity)
         var vessel = new Vessel(zone, s, body);
         var node = new StaticBody3D { Name = s.Name.Replace(" ", "") };
         zone.AddChild(node);
         vessel.Binding = zone.Host.Bind(body, new FixedBinding(node));
         vessel.HullShapes = new StructureShapes(node);
-        vessel.Furnish(node);
+        vessel.Furnish(node, drawLater);
         vessel.Binding.Teleport();
         vessel.Register();
         return vessel;
@@ -274,21 +389,64 @@ public sealed partial class Vessel
     static MassProperties MassOf(Structure s) =>
         s.Count > 0 ? StructureBridge.Mass(s) : new MassProperties(100f, N.Vector3.Zero);
 
-    void Furnish(CollisionObject3D owner)
+    void Furnish(CollisionObject3D owner, bool drawLater = false, List<ChunkColliders> made = null)
     {
-        List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
-        HullShapes.Apply(colliders);
-        View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush };
+        List<ChunkColliders> colliders = made ?? StructureBridge.Colliders(Structure);
+        // A loose body (a wreck, cut off and free) collides in every part, fittings too: a lamp cut off a wall must lie on the ground.
+        List<ChunkColliders> hull = Body.Motion == GalHack.Physics.Motion.Free ? StructureBridge.Colliders(Structure, null, fittings: true) : colliders;
+        if (drawLater) foreach (ChunkColliders c in hull) _pendingShapes.Enqueue((HullShapes, c));
+        else HullShapes.Apply(hull);
+        View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush, PowerSource = () => Powered };
         owner.AddChild(View);
-        View.Setup(Structure);
+        View.Setup(Structure, drawLater);
+        View.Fx.Airless = () => Zone is Slice.Orbit.OrbitZone;
         Fx = new VesselFx { Name = "Fx" };
         owner.AddChild(Fx);
         Fx.Setup(this);
         Cabin = CabinWorld.Create("CabinWorld");
         owner.AddChild(Cabin);
-        Cabin.Shapes.Apply(colliders);
+        if (drawLater) foreach (ChunkColliders c in colliders) _pendingShapes.Enqueue((Cabin.Shapes, c));
+        else Cabin.Shapes.Apply(colliders);
         if (Body.Core != null) Cabin.SetGravity(Body.Core);
         Structure.DirtyChunks.Clear();
+    }
+
+    /// <summary>Collision still to build, a chunk a tick, hull first then cabin (a structure set down whole builds it over a few ticks, inside the frame's budget).</summary>
+    readonly Queue<(StructureShapes shapes, ChunkColliders chunk)> _pendingShapes = new();
+
+    /// <summary>Collision chunks still to build.</summary>
+    public int PendingShapes => _pendingShapes.Count;
+
+    /// <summary>What building collision a chunk at a time may take of one tick, every structure's together, ms: a zone that
+    /// arrives with many wrecks to make solid (a warp's destination) shares it rather than each taking a chunk a tick.</summary>
+    const double ShapesBudgetMs = 2.0;
+    static ulong _shapesTick;
+    static double _shapesSpent;
+
+    /// <summary>
+    /// Builds the collision still to build, chunk by chunk while the tick's shared budget lasts, or all of it now. The hull
+    /// stays out of its space till its last chunk is in (<see cref="StructureShapes.Hold"/>): its compound is built once.
+    /// </summary>
+    public void BuildPendingShapes(bool all = false)
+    {
+        if (_pendingShapes.Count == 0) return;
+        if (!all)
+        {
+            ulong tick = Engine.GetPhysicsFrames();
+            if (tick != _shapesTick) (_shapesTick, _shapesSpent) = (tick, 0.0);
+            if (_shapesSpent >= ShapesBudgetMs) return;
+        }
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        double Spent() => System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        HullShapes.Hold();
+        Cabin.Shapes.Hold();
+        while ((all || _shapesSpent + Spent() < ShapesBudgetMs) && _pendingShapes.TryDequeue(out var next)) next.shapes.Apply(new[] { next.chunk });
+        if (_pendingShapes.Count == 0)
+        {
+            HullShapes.Return();
+            Cabin.Shapes.Return();
+        }
+        if (!all) _shapesSpent += Spent();
     }
 
     void Register()
@@ -309,10 +467,11 @@ public sealed partial class Vessel
     public void ApplyEdits()
     {
         if (Structure.DirtyChunks.Count == 0) return;
+        BuildPendingShapes(all: true); // never an older chunk's collision over a newer one
         var dirty = Structure.DirtyChunks.ToList();
         Structure.DirtyChunks.Clear();
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure, dirty);
-        HullShapes.Apply(colliders);
+        HullShapes.Apply(Body.Motion == GalHack.Physics.Motion.Free ? StructureBridge.Colliders(Structure, dirty, fittings: true) : colliders);
         Cabin.Shapes.Apply(colliders);
         View.Rebuild(dirty);
 
@@ -327,6 +486,7 @@ public sealed partial class Vessel
             Body.Integrity = MathF.Max(Body.Integrity, HullPoints(Zone, mass.Mass));
             if (Binding is FreeBinding free)
             {
+                Body.DragBox = StructureBridge.DragBox(Structure);
                 free.Rigid.Mass = mass.Mass;
                 free.Rigid.CenterOfMass = mass.CenterOfMass.ToGodot();
             }
@@ -356,8 +516,12 @@ public sealed partial class Vessel
         {
             var corner = new Vector3(i % 3 == 0 ? min.X : i % 3 == 1 ? (min.X + max.X) * 0.5f : max.X, 0, i / 3 == 0 ? min.Z : i / 3 == 1 ? (min.Z + max.Z) * 0.5f : max.Z) * cell;
             Vector3 p = Body.Position.ToGodot() + basis * corner;
-            top = MathF.Max(top, Zone.GroundAt(p.X, p.Z).Y);
+            top = MathF.Max(top, Zone.GroundTop(p.X, p.Z));
         }
+        // And under every one of its lowest blocks, which stand on the ground: none of them is left in a bump between those.
+        foreach (var (cellAt, _) in Structure.Cells())
+            if (cellAt.Y == min.Y && Body.ToParent(StructureBridge.CellCenter(Structure, cellAt)) is var under)
+                top = MathF.Max(top, Zone.GroundTop(under.X, under.Z));
         float y = top + feet + 0.02f;
         if (MathF.Abs(y - Body.Position.Y) < 0.01f) return;
         c.PlaceLanded(Body, new N.Vector3(Body.Position.X, y, Body.Position.Z), MathX.Heading(Body.Rotation));
@@ -375,29 +539,122 @@ public sealed partial class Vessel
         if (key == _legsKey) return;
         _legsKey = key;
         VesselController old = Controller;
-        Body.Controller = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
+        Body.Controller = NewController();
         if (old?.Frozen ?? true)
         {
             N.Quaternion rotation = Body.Rotation;
             Controller.PlaceLanded(Body, Body.Position, MathX.Heading(rotation));
             Body.Rotation = rotation;
+            // It stood on gear that's gone now (a pad shot off): no longer attached, it drops onto its hull.
+            Controller.Gear?.Probe(Zone.Physics, Body);
+            if (old?.Gear?.Attached == true && Controller.Gear?.Attached != true) Controller.Wake(Body);
         }
         else Controller.LocalSpin = old.LocalSpin; // in flight it carries on as it was: speed, attitude and spin
+    }
+
+    /// <summary>The body rules for its legs and hover plates as built now; the plates push along the command chair's down.</summary>
+    VesselController NewController()
+    {
+        var c = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
+        if (c.Hover != null) c.Hover.Down = ChairDown();
+        return c;
+    }
+
+    /// <summary>The command chair's down in the structure's frame (its first chair, as the seat is), or the structure's own down.</summary>
+    N.Vector3 ChairDown()
+    {
+        foreach (var (_, b) in Structure.Blocks())
+            if (IsChair(Structure.TypeOf(b))) return N.Vector3.Normalize(Orientations.Matrix(b.Rot).Apply(-N.Vector3.UnitY));
+        return -N.Vector3.UnitY;
+    }
+
+    void SitAt(Int3 anchor, in Block chair)
+    {
+        Seat = StructureBridge.SeatPoint(Structure, anchor, chair);
+        Eye = StructureBridge.EyePoint(Structure, anchor, chair);
+        BlockType type = Structure.TypeOf(chair);
+        Part desk = DeviceDetail.Desk(type);
+        // No console of its own: the chair's front edge at the seat's height.
+        N.Vector3 edge = desk == null ? type.Seat with { Z = -0.5f } : new(0.5f * (desk.Min.X + desk.Max.X), desk.Max.Y, desk.Max.Z);
+        ConsoleEdge = Structure.PointOf(anchor, chair, edge) * Structure.Grid.CellSize;
+        StandSpots = StandSpotsOf(Structure, anchor, chair);
+        SeatDrop = FloorUnder(Structure.TypeOf(chair), Structure.Grid.CellSize);
+    }
+
+    /// <summary>
+    /// Where a person getting up from a chair can stand, best first, as offsets from its seat in the
+    /// structure's frame (m): the middle of the cell straight behind the chair, whichever way it is
+    /// turned (it faces -z in its own frame, so behind is +z); then, if the chair is deep enough to
+    /// leave room past its backrest, the floor inside its own box there (for a hull with machinery
+    /// right behind the chair); then the cell at each side of it, and last the one in front.
+    /// Directions along the vertical (a chair on its back) are left out.
+    /// </summary>
+    public static N.Vector3[] StandSpotsOf(Structure s, Int3 anchor, in Block chair)
+    {
+        N.Vector3 seat = s.TypeOf(chair).Seat, from = s.PointOf(anchor, chair, seat);
+        var turn = Orientations.Matrix(chair.Rot);
+        var spots = new List<N.Vector3>(5);
+        foreach (N.Vector3 face in new[] { N.Vector3.UnitZ, N.Vector3.UnitX, -N.Vector3.UnitX, -N.Vector3.UnitZ })
+        {
+            // The middle of that face of the chair's box, taken at the seat's own height and across, then half a cell on.
+            N.Vector3 edge = seat * (N.Vector3.One - N.Vector3.Abs(face)) + face * 0.5f;
+            N.Vector3 o = (s.PointOf(anchor, chair, edge) + turn.Apply(face) * 0.5f - from) * s.Grid.CellSize, level = new(o.X, 0f, o.Z);
+            float out_ = level.Length();
+            if (out_ < 0.1f) continue;
+            spots.Add(level + N.Vector3.UnitY * 0.05f);
+            // Behind, short of the box's rear face (which is half a cell back from the cell's middle).
+            float inside = out_ - 0.5f * s.Grid.CellSize - StandBack;
+            if (face == N.Vector3.UnitZ && inside > 0.6f) spots.Add(level / out_ * inside + N.Vector3.UnitY * 0.05f);
+        }
+        return spots.ToArray();
+    }
+
+    /// <summary>How far short of the rear of a deep chair's box a person gets up, m.</summary>
+    const float StandBack = 0.4f;
+
+    static readonly float[] StandHeights = { 0.3f, 0.9f, 1.6f };
+    static readonly N.Vector3[] StandRing = { default, new(0.3f, 0f, 0f), new(-0.3f, 0f, 0f), new(0f, 0f, 0.3f), new(0f, 0f, -0.3f) };
+
+    /// <summary>True if a person fits standing there (structure frame, m, at the feet): nothing solid, by its real shape, at the knee, chest and head, in the middle and 0.3 m out each way.</summary>
+    public static bool CanStandAt(Structure s, N.Vector3 feet)
+    {
+        foreach (float h in StandHeights)
+            foreach (N.Vector3 around in StandRing)
+                if (s.SolidAt((feet + around + N.Vector3.UnitY * h) / s.Grid.CellSize)) return false;
+        return true;
+    }
+
+    /// <summary>Where a seated person's feet come down, m ahead of the seat point: past the seat's front edge, short of a console.</summary>
+    const float FeetAhead = 0.4f;
+
+    /// <summary>
+    /// How far a chair's seat stands above what its sitter's feet rest on, m: the highest of its own
+    /// parts under the feet and below the seat (a cockpit's floor), or the bottom of its box (an open
+    /// chair stands on the block under it). The chair faces -z in its own frame.
+    /// </summary>
+    static float FloorUnder(BlockType t, float cell)
+    {
+        N.Vector3 size = t.Size.ToVector3() * cell, seat = t.Seat;
+        float z = seat.Z - FeetAhead / size.Z, floor = -0.5f;
+        foreach (Part p in t.Parts)
+            if (!p.ClosedOnly && p.Max.Y < seat.Y - 0.02f && p.Min.X <= seat.X && p.Max.X >= seat.X && p.Min.Z <= z && p.Max.Z >= z)
+                floor = MathF.Max(floor, p.Max.Y);
+        return (seat.Y - floor) * size.Y;
     }
 
     string LegsKey() => Spec == null ? "" : string.Join(";", Spec.Legs.Select(l => l.Hip.ToString())) + "|" + string.Join(";", Spec.HoverPoints);
 
     void RefreshSeat()
     {
-        if (_chair is Int3 taken && Structure.TryGet(taken, out Block held) && IsChair(Structure.TypeOf(held)))
+        if (_chair is Int3 taken && Structure.TryGetBlock(taken, out Int3 anchor, out Block held) && IsChair(Structure.TypeOf(held)))
         {
-            Seat = StructureBridge.CellCenter(Structure, taken);
+            SitAt(anchor, held);
             return;
         }
         foreach (var (p, b) in Structure.Blocks())
             if (IsChair(Structure.TypeOf(b)))
             {
-                Seat = StructureBridge.CellCenter(Structure, p);
+                SitAt(p, b);
                 return;
             }
         if (Seat != null) SeatLost?.Invoke();
@@ -431,6 +688,7 @@ public sealed partial class Vessel
             Mass = mass.Mass,
             CenterOfMass = mass.CenterOfMass,
             DragArea = StructureBridge.DragArea(piece),
+            DragBox = StructureBridge.DragBox(piece), // loose: the wind meets its real shape as it lies
             Shape = StructureBridge.ShapeOf(piece),
         });
         piece.DirtyChunks.Clear();
@@ -448,10 +706,12 @@ public sealed partial class Vessel
         Zone.AddChild(rigid);
         rigid.GlobalTransform = hull.Hull.GlobalTransform;
         HullShapes.MoveTo(rigid);
+        HullShapes.Apply(StructureBridge.Colliders(Structure, null, fittings: true)); // free now: its fittings collide too
         foreach (Node child in hull.Hull.GetChildren())
             if (child is not CollisionShape3D) child.Reparent(rigid, false);
         var free = Zone.Host.Rebind(Body, new FreeBinding(rigid, Body));
         Binding = free;
+        Body.DragBox = StructureBridge.DragBox(Structure);
         free.Teleport();
         hull.Hull.GetParent().RemoveChild(hull.Hull);
         hull.Hull.QueueFree();

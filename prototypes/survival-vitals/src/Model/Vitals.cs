@@ -179,6 +179,7 @@ public sealed class Vitals
 
         if (env.LavaMetres <= _r.Lava.WarnMetres) warn |= Alert.Lava;
         if (env.LavaMetres <= 0) Hurt(Alert.Lava, DamageKind.Lava, _r.Lava.DamagePerSecond * dt);
+        else if (env.LavaMetres <= _r.Lava.BesideMetres) Hurt(Alert.Lava, DamageKind.Lava, _r.Lava.BesideDamagePerSecond * dt);
 
         _fallWarned = act.FallSpeed > _r.Fall.SafeSpeed;
         if (_fallWarned) warn |= Alert.Fall;

@@ -2,8 +2,8 @@ using System.Numerics;
 
 namespace GalHack.Physics;
 
-/// <summary>A ray hit, as the world query found it.</summary>
-public readonly record struct RayHit(Vector3 Point, Vector3 Normal, Body Body, Surface Surface);
+/// <summary>A ray hit, as the world query found it (<see cref="Contact.Part"/>: the engine's handle on what it hit, for flora).</summary>
+public readonly record struct RayHit(Vector3 Point, Vector3 Normal, Body Body, Surface Surface, object Part = null);
 
 /// <summary>
 /// The few spatial questions the rules ask (hover engines and landing gear probe the ground).
@@ -37,6 +37,24 @@ public readonly record struct CraterResult(int CellsRemoved, int CellsRefused, R
 public interface ITerrainEditor
 {
     CraterResult Crater(Vector3 center, float radius);
+}
+
+/// <summary>
+/// A planet's standing trees as the rules need them: which one a structure meets, how thick its trunk is,
+/// and felling it. Whether it gives way is the rules' (<see cref="PhysicsRules.FloraData"/>); the game owns
+/// what felling does (the felled list, the colliders, what is left standing).
+/// </summary>
+public interface IFloraField
+{
+    /// <summary>
+    /// The tree a flora collider belongs to (a structure's contact's or its gear's ray hit's <see cref="Contact.Part"/>),
+    /// and its trunk's radius, m: 0 for one already felled whose collider has yet to go. False for rock (boulders,
+    /// crystals), which never gives way.
+    /// </summary>
+    bool TreeAt(object part, out long tree, out float trunkRadius);
+
+    /// <summary>Fells it for good, as harvesting does: its colliders gone at once, a stump left, its trunk and crown falling away along <paramref name="away"/>.</summary>
+    void Fell(long tree, Vector3 point, Vector3 away);
 }
 
 /// <summary>

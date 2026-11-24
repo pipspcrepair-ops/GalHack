@@ -1,0 +1,163 @@
+# Place types: what a kind of place has and each thing's real size range in metres. No positions and no layouts:
+# each type's plan (src/Gen/Arch/PlaceTypes.Airport.cs, PlaceTypes.Ports.cs) lays its parts out by rules from every
+# spawn's own seed and its world's size, so no two spawns of a type are the same place.
+#
+#   type <id>
+#     name     what it is called
+#     tech     the tech levels it is built at
+#     plan     the rules that lay it out: airport, hub, rosettes, grid
+#     share    the most of its world's area it may take (the planner shortens the long parts toward
+#              their lower ends to fit, and says so when even those don't)
+#     part <id> <kind> [what] [sizes]...
+#       kinds     surface <cover>      levelled made ground, laid like the world's roads (tarmac, concrete, gravel, dirt)
+#                 building <program>   a building of data/programs.txt (or a city's lot: fire, works), sized here, with
+#                                      its rooms planned at build
+#                 tanks | lights | fence | road <cover> | pads <cover> | rail
+#       sizes     len w depth h r count cab shoulder concourse off round: a..b is rolled by each spawn; chance p: only
+#                 that share of spawns have the part
+#
+# Scaled to our worlds (owner, 14 Nov: "airports don't have to be realistic size, they can be scaled down to our
+# world. 250 m runways are fine", then "a 500m runway is fine"): the lengths between the parts keep a real airport's
+# proportions (ICAO Annex 14 and FAA AC 150/5300-13 for runway, taxiway offset, apron and approach lighting), scaled to
+# a 400 to 600 m runway; what a body or a craft uses stays true size (owner, 15 Nov: "the buildings are small... it
+# doesn't even look like a real airport"). The biggest craft an airfield takes is a Small-class flight vessel, about 30
+# m across: runways 30 m wide, taxiways 15, aprons twice its span deep, hangar doors over 30 m wide; light craft in the
+# GA hangars; rooms, doors, ceilings and stairs at a person's size.
+#   plan airport   the main runway; a second one meeting it in one paved intersection, an X or a T (crosswind, its
+#                  chance); every free runway end widened (end: how far past, how wide), approach lights off those
+#                  square to the axes; a parallel taxiway off its centre line (off) linked near both ends, else stubs
+#                  from the aprons; along the landside the terminal's apron (the terminal, its tower and the big
+#                  hangars on its back), the GA apron (ga, its small hangars on its back) and the fire station on the
+#                  taxiway, in a rolled order before the second runway; car parks behind the terminal, the service road
+#                  behind everything (road), works sheds across it, the fuel farm off its end, the access road out
+#                  round a bend to the gate; the fence round it all (round: how far out)
+
+type airport
+  name Airport
+  tech mid
+  plan airport
+  share 0.05
+  part runway    surface tarmac   len 400..600 w 30 shoulder 5
+  part crosswind surface tarmac   len 300..450 w 30 shoulder 5 chance 0.75
+  part end       surface tarmac   len 30..60 w 46..56
+  part lights    lights           len 100..200
+  part taxiway   surface tarmac   w 15 off 60..80 chance 0.7
+  part link      surface tarmac   w 15
+  part apron     surface concrete len 240..320 depth 70..100
+  part terminal  building terminal len 70..110 depth 30..44 h 14..18 concourse 6
+  part tower     building control_tower len 8..10 depth 8..10 h 24..32 cab 5..7
+  part hangar    building hangar  count 2..4 len 40..48 depth 30..40 h 16..20
+  part ga        surface concrete len 80..200 depth 40..60
+  part gahangar  building hangar  count 4..8 len 20..28 depth 16..22 h 8..10
+  part fire      building fire    len 30..36 depth 32..36 h 12..14
+  part works     building works   count 1..3 len 30..40 depth 30..36 h 8..10
+  part fuel      tanks            count 2..3 r 3..5 h 5..8
+  part carpark   surface tarmac   count 2..3 len 50..90 depth 30..50
+  part road      surface tarmac   w 7..8
+  part access    road tarmac      w 7..8
+  part fence     fence            round 20..40
+
+# Low tech: an airstrip by the same rules with fewer parts, scaled down again: an earth strip, a gravel taxiway to a
+# small hard standing, a hangar, a lookout, a fuel dump off to one side.
+type airstrip
+  name Airstrip
+  tech low
+  plan airport
+  share 0.03
+  part runway   surface dirt     len 240..360 w 18 shoulder 3
+  part taxiway  surface gravel   w 10 off 35..45
+  part link     surface gravel   w 10
+  part apron    surface gravel   len 90..130 depth 35..55
+  part terminal building terminal len 16..24 depth 12..16 h 4..6
+  part tower    building control_tower len 6..10 depth 6..10 h 8..14 cab 4..5
+  part hangar   building hangar  count 1 len 32..36 depth 24..30 h 10..12
+  part fuel     tanks            count 1..2 r 2..3 h 3..5
+  part carpark  surface dirt     count 1 len 15..30 depth 10..20
+  part access   road dirt        w 4..6
+  part fence    fence            round 10..20
+
+# Spaceports for high tech (owner, 14 Nov: "high tech level space ports of varying sizes"), from the owner's references
+# (reference-photos/spaceports: Pearce Design Studio, CC BY-NC 4.0, followed closely as rules, never as a template, and
+# credited). The class of port the world had picks the biggest it may be (a: large, b c: medium, d e: small), its size
+# the biggest that fits. Scaled to our worlds like the airport: the distances between the parts keep their proportions,
+# what a craft or a body uses stays true size (a recessed pad near twice its craft across, a ramp down into it at 1 in 5,
+# its blast wall a block over the field; a hall's door wider than its craft; rooms, doors and ladders for people).
+#   plan hub       a domed control tower on its roundabout at the middle, taxiways out from it like spokes at rolled
+#                  angles, recessed pads off them either side, long pads for bigger craft across the end of the longest,
+#                  a freight hall beside them with a rail siding out the back, a fuel farm off another, the gate road
+#                  out on its own way (class D: the reference's walled port in farmland)
+#   plan rosettes  an authority building, three wings round a round core, at the middle, its front to the gate; three
+#                  rosettes a third of a turn apart, each a large pad ringed by recessed ones, a taxiway in from the
+#                  building; in the gaps a naval yard behind its own fence and a small airfield; fuel and leased sheds by
+#                  the building; the gate road out through the fence to the startown huddled outside (class C)
+#   plan grid      taxi spines side by side, recessed pads either side of each, a column of big pads down one side, rows
+#                  of hangars along both long edges facing in, the terminal on its plaza at one end with offices round
+#                  it and the tower beside, a tank farm out in a far corner, the startown past the gate (class A)
+#   craft          the biggest craft it takes, m (a Small-class flight vessel about 30 m, a Large-class one about 60)
+#   counts         pad: a hub's in all, a rosette's ring, a spine's both sides; bigpad: the long pads, the rosettes'
+#                  middles (one each), the big column; sink: how deep a recessed pad lies (whole blocks)
+type port_large
+  name Spaceport
+  tech high
+  class a
+  plan grid
+  craft 60
+  share 0.05
+  part terminal building terminal len 180..240 depth 50..64 h 20..26 concourse 10
+  part spine    surface concrete w 20 count 3..5 len 420..560
+  part lane     surface concrete w 30
+  part pad      pads concrete    count 8..12 r 26 sink 4..6
+  part link     surface concrete w 12
+  part bigpad   pads concrete    count 3..5 r 54..62
+  part hangar   building hangar  count 6..10 len 70..80 depth 60..70 h 30..36
+  part plaza    surface flags    len 120..160 depth 50..70
+  part tower    building control_tower len 12..14 depth 12..14 h 40..52 cab 8..10
+  part office   building terminal count 2..4 len 40..60 depth 30..40 h 14..20
+  part fuel     tanks count 4..6 r 6..8 h 10..14
+  part access   road tarmac w 10
+  part fence    fence round 30..50
+  part town     building dome count 8..14 r 8..14 h 6..10
+
+type port_medium
+  name Spaceport
+  tech high
+  class b c
+  plan rosettes
+  craft 60
+  share 0.05
+  part terminal building authority r 44..54 wing 50..66 span 36..46 h 64..84
+  part bigpad   pads concrete    count 3 r 46..56
+  part pad      pads concrete    count 8..10 r 26 sink 4..6
+  part link     surface concrete w 12
+  part spoke    surface concrete w 20
+  part naval    building hangar  len 70..80 depth 60..70 h 30..36
+  part navalpad pads concrete    r 40..48
+  part barracks building terminal len 56..72 depth 30..36 h 12..14
+  part navalfence fence
+  part runway   surface tarmac   len 220..320 w 30 shoulder 5
+  part airhangar building hangar count 1..2 len 40..48 depth 30..40 h 16..20
+  part airtower building control_tower len 8..10 depth 8..10 h 18..24 cab 5..7
+  part fuel     tanks count 3..4 r 5..7 h 8..12
+  part lease    building works   count 2..4 len 30..40 depth 30..36 h 8..10
+  part access   road tarmac w 10
+  part fence    fence round 25..40
+  part town     building dome count 8..14 r 8..14 h 6..10
+
+type port_small
+  name Spaceport
+  tech high
+  class d e
+  plan hub
+  craft 30
+  share 0.03
+  part terminal building hub     r 28..34 h 48..60 cab 18..24
+  part ring     surface tarmac   w 12 r 40..48
+  part spoke    surface concrete w 15 count 3..4 len 170..250
+  part pad      pads concrete    count 8..12 r 26 sink 4..6
+  part link     surface concrete w 12
+  part bigpad   pads concrete    count 2 len 100..120 w 50..56
+  part freight  building hangar  len 70..90 depth 40..50 h 14..18
+  part siding   rail             len 80..140
+  part fuel     tanks count 2..3 r 4..6 h 8..12
+  part access   road tarmac      w 8
+  part fence    fence            round 20..30

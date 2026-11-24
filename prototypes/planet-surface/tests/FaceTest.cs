@@ -61,7 +61,7 @@ public partial class FaceTest : Node
         }
         GD.Print($"total test time {watch.Elapsed.TotalSeconds:F1} s");
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     void Check(bool ok, string what)
@@ -336,7 +336,7 @@ public partial class FaceTest : Node
         if (ground == null)
             foreach (var (c, b) in s.Blocks.Blocks())
             {
-                if (BlockInfo.IsFullCube(b.Type) || BlockInfo.IsTransparent(b.Material) || b.Type == BlockType.Door && how == "near") continue;
+                if (BlockInfo.IsFullCube(b.Type) || BlockInfo.IsTransparent(b.Material) || b.Type == BlockType.Door) continue; // (a doorway: this view draws no leaves, WalkableMesh)
                 NV at = new(c.X, c.Y, c.Z);
                 if (b.Type == BlockType.Ramp)
                 {

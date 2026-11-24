@@ -20,10 +20,20 @@ public sealed class DecoRoom
 {
     public float Width, Depth, Height = 3f;
     public List<DecoDoor> Doors = new();
+    /// <summary>Patches of the floor nothing may stand on or walk across (a stair, a cache, a hole, a heap the years left).</summary>
+    public List<DecoRect> Blocked = new();
+    /// <summary>Floor kept clear but walked on (the step inside a doorway, a ladder's foot): nothing stands there.</summary>
+    public List<DecoRect> Kept = new();
+    /// <summary>Its windows, each where it is in its wall (as a door is) and its sill's height over the floor: nothing taller stands in front of one.</summary>
+    public List<(DecoDoor At, float Sill)> Windows = new();
+    /// <summary>Its walls' chimney breasts: a fire is lit only at one, at the stack's foot.</summary>
+    public List<DecoDoor> Flues = new();
     /// <summary>The theme set (deco.json) the room is furnished from.</summary>
     public string Set;
     /// <summary>The POI room id it came from (rooms.txt), if any, and its tags.</summary>
     public string RoomId;
+    /// <summary>The named recipe (a mix of the set) it is furnished by, if any: set by <see cref="DecoPoi.Dress"/> from the room's id and the place.</summary>
+    public string Recipe;
     public List<string> Tags = new();
     /// <summary>The POI's state: active, abandoned, infested or ruined.</summary>
     public string State = "abandoned";
@@ -89,17 +99,16 @@ public readonly record struct DecoRect(Vector2 Centre, Vector2 U, Vector2 V)
     }
 
     /// <summary>Separating-axis test for two oriented rectangles.</summary>
-    public bool Overlaps(DecoRect o)
+    public bool Overlaps(DecoRect o) => !Apart(o, U) && !Apart(o, V) && !Apart(o, o.U) && !Apart(o, o.V);
+
+    /// <summary>True if the axis separates the two (no array of axes: this runs for every pair a planner tries).</summary>
+    bool Apart(DecoRect o, Vector2 axis)
     {
-        foreach (Vector2 axis in new[] { U, V, o.U, o.V })
-        {
-            if (axis.LengthSquared() < 1e-12f) continue;
-            Vector2 n = Vector2.Normalize(axis);
-            float ca = Vector2.Dot(Centre, n), ra = MathF.Abs(Vector2.Dot(U, n)) + MathF.Abs(Vector2.Dot(V, n));
-            float cb = Vector2.Dot(o.Centre, n), rb = MathF.Abs(Vector2.Dot(o.U, n)) + MathF.Abs(Vector2.Dot(o.V, n));
-            if (MathF.Abs(ca - cb) >= ra + rb) return false;
-        }
-        return true;
+        if (axis.LengthSquared() < 1e-12f) return false;
+        Vector2 n = Vector2.Normalize(axis);
+        float ca = Vector2.Dot(Centre, n), ra = MathF.Abs(Vector2.Dot(U, n)) + MathF.Abs(Vector2.Dot(V, n));
+        float cb = Vector2.Dot(o.Centre, n), rb = MathF.Abs(Vector2.Dot(o.U, n)) + MathF.Abs(Vector2.Dot(o.V, n));
+        return MathF.Abs(ca - cb) >= ra + rb;
     }
 
     public bool Contains(Vector2 p)
@@ -158,6 +167,8 @@ public sealed class DecoPlanCable
 public sealed class DecoPlan
 {
     public DecoRoom Room;
+    /// <summary>The template use the room is arranged round (its focal point), or -1: the years leave it standing.</summary>
+    public int FocalGroup = -1;
     public readonly List<DecoPlacement> Placements = new();
     public readonly List<DecoPlanCable> Cables = new();
     public readonly List<string> Notes = new();

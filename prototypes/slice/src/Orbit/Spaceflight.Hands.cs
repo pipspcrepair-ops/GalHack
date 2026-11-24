@@ -37,22 +37,23 @@ public partial class Spaceflight
     public float SalvageProgress { get; private set; }
 
     /// <summary>
-    /// The hands in space (the game asks this first, before the surface's tools): the survival
-    /// tool salvages wrecks in gather mode and fires in shoot mode, a core item claims a wreck,
+    /// The hands in space (the game asks this first, before the surface's tools): the Sleeper
+    /// tool's gather salvages the wreck block it is on and fires at anything else (repair
+    /// does nothing yet in space), a core item claims a wreck,
     /// building waits for a later phase. False for what works the same anywhere (food, kits).
     /// </summary>
     public bool TakeHands(float dt, HandKind hand, bool primary, bool pressed)
     {
         _shotCooldown -= dt;
-        if (!Game.InOrbit) return false;
+        if (!Game.InOrbit && !OnOtherBody) return false; // on the moon as in orbit: its ground's tools come later
         switch (hand)
         {
             case HandKind.Tool:
-                if (Game.Tool.Mode == ToolMode.Gather) Salvage(dt, primary);
+                if (Game.Tool.Mode == ToolMode.Gather && OnWreckBlock()) Salvage(dt, primary);
                 else
                 {
                     Halt();
-                    if (primary && _shotCooldown <= 0f) Shoot();
+                    if (primary && _shotCooldown <= 0f && Game.Tool.Mode == ToolMode.Gather) Shoot();
                 }
                 return true;
             case HandKind.Core:
@@ -61,13 +62,17 @@ public partial class Spaceflight
                 return true;
             case HandKind.Block or HandKind.Device or HandKind.Blueprint:
                 Halt();
-                if (pressed) Game.Say("Building in orbit comes later: claim a wreck with a core, salvage, and build on the ground", Tones.Caution);
+                if (pressed) Game.Say("NO BUILDING IN ORBIT", Tones.Caution);
                 return true;
             default:
                 Halt();
                 return false;
         }
     }
+
+    /// <summary>The look is on a block of a vessel within salvage reach.</summary>
+    bool OnWreckBlock() => WorldRay.Cast(Game.Zone, Game.Survivor, Rules.Wrecks.SalvageReach, Layers.Hull, out LookHit look)
+                           && look.Vessel != null && look.Vessel.Structure.Has(look.Cell);
 
     void Halt()
     {
@@ -86,7 +91,7 @@ public partial class Spaceflight
 
     /// <summary>
     /// Gather mode on a wreck's block: held on one block for a moment (its mass decides how long),
-    /// it comes free and about a third of its bill goes in your bag (design: the survival tool
+    /// it comes free and about a third of its bill goes in your bag (design: the Sleeper tool
     /// salvages wrecks at about 33 %). Only wrecks: your own blocks come down whole with the build tool.
     /// </summary>
     void Salvage(float dt, bool primary)
@@ -107,7 +112,7 @@ public partial class Spaceflight
         if (!v.IsDerelict)
         {
             Halt();
-            Refuse(v.Derelict != null ? $"The {v.Name} is yours now: take its blocks down with the build tool" : "Salvage is for wrecks: nothing of yours is taken apart this way");
+            Refuse(v.Derelict != null ? $"{v.Name} · YOURS · USE BUILD TOOL" : "SALVAGE · WRECKS ONLY");
             return;
         }
         Structure s = v.Structure;
@@ -115,7 +120,7 @@ public partial class Spaceflight
         if (type.IsContainer && !v.Storage.IsEmpty)
         {
             Halt();
-            Refuse("Its hold still has things in it: E on a cargo box and take them first");
+            Refuse("HOLD NOT EMPTY · [E] CARGO BOX");
             return;
         }
         if (v != _salvaging || look.Cell != _salvageCell)
@@ -153,7 +158,7 @@ public partial class Spaceflight
         Salvaged++;
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, look.Point, 0.8f, -4f);
         Game.Progress.Earn(3, "salvage");
-        Game.Say(back.IsEmpty ? $"Salvaged a {type.Name}: nothing worth keeping" : $"Salvaged a {type.Name}: +{items.Describe(back, 3)}", Tones.Good);
+        if (!back.IsEmpty) Game.Say($"+{items.Describe(back, 3)}", Tones.Good);
         Halt();
     }
 
@@ -176,11 +181,8 @@ public partial class Spaceflight
     /// <summary>The last block of a wreck salvaged: nothing is left to float there.</summary>
     void TakeAway(Vessel v)
     {
-        v.Zone.Physics.Unregister(v.Body);
-        v.Zone.Physics.StuckFields.Remove(v.Field);
-        v.Zone.Untrack(v);
         Orbit?.Wrecks.Remove(v);
-        v.Node.QueueFree();
+        v.Zone.Remove(v);
     }
 
     // ---- Shooting ------------------------------------------------------------------------------
@@ -202,28 +204,22 @@ public partial class Spaceflight
 
     /// <summary>
     /// A core item set into a wreck with no core claims it (design: any wreck with no core can be
-    /// claimed by placing a core in it; small-grid wrecks with a small-grid core). It becomes
-    /// yours, a station holding still, and its core's gravity holds you to its floor.
+    /// claimed by placing a core in it): any wreck takes the core. It becomes yours, a craft in
+    /// Flight Mode, and its core's gravity holds you to its floor.
     /// </summary>
     void Claim()
     {
         string item = Game.Pack.InHand.Item;
         if (!WorldRay.Cast(Game.Zone, Game.Survivor, Slice.Game.Game.UseReach + 1f, Layers.Hull, out LookHit look) || look.Vessel == null)
         {
-            Game.Say("Aim at a wreck's block to set the core into it", Tones.Caution);
+            Game.Say("NO WRECK BLOCK", Tones.Caution);
             return;
         }
         Vessel v = look.Vessel;
         Structure s = v.Structure;
         if (s.Core != null)
         {
-            Game.Say($"The {v.Name} already has a core", Tones.Caution);
-            return;
-        }
-        bool large = s.Grid.Id == "large";
-        if (large != (item == PlayerInventory.BigCore))
-        {
-            Game.Say(large ? "A big wreck takes a Big Core" : "A small wreck takes a Small Core", Tones.Caution);
+            Game.Say($"{v.Name} · HAS A CORE", Tones.Caution);
             return;
         }
         N.Vector3 n = MathX.Unrotate(v.Body.Rotation, look.Normal.ToNumerics());
@@ -234,16 +230,16 @@ public partial class Spaceflight
         PlaceError e = Building.Place(s, cell, core, null, Building.DefaultOwner);
         if (e != PlaceError.None)
         {
-            Game.Say($"The core won't seat there ({e}): try a flat face inside", Tones.Caution);
+            Game.Say($"CORE WON'T SEAT · {e}", Tones.Caution);
             return;
         }
         Game.Pack.Storage.Remove(item, 1);
         Game.Pack.Grid.Reconcile();
         v.ApplyEdits();
-        v.Claimed(Game.Surface.Physics.Zone.Strength);
+        v.Claimed(Game.Surface.Physics.Zone.Strength, inOrbit: true);
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
         Game.Progress.Earn(40, "wreck claimed");
-        Game.Say($"Claimed: the {v.Name} is yours. Its core's gravity holds you to its floor", Tones.Good);
+        Game.Notices.Post(Slice.Ui.NoticeKind.Claimed, "CLAIMED", v.Name);
         Claimed?.Invoke(v);
     }
 
@@ -260,7 +256,6 @@ public partial class Spaceflight
         v.ApplyEdits();
         bool open = v.Structure.Get(cell).Open;
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)), open ? 0.6f : 0.5f, -3f);
-        Game.Say(open ? "Forced the door open by hand: the wreck has no power" : "Forced the door shut", Tones.Text);
         DoorCycled?.Invoke(v, cell, open);
         return true;
     }

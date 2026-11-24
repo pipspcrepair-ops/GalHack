@@ -31,6 +31,9 @@ public sealed class GameData
     /// <summary>shared/Items' catalogue with the slice's additions (data/items.json): items, recipes, block bills, machines and tech-tree nodes.</summary>
     public GalHack.Items.ItemCatalogue Items { get; private init; }
 
+    /// <summary>Structure power (shared/Items/data/power.json): fuel energy, the core's capacitor, what each device draws by.</summary>
+    public GalHack.Items.Bridge.PowerRules Power { get; private init; }
+
     /// <summary>What using each consumable does.</summary>
     public Dictionary<string, Slice.Items.ConsumableEffect> Consumables { get; private init; }
 
@@ -77,12 +80,49 @@ public sealed class GameData
             // extra armour, all read in place.
             Catalogue = catalogue,
             Items = items,
+            Power = GalHack.Items.Bridge.PowerRules.LoadDirectory(SharedPath("Items", "data"), items),
             Consumables = consumables,
             Progress = Slice.Items.ProgressRules.Parse(File.ReadAllText(Own("data/progress.json"))),
             Weather = WeatherData.Parse(File.ReadAllText(Proto("weather", "data", "weather.json"))),
-            Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("wildlife", "data", "wildlife.json"))),
+            Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("..", "shared", "Bestiary", "data", "wildlife.json"))),
             Rules = SliceRules.Parse(File.ReadAllText(Own("data/slice.json"))),
+            Arms = LoadArms(items),
+            Mounts = LoadMounts(items, catalogue),
         };
+    }
+
+    /// <summary>shared/Arms' weapon rows, each checked against the items: the weapon is a weapon item, and its ammo is an item.</summary>
+    public GalHack.Arms.Armoury Arms { get; private init; }
+
+    static GalHack.Arms.Armoury LoadArms(GalHack.Items.ItemCatalogue items)
+    {
+        var arms = GalHack.Arms.Armoury.LoadFile(SharedPath("Arms", "data", "weapons.json"));
+        foreach (GalHack.Arms.WeaponDef w in arms.All)
+        {
+            bool strike = w.Delivery == GalHack.Arms.Delivery.Strike; // a hand weapon needs no ammo; bare hands are no item
+            if (strike && !items.Has(w.Item)) continue;
+            if (!items.TryGet(w.Item, out var item) || item.Category != GalHack.Items.ItemCategory.Weapon)
+                throw new InvalidDataException($"weapon '{w.Id}': '{w.Item}' is not a weapon item");
+            foreach (GalHack.Arms.WeaponDef m in w.Modes)
+                if (!(strike && m.Ammo == "") && !items.TryGet(m.Ammo, out _)) throw new InvalidDataException($"weapon '{w.Id}': no ammo item '{m.Ammo}'");
+        }
+        foreach (var item in items.InCategory(GalHack.Items.ItemCategory.Weapon))
+            if (arms.OfItem(item.Id) == null) throw new InvalidDataException($"weapon item '{item.Id}' has no row in shared/Arms/data/weapons.json");
+        return arms;
+    }
+
+    /// <summary>shared/Arms' mounted guns (data/mounted.json): each row is a weapon block that fires from a structure, its ammo an item.</summary>
+    public GalHack.Arms.Armoury Mounts { get; private init; }
+
+    static GalHack.Arms.Armoury LoadMounts(GalHack.Items.ItemCatalogue items, Catalogue catalogue)
+    {
+        var mounts = GalHack.Arms.Armoury.LoadFile(SharedPath("Arms", "data", "mounted.json"));
+        foreach (GalHack.Arms.WeaponDef w in mounts.All)
+        {
+            if (!catalogue.TryGetType(w.Item, out BlockType t) || t.Function != "weapon") throw new InvalidDataException($"mounted gun '{w.Id}': '{w.Item}' is not a weapon block");
+            if (!items.TryGet(w.Ammo, out _)) throw new InvalidDataException($"mounted gun '{w.Id}': no ammo item '{w.Ammo}'");
+        }
+        return mounts;
     }
 
     /// <summary>
@@ -112,11 +152,27 @@ public sealed class SliceRules
     public PlanetRules Planet { get; set; } = new();
     public MaterialRules Materials { get; set; } = new();
     public ClimateRules Climate { get; set; } = new();
+    public ClimateNodeRules ClimateNode { get; set; } = new();
     public ToolRules Tool { get; set; } = new();
+    public PlantRules Plants { get; set; } = new();
     public BuildRules Build { get; set; } = new();
     public WildlifeRules Wildlife { get; set; } = new();
     public TorchRules Torch { get; set; } = new();
     public ContainerRules Containers { get; set; } = new();
+    public FieldRules ForceFields { get; set; } = new();
+    public BarRules StructureBar { get; set; } = new();
+    /// <summary>How far a structure's scan marks places, m, by scanner block id.</summary>
+    public Dictionary<string, float> Scanners { get; set; } = new();
+    /// <summary>What a person of each trade carries besides their weapon (by role, lower case), each good by chance: what their bag holds when they fall, and what a frightened one gives up.</summary>
+    public Dictionary<string, CarriedGood[]> Carried { get; set; } = new();
+
+    public sealed class CarriedGood
+    {
+        public string Item { get; set; } = "";
+        public float Chance { get; set; } = 0.5f;
+        /// <summary>The most of it, from one.</summary>
+        public int Most { get; set; } = 1;
+    }
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -132,6 +188,7 @@ public sealed class SliceRules
 
     public sealed class PlanetRules
     {
+        /// <summary>A start-sized world's gravity, 1 g, m/s²: every world's is this times its size's (PlanetSpec.Gravities); a core's artificial gravity is this.</summary>
         public float Gravity { get; set; } = 9.8f;
         public float Ceiling { get; set; } = 4000f;
         public double StartTimeOfDay { get; set; } = 0.27;
@@ -141,7 +198,7 @@ public sealed class SliceRules
     public sealed class MaterialRules
     {
         /// <summary>Raw ore items per 1 m cell of ore dug (shared/Items' pacing reference).</summary>
-        public int OrePerCell { get; set; } = 12;
+        public int OrePerCell { get; set; } = 3;
         /// <summary>Stone per cell of rock dug.</summary>
         public int StonePerRockCell { get; set; } = 1;
         public double OrganicsPerPlant { get; set; } = 1.5;
@@ -149,7 +206,7 @@ public sealed class SliceRules
         /// <summary>What the escape pod's locker holds, by item id.</summary>
         /// <summary>The starting kit, in the bunker's locker.</summary>
         public Dictionary<string, int> StartKit { get; set; } = new();
-        /// <summary>What the castaway starts with on the toolbar, by item id, in slot order.</summary>
+        /// <summary>What the sleeper starts with on the toolbar, by item id, in slot order.</summary>
         public List<string> Toolbar { get; set; } = new();
     }
 
@@ -161,7 +218,38 @@ public sealed class SliceRules
         public double LapsePerKm { get; set; } = 6.5;
         public Dictionary<string, double> OxygenByAir { get; set; } = new();
         public Dictionary<string, double> RadiationByArchetype { get; set; } = new();
+        /// <summary>The share of a nuclear-blasted world's strongest crater reading that a dust storm's lifted fallout carries, deep inside it.</summary>
+        public double DustFallout { get; set; } = 0.25;
         public double SealedRoomC { get; set; } = 20;
+
+        /// <summary>A sealed room's air, seconds: how fast its life support brings it to sealedRoomC (the gap shrinks by e each), how long it holds once the power is off, and how fast it then drifts to the outside's.</summary>
+        public double RoomEaseSeconds { get; set; } = 30;
+        public double RoomHoldSeconds { get; set; } = 120;
+        public double RoomDriftSeconds { get; set; } = 180;
+
+        /// <summary>A shut room in a place: the share of the way from the outside's temperature to sealedRoomC its walls take it, and how fast it gets there, seconds.</summary>
+        public double PlaceShelter { get; set; } = 0.5;
+        public double PlaceEaseSeconds { get; set; } = 60;
+
+        /// <summary>The weather's exposure (weather.json) at which the visor warns and at which an exposed body loses health, and how fast: health per second per exposure.</summary>
+        public double StormWarnFrom { get; set; } = 0.5;
+        public double StormHarmFrom { get; set; } = 1;
+        public double StormHealthPerSecond { get; set; } = 3;
+
+        /// <summary>Water colder than this is ice water: past the warning it takes health at this rate, whatever the suit.</summary>
+        public double IceWaterC { get; set; } = 2;
+        public double IceWaterHealthPerSecond { get; set; } = 7;
+        public double IceWaterWarnSeconds { get; set; } = 1.5;
+    }
+
+    public sealed class ClimateNodeRules
+    {
+        public float Radius { get; set; } = 9f;
+        public double LowC { get; set; } = 12;
+        public double HighC { get; set; } = 26;
+
+        /// <summary>Fuel units it burns a second: a burnstone pack (30) lasts about a day and night (1,440 s, survival.json).</summary>
+        public double BurnPerSecond { get; set; } = 0.02;
     }
 
     public sealed class ToolRules
@@ -171,10 +259,11 @@ public sealed class SliceRules
         public float DigInterval { get; set; } = 0.18f;
         public float CutReach { get; set; } = 4f;
         public float ShotDamage { get; set; } = 18f;
-        public float ShotInterval { get; set; } = 0.22f;
-        public float ShotRange { get; set; } = 120f;
+        public float ShotInterval { get; set; } = 0.3f;
+        public LightningRules Lightning { get; set; } = new();
+        public RepairRules Repair { get; set; } = new();
 
-        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the survival tool), against each thing's durability.</summary>
+        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the Sleeper tool), against each thing's durability.</summary>
         public float GatherRate { get; set; } = 3f;
         public DurabilityRules Durability { get; set; } = new();
         /// <summary>Each hand tool by item id: the faster drills the tech tree unlocks.</summary>
@@ -183,10 +272,48 @@ public sealed class SliceRules
         public ToolTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out ToolTier t) ? t : new ToolTier();
     }
 
-    /// <summary>How much a hand tool does: its gather rate as a multiple of the survival tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
+    /// <summary>The Sleeper tool's gather blast: a short arc of lightning (see data/slice.json).</summary>
+    public sealed class LightningRules
+    {
+        public float Range { get; set; } = 9f;
+        public float PersonDamage { get; set; } = 4f;
+        public float StunSeconds { get; set; } = 1.1f;
+        public float RestunSeconds { get; set; } = 1.5f;
+        public float BlockPerSecond { get; set; } = 5f;
+        public float ExtractShare { get; set; } = 0.3f;
+        /// <summary>The tool's shake in the hand with each bolt (the view stays still): how long, how far (m), how fast (Hz), and a gathering pulse's as a share of a blast's.</summary>
+        public float ShakeSeconds { get; set; } = 0.12f;
+        public float ShakeAmplitude { get; set; } = 0.004f;
+        public float ShakeHz { get; set; } = 38f;
+        public float GatherShakeShare { get; set; } = 0.6f;
+        /// <summary>The steady shake while fire is held, as a share of a blast's jolt, and how long it takes to settle once let go, s.</summary>
+        public float HeldShakeShare { get; set; } = 0.45f;
+        public float SettleSeconds { get; set; } = 0.08f;
+        public float FlashEnergy { get; set; } = 6f;
+        public float FlashRange { get; set; } = 11f;
+        /// <summary>The bolt comes up, holds and fades smoothly (an arc over a block a little longer); its light comes up and fades. Seconds.</summary>
+        public float BoltRise { get; set; } = 0.08f;
+        public float BoltHold { get; set; } = 0.07f;
+        public float BoltFade { get; set; } = 0.09f;
+        public float FlashRise { get; set; } = 0.1f;
+        public float FlashFade { get; set; } = 0.25f;
+        public float ThunderGap { get; set; } = 0.28f;
+    }
+
+    /// <summary>The Sleeper tool's repair cone: reach, half-angle in degrees, the time between its sound's pulses (and tries at restoring), how fast it fills a block (hit points a second), and the share a destroyed block comes back at.</summary>
+    public sealed class RepairRules
+    {
+        public float Range { get; set; } = 6f;
+        public float Angle { get; set; } = 14f;
+        public float Interval { get; set; } = 0.35f;
+        public float Rate { get; set; } = 50f;
+        public float RestoreShare { get; set; } = 0.1f;
+    }
+
+    /// <summary>How much a hand tool does: its gather rate as a multiple of the Sleeper tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
     public sealed class ToolTier
     {
-        public string Name { get; set; } = "Survival tool";
+        public string Name { get; set; } = "Sleeper tool";
         public float Rate { get; set; } = 1f;
         public float Radius { get; set; } = 1.42f;
         public float Shot { get; set; } = 1f;
@@ -199,13 +326,18 @@ public sealed class SliceRules
         public float Rock { get; set; } = 2f;
         public float DeepRock { get; set; } = 3f;
         public float Ore { get; set; } = 3f;
-        /// <summary>A plant, a tree and a boulder, at scale 1 (they grow with the plant's size).</summary>
-        public float Plant { get; set; } = 1.5f;
-        public float Tree { get; set; } = 9f;
-        public float Boulder { get; set; } = 5f;
-        /// <summary>A tree gives this many times a plant's materials.</summary>
-        public float TreeYield { get; set; } = 3f;
-        public float BoulderStone { get; set; } = 6f;
+    }
+
+    /// <summary>Plants' hit points at scale 1 (a tree's by its trunk against <see cref="Trunk"/> m), worn by the tool's blast and by weapons alike; and what they give, by the share taken.</summary>
+    public sealed class PlantRules
+    {
+        public float Plant { get; set; } = 2.5f;
+        public float Tree { get; set; } = 15f;
+        public float Boulder { get; set; } = 8.3f;
+        public float Trunk { get; set; } = 0.3f;
+        /// <summary>A tree gives this many times a plant's materials; a boulder this much stone a scale.</summary>
+        public float TreeYield { get; set; } = 1.5f;
+        public float BoulderStone { get; set; } = 3f;
     }
 
     public sealed class BuildRules
@@ -213,26 +345,18 @@ public sealed class SliceRules
         public float Reach { get; set; } = 9f;
         public float BlueprintPlacesPerSecond { get; set; } = 8f;
         public string StarterBlueprint { get; set; } = "starter.gbp";
-        public float SmallVesselMaxTurn { get; set; } = 110f;
+        /// <summary>The BLUEPRINTS tab's starter set (data/blueprints), Large and Small together.</summary>
+        public List<string> Library { get; set; } = new() { "starter.gbp" };
+        /// <summary>Where blueprints the player saves go (the library's Yours).</summary>
+        public string Saved { get; set; } = "user://blueprints";
         public AreaRules Area { get; set; } = new();
     }
 
-    /// <summary>A structure's area: its bounding box plus a margin per class and a share of its size, m.</summary>
+    /// <summary>A structure's area: its bounding box plus one margin and a share of its size, m.</summary>
     public sealed class AreaRules
     {
-        public float Base { get; set; } = 30f;
-        public float Capital { get; set; } = 30f;
-        public float Small { get; set; } = 12f;
-        public float Hover { get; set; } = 12f;
-        public float SizeShare { get; set; } = 0.5f;
-
-        public float Margin(GalHack.Items.StructureClass c) => c switch
-        {
-            GalHack.Items.StructureClass.Base => Base,
-            GalHack.Items.StructureClass.Capital => Capital,
-            GalHack.Items.StructureClass.Small => Small,
-            _ => Hover,
-        };
+        public float Margin { get; set; } = 12f;
+        public float SizeShare { get; set; } = 0.9f;
     }
 
     public sealed class TorchRules
@@ -243,11 +367,50 @@ public sealed class SliceRules
         public float Attenuation { get; set; } = 1f;
     }
 
+    /// <summary>Force fields: each tier by its component's item id, the draw on the capacitors, and the sizes a field may be drawn.</summary>
+    public sealed class FieldRules
+    {
+        public Dictionary<string, FieldTier> Tiers { get; set; } = new();
+        /// <summary>MW for each 1 m tile of a field that is up; an open outer door's field, MW.</summary>
+        public double DrawPerTile { get; set; } = 0.01;
+        public double DoorDraw { get; set; } = 0.0005;
+        public int MinSide { get; set; } = 2;
+        public int MaxSide { get; set; } = 48;
+
+        public FieldTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out FieldTier t) ? t : null;
+    }
+
+    /// <summary>What a field of one tier can take before it fizzles (its cap), seconds at zero before it starts growing back, and seconds to grow from zero to its cap.</summary>
+    public sealed class FieldTier
+    {
+        public float Strength { get; set; } = 600f;
+        public float RegrowDelay { get; set; } = 30f;
+        public float RegrowSeconds { get; set; } = 20f;
+    }
+
+    /// <summary>The structure's toolbar in a command chair: its kinds of slot, in data order (<see cref="Slice.Vessels.StructureBar"/>).</summary>
+    public sealed class BarRules
+    {
+        public List<BarKind> Kinds { get; set; } = new();
+    }
+
+    /// <summary>A kind of slot on the structure's toolbar: its label, the block functions that bring it, what its key does, its icon, its end, and a slot per block type or one.</summary>
+    public sealed class BarKind
+    {
+        public string Id { get; set; } = "";
+        public string Label { get; set; }
+        public List<string> Functions { get; set; } = new();
+        public string Act { get; set; } = "toggle";
+        public string Icon { get; set; } = "";
+        public string End { get; set; } = "left";
+        public bool PerType { get; set; }
+    }
+
     public sealed class ContainerRules
     {
         public int[] Corpse { get; set; } = { 4, 4 };
-        public int[] Backpack { get; set; } = { 8, 8 };
-        public int[] Drop { get; set; } = { 8, 8 };
+        /// <summary>The one bag, whoever's it is.</summary>
+        public int[] Bag { get; set; } = { 8, 8 };
     }
 
     public sealed class WildlifeRules
@@ -255,17 +418,34 @@ public sealed class SliceRules
         public float PatchHalfSize { get; set; } = 300f;
         public float SafeRadius { get; set; } = 60f;
         public float Alienness { get; set; } = 0.25f;
+        /// <summary>Server setting: whether block-breaking creatures can damage players' bases.</summary>
+        public bool BreakBases { get; set; } = true;
 
         /// <summary>The most wild creatures a patch holds on the most livable world.</summary>
-        public int MostPerPatch { get; set; } = 40;
+        public int MostPerPatch { get; set; } = 70;
+
+        /// <summary>Groups of each species a patch holds on the most livable world, against its natural number (giants 1, the rest 2).</summary>
+        public float Density { get; set; } = 1f;
+
+        /// <summary>
+        /// How much the world's layers (a dead or barren world, a rich one) move its numbers: 0 not at
+        /// all, 1 fully. Most of the way: a dead world plainly quiet, a living one alive.
+        /// </summary>
+        public float LayerWeight { get; set; } = 0.8f;
+
+        /// <summary>
+        /// Topping up as you go: every few seconds, once you have moved on, a group comes back out of
+        /// sight while fewer than this share of the patch's most live within 250 m of you.
+        /// </summary>
+        public float NearShare { get; set; } = 0.6f;
 
         /// <summary>How livable a world of each archetype is, 0..1: lush worlds busiest, lava all but dead.</summary>
         public Dictionary<string, float> Livable { get; set; } = new() { ["Temperate"] = 1f, ["Alien"] = 0.6f, ["Arid"] = 0.35f, ["Ice"] = 0.3f, ["Lava"] = 0.08f };
 
-        /// <summary>A cratered world, airless rock for the most part, holds this share of that.</summary>
+        /// <summary>An airless cratered body (barren rock) holds this share of that.</summary>
         public float Cratered { get; set; } = 0.4f;
 
         public float LivableOn(Planets.Gen.PlanetSpec spec) =>
-            Livable.GetValueOrDefault(spec.Archetype.ToString(), 0.5f) * (spec.Has(Planets.Gen.Modifier.Cratered) ? Cratered : 1f);
+            Livable.GetValueOrDefault(spec.Archetype.ToString(), 0.5f) * (spec.Airless ? Cratered : 1f);
     }
 }

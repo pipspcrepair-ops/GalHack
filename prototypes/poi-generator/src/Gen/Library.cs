@@ -45,12 +45,49 @@ public sealed class PoiLibrary
     public Dictionary<string, RoomDef> Rooms = new();
     public Dictionary<string, ProgramDef> Programs = new();
     public Dictionary<string, SiteDef> Sites = new();
+    /// <summary>Kinds of place as data, planned fresh for every spawn (data/place-types.txt).</summary>
+    public List<PlaceType> Types = new();
     public List<ThemeDef> Themes = new();
+    /// <summary>World types, themes, features and presences (data/world-layers.txt): a world rolls one of each kind it can and they combine.</summary>
+    public List<WorldLayer> Layers = new();
     /// <summary>Places in space and how a system's space is filled (data and siting only for now).</summary>
     public List<SpaceSiteDef> SpaceSites = new();
     public List<OrbitTheme> OrbitThemes = new();
+    /// <summary>Faction sigils as painted cells (data/sigils.txt), by faction.</summary>
+    public Dictionary<string, SigilDef> Sigils = new();
 
-    public FamilyDef Family(string id) => Families.First(f => f.Id == id);
+    /// <summary>The house families (data/homes.txt): what a house is put together from, by climate, tech and era.</summary>
+    public HomeBook Homes = new();
+
+    /// <summary>What each layer value leaves lying about in a world's streets, squares, gardens and roads (data/world-dressing.txt).</summary>
+    public DressBook Dressing = new();
+
+    /// <summary>What places' faces are finished in (data/finishes.txt): the defaults by material, and each room purpose's own.</summary>
+    public FinishBook Finishes = new();
+
+    /// <summary>How a war's strikes came down and what they aimed at (data/strikes.txt).</summary>
+    public StrikeBook Strikes = new();
+    /// <summary>What each purpose below ground asks of its plan (data/depths.txt): see <see cref="Depths"/>.</summary>
+    public Dictionary<string, DepthDef> Depths = new();
+
+    /// <summary>What each age built with and how its buildings stand (data/eras.txt).</summary>
+    public EraBook Eras = new();
+
+    public FamilyDef Family(string id)
+    {
+        // Looked up by id thousands of times a world: indexed, and indexed again whenever the list changes.
+        var index = _byId;
+        if (index == null || _indexed != Families.Count || _indexedList != Families)
+        {
+            index = new Dictionary<string, FamilyDef>();
+            foreach (FamilyDef f in Families) index.TryAdd(f.Id, f);
+            (_byId, _indexed, _indexedList) = (index, Families.Count, Families);
+        }
+        return index.TryGetValue(id, out FamilyDef found) ? found : Families.First(f => f.Id == id);
+    }
+    Dictionary<string, FamilyDef>? _byId;
+    int _indexed = -1;
+    List<FamilyDef>? _indexedList;
     public RoomDef Room(string id) => Rooms.TryGetValue(id, out var r) ? r : throw new KeyNotFoundException($"no room '{id}' in rooms.txt");
 
     /// <summary>Loads from (file name, text) pairs, so the caller decides where files come from.</summary>
@@ -70,8 +107,17 @@ public sealed class PoiLibrary
             else if (name.EndsWith("rooms.txt", StringComparison.Ordinal)) lib.Rooms = ArchParser.Rooms(text, name);
             else if (name.EndsWith("programs.txt", StringComparison.Ordinal)) lib.Programs = ArchParser.Programs(text, name);
             else if (name.EndsWith("sites.txt", StringComparison.Ordinal)) lib.Sites = ArchParser.Sites(text, name);
+            else if (name.EndsWith("place-types.txt", StringComparison.Ordinal)) lib.Types = PlaceType.Parse(text, name);
             else if (name.EndsWith("themes.txt", StringComparison.Ordinal)) lib.Themes = ThemeParser.Parse(text, name);
+            else if (name.EndsWith("world-layers.txt", StringComparison.Ordinal)) lib.Layers = LayerParser.Parse(text, name);
+            else if (name.EndsWith("sigils.txt", StringComparison.Ordinal)) lib.Sigils = SigilDef.Parse(text, name);
             else if (name.EndsWith("orbit.txt", StringComparison.Ordinal)) OrbitParser.Parse(text, name, lib.SpaceSites, lib.OrbitThemes);
+            else if (name.EndsWith("homes.txt", StringComparison.Ordinal)) lib.Homes = HomeBook.Parse(text, name);
+            else if (name.EndsWith("world-dressing.txt", StringComparison.Ordinal)) lib.Dressing = DressBook.Parse(text, name);
+            else if (name.EndsWith("finishes.txt", StringComparison.Ordinal)) lib.Finishes = FinishBook.Parse(text, name);
+            else if (name.EndsWith("strikes.txt", StringComparison.Ordinal)) lib.Strikes = StrikeBook.Parse(text, name);
+            else if (name.EndsWith("depths.txt", StringComparison.Ordinal)) lib.Depths = DepthParser.Parse(text, name);
+            else if (name.EndsWith("eras.txt", StringComparison.Ordinal)) lib.Eras = EraBook.Parse(text, name);
         }
         lib.Check();
         return lib;
@@ -88,7 +134,7 @@ public sealed class PoiLibrary
     {
         if (family.Generator == Generator.Kit)
             return Kits[(family.Kits.TryGetValue(alias, out KitRef r) ? r : family.Kits["main"]).KitId];
-        string style = family.Site != null ? Sites[family.Site].Style : Programs[family.Program!].Style;
+        string style = family.Site != null ? Sites[family.Site].Style : family.Types.Count > 0 ? PlaceTypes.Style : Programs[family.Program!].Style;
         return Kits[style];
     }
 
@@ -113,6 +159,8 @@ public sealed class PoiLibrary
                 }
                 continue;
             }
+            foreach (string t in f.Types)
+                if (Types.All(x => x.Id != t)) throw new FormatException($"family {f.Id}: no place type '{t}'");
             foreach (var v in f.Variants)
             {
                 string? site = v.Site ?? f.Site, program = v.Program ?? f.Program;
@@ -133,7 +181,12 @@ public sealed class PoiLibrary
             if (!Kits.ContainsKey(s.Style)) throw new FormatException($"site {s.Id}: no style kit '{s.Style}'");
             foreach (var part in s.Parts.Where(p => p.Kind == "building"))
                 if (!Programs.ContainsKey(part.Arg("program"))) throw new FormatException($"site {s.Id}: no program '{part.Arg("program")}'");
+            foreach (var part in s.Parts.Where(p => p.Kind == "below" || p.Kind == "grand" && p.Arg("what") == "below"))
+                if (!Depths.ContainsKey(part.Arg("purpose"))) throw new FormatException($"site {s.Id}: no depth purpose '{part.Arg("purpose")}'");
         }
+        foreach (var d in Depths.Values)
+            foreach (string r in d.RoomIds)
+                if (!Rooms.ContainsKey(r)) throw new FormatException($"depth {d.Id}: no room '{r}'");
         foreach (var r in Rooms.Values)
             foreach (string n in r.Near.Concat(r.Avoid))
                 if (!Rooms.ContainsKey(n)) throw new FormatException($"room {r.Id}: near/avoid names unknown room '{n}'");

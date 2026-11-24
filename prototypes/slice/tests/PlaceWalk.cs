@@ -116,7 +116,7 @@ public sealed class PlaceWalk
     /// <summary>Growths cut out of the way so far.</summary>
     public int GrowthsCut;
 
-    /// <summary>To a cell, cutting through whatever the Bloom has grown over the way with the survival tool.</summary>
+    /// <summary>To a cell, cutting through whatever the Bloom has grown over the way with the Sleeper tool.</summary>
     public IEnumerable<int> CutWay(Place p, Int3 goal, Action<bool> done)
     {
         PNav nav = p.Nav();
@@ -191,9 +191,10 @@ public sealed class PlaceWalk
             while (j + 1 < path.Count && path[j + 1].Y == b.Y && path[j].Y == a.Y && Same(path[j + 1] - path[j], b - a)
                    && p.Inst.Blocks.Get(path[j + 1]).Type is not (BlockType.Stair or BlockType.Ladder)
                    && !p.Doors.Any(d => d.Cells.Contains(path[j + 1]) || d.Cells.Contains(path[j + 1] + Int3.Up))) j++;
+            int run = j - i; // a large place's halls are long: the time allowed goes by the length of the run
             i = j;
             bool reached = true;
-            foreach (int x in Step(Feet(p, path[j]), 0.3f, 6f + (j - i) * 0.5f, r => reached = r)) yield return x;
+            foreach (int x in Step(Feet(p, path[j]), 0.3f, 6f + run * 0.5f, r => reached = r)) yield return x;
             if (!reached)
             {
                 Stuck++;
@@ -268,7 +269,7 @@ public sealed class PlaceWalk
             }
             if (d.Open < 0.9f)
             {
-                Notes.Add($"door {d.Index} would not open ({(d.Clearance != null ? $"locked: {d.Clearance}" : "shut")}, lift {d.Lift}, stop {d.Stop}, target {d.Target:F1}, feet {p.FromWorld(_game.Survivor.WorldFeet)}, in shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, aim '{_game.UsePrompt()}')");
+                Notes.Add($"door {d.Index} would not open (shut, lift {d.Lift}, stop {d.Stop}, target {d.Target:F1}, feet {p.FromWorld(_game.Survivor.WorldFeet)}, in shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, aim '{_game.UsePrompt()}')");
                 done(false);
                 yield break;
             }
@@ -332,6 +333,7 @@ public sealed class PlaceWalk
         }
         Controls.Hold(Key.W, false);
         Controls.Hold(Key.S, false);
+        if (ticks >= 600) Notes.Add($"the ladder from {a} to {b} didn't bring us there (feet {p.FromWorld(_game.Survivor.WorldFeet):F2}, target {p.FromWorld(target):F2}, climb {_game.Survivor.Legs.Climb}, on floor {_game.Survivor.Body.OnFloor}, ladder out {_game.Survivor.Legs.Ladder.Out:F1})");
         done(ticks < 600);
     }
 
@@ -413,7 +415,23 @@ public sealed class PlaceWalk
                 open.Enqueue(n, c + new Vector2(i - goal.Item1, j - goal.Item2).Length() * cell);
             }
         }
-        Notes.Add($"no way over the land ({expanded} cells searched, {height.Count} probed, {height.Values.Count(float.IsNaN)} refused; start {start} {H(start.Item1, start.Item2):F1}, goal {goal} {H(goal.Item1, goal.Item2):F1})");
+        // Out from the goal eight ways: where each is first stopped (cells out, and the step's rise or refused ground).
+        var ways = new List<string>();
+        for (int k = 0; k < 8; k++)
+        {
+            int di = (int)MathF.Round(MathF.Cos(k * MathF.PI / 4f)), dj = (int)MathF.Round(MathF.Sin(k * MathF.PI / 4f));
+            float prev = H(goal.Item1, goal.Item2);
+            string stop = "clear";
+            for (int s = 1; s <= 20; s++)
+            {
+                float h = H(goal.Item1 + di * s, goal.Item2 + dj * s);
+                if (float.IsNaN(h)) { stop = $"{s} refused"; break; }
+                if (!float.IsNaN(prev) && MathF.Abs(h - prev) > cell * (di != 0 && dj != 0 ? 1.414f : 1f) * slope) { stop = $"{s} rise {h - prev:F1}"; break; }
+                prev = h;
+            }
+            ways.Add(stop);
+        }
+        Notes.Add($"no way over the land ({expanded} cells searched, {height.Count} probed, {height.Values.Count(float.IsNaN)} refused; start {start} {H(start.Item1, start.Item2):F1}, goal {goal} {H(goal.Item1, goal.Item2):F1}, out from the goal {string.Join("/", ways)})");
         return null;
     }
 

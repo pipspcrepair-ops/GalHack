@@ -21,6 +21,8 @@ public sealed class SpaceSiteDef
     public int Danger;
     /// <summary>What it's worth stripping: scrap, salvage, military or rare.</summary>
     public string Salvage = "scrap";
+    /// <summary>A derelict capital ship: the capital-hull site (data/sites.txt, src/Gen/Arch/CapitalHull.cs) its hull is composed from, or null.</summary>
+    public string? Hull;
     public Faction Faction = Faction.None;
     /// <summary>A faction holds it while it's live (its core, its defenders).</summary>
     public bool Held;
@@ -91,6 +93,7 @@ public static class OrbitParser
                             case "rarity": s.Rarity = Enum.Parse<Rarity>(p[1], true); break;
                             case "danger": s.Danger = I(1); break;
                             case "salvage": s.Salvage = p[1]; break;
+                            case "hull": s.Hull = p[1]; break;
                             case "faction": s.Faction = Enum.Parse<Faction>(p[1], true); break;
                             case "held": s.Held = true; break;
                             case "zones": s.Zones = p.Skip(1).ToList(); break;

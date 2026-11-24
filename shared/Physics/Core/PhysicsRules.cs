@@ -23,6 +23,7 @@ public sealed class PhysicsRules
     public RidingData Riding { get; set; } = new();
     public WalkingData Walking { get; set; } = new();
     public WaterData Water { get; set; } = new();
+    public FloraData Flora { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {
@@ -145,9 +146,6 @@ public sealed class PhysicsRules
         public float LandSpeed { get; set; } = 3f;
         public float IdleBeforeLanding { get; set; } = 0.3f;
         public float SettleTime { get; set; } = 0.5f;
-
-        /// <summary>A landed ship tilts to its feet on uneven ground, but never more than this, degrees.</summary>
-        public float MaxSettleTilt { get; set; } = 12f;
     }
 
     /// <summary>Riding a structure's cabin world out on its hull: letting go, rejoining and mag boots (see <see cref="GalHack.Physics.Riding"/>).</summary>
@@ -155,6 +153,9 @@ public sealed class PhysicsRules
     {
         /// <summary>An outer-hull rider out of contact this long lets go of the ship, s. A jump lets go at once.</summary>
         public float LetGoAfter { get; set; } = 0.4f;
+
+        /// <summary>Out of contact counts toward letting go only this far off the hull, m: dropping off a block beside a deck is no letting go.</summary>
+        public float LetGoNear { get; set; } = 0.5f;
 
         /// <summary>An outer-hull rider farther than this from any block lets go at once, m.</summary>
         public float LetGoDistance { get; set; } = 1.5f;
@@ -232,6 +233,22 @@ public sealed class PhysicsRules
 
         public float DensityOf(BodyKind kind) =>
             Bodies != null && Bodies.TryGetValue(kind.ToString().ToLowerInvariant(), out float d) && d > 0f ? d : Density;
+    }
+
+    /// <summary>
+    /// What a tree takes from a structure before it breaks, by its trunk (<see cref="PhysicsWorld.ResolveContacts"/>): the weight on it
+    /// or the blow into it. One rule for every craft and tree, so a heavy ship breaks an ordinary tree and a giant may hold a light one.
+    /// </summary>
+    public sealed class FloraData
+    {
+        /// <summary>The load a trunk takes per square metre of its cross-section, Pa.</summary>
+        public float Strength { get; set; } = 200_000f;
+
+        /// <summary>A blow is the momentum it brings, stopped over this long, s.</summary>
+        public float BlowTime { get; set; } = 0.1f;
+
+        /// <summary>The most a trunk of this radius takes, N.</summary>
+        public float Takes(float trunkRadius) => Strength * MathF.PI * trunkRadius * trunkRadius;
     }
 
     public sealed class StuckData

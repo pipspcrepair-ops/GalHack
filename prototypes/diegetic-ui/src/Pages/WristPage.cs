@@ -25,10 +25,11 @@ public partial class WristPage : Control, IScreenPage
 
     const string CodexTitle = "CORE GRAVITY";
     const string CodexText =
-        "Your ship makes its own down. The core gravity generator under the bridge pulls everything " +
-        "aboard toward the deck. Switch it off at the systems console and loose cargo floats free, " +
-        "while your boots lock to the deck. It draws 34 kW: on a tight power budget, it is the first " +
-        "thing to shed.";
+        "GRAVITY  ON\n" +
+        "SOURCE  CORE GENERATOR\n" +
+        "SWITCH  SYSTEMS CONSOLE\n" +
+        "OFF  CARGO FLOATS · BOOTS LOCK\n" +
+        "DRAW  34 kW";
 
     static readonly (Hazard Hazard, string Label)[] HazardLamps =
     {
@@ -228,7 +229,7 @@ public partial class WristPage : Control, IScreenPage
         float x = 216;
         this.Block(new Rect2(x - 12, 70, 3, 372), C.Rule);
         this.Text(UiTheme.Display, 28, new Vector2(x, 76), CodexTitle, C.Accent2);
-        this.Text(UiTheme.Label, 16, new Vector2(x, 116), "SHIP SYSTEMS  -  READ BY VESTA", C.Dim);
+        this.Text(UiTheme.Label, 16, new Vector2(x, 116), "SHIP SYSTEMS · VESTA", C.Dim);
         string shown = CodexText[..(int)_typed];
         this.DrawMultilineString(UiTheme.Body, new Vector2(x, 160 + UiTheme.Body.GetAscent(22)), shown,
             HorizontalAlignment.Left, Width - x - 16, 22, -1, C.Text);

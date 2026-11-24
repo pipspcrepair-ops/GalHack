@@ -20,11 +20,15 @@ public struct PilotInput
     /// <summary>False when nobody is at the controls: the autopilot holds course.</summary>
     public bool Seated;
 
+    /// <summary>Nobody at the controls and the vessel parked or nearly stopped: the autopilot brings it to rest instead.</summary>
+    public bool HoldStation;
+
     public static PilotInput Hands(Vector3 move, Vector3 turn = default, bool boost = false) =>
         new() { Move = move, Turn = turn, Boost = boost, Seated = true };
 
     public static readonly PilotInput LetGo = new() { Seated = true };
     public static readonly PilotInput Autopilot = new() { Seated = false };
+    public static readonly PilotInput Station = new() { Seated = false, HoldStation = true };
 
     public bool AnyThrust => Move.LengthSquared() > 1e-4f || Boost || Jump;
 }
@@ -55,6 +59,9 @@ public struct FlightState
     public bool Cruise;
     public float CruiseSpeed;
 
+    /// <summary>Flight assist switched off by its hotkey: it stays off until switched back on.</summary>
+    public bool AssistOff;
+
     /// <summary>What the thrusters did this tick, as ship-local acceleration (m/s²). Drives the flames.</summary>
     public Vector3 ThrustLocal;
 
@@ -74,6 +81,10 @@ public struct FlightState
 /// last few m/s, so every stop is smooth and never overshoots. Because the target never exceeds
 /// top speed, nothing (boost included) can push past it, and mass only changes how fast the
 /// target is reached.
+///
+/// With flight assist off (and a pilot seated, in Flight Mode) nothing brakes or holds: an axis
+/// pushes only while its key is held, and only toward the stick's speed, never back from it;
+/// gravity pulls; spin carries on until the pilot turns against it.
 /// </summary>
 public static class FlightModel
 {
@@ -101,6 +112,16 @@ public static class FlightModel
         s.Cruise = !s.Cruise;
         if (s.Cruise) s.CruiseSpeed = Mathf.Max(0f, -(Frame(s.Control, false).Inverse() * s.Velocity).Z);
     }
+
+    /// <summary>The assist hotkey: off, nothing brakes or holds; on again, the ship eases to a hold as when let go.</summary>
+    public static void ToggleAssist(ref FlightState s) => s.AssistOff = !s.AssistOff;
+
+    /// <summary>
+    /// Whether the assist holds the ship this tick: always, but for a seated pilot who switched it off in
+    /// Flight Mode. Hover plates hold a hover vessel whatever the switch; the autopilot holds course.
+    /// </summary>
+    public static bool Holds(in FlightState s, in PilotInput input, HandlingStats stats) =>
+        !s.AssistOff || stats.IsHover || !input.Seated;
 
     /// <summary>
     /// The frame velocity is controlled in. Hover vessels steer in a level, yaw-only frame: their
@@ -141,8 +162,14 @@ public static class FlightModel
         target = s.Seat * target;
         limit = (s.Seat * limit).Abs();
         Vector3 spinUp = limit / Mathf.Max(t.Turning.SpinUpTime, 1e-3f);
+        bool holds = Holds(s, input, stats);
         for (int axis = 0; axis < 3; axis++)
-            s.AngularVelocity[axis] = Mathf.MoveToward(s.AngularVelocity[axis], target[axis], spinUp[axis] * dt);
+        {
+            float now = s.AngularVelocity[axis], want = target[axis];
+            // Assist off: the gyros fire only while asked, toward the asked rate, never back from it.
+            if (!holds && (Mathf.Abs(want) < 1e-6f || (Mathf.Sign(want) == Mathf.Sign(now) && Mathf.Abs(now) >= Mathf.Abs(want)))) continue;
+            s.AngularVelocity[axis] = Mathf.MoveToward(now, want, spinUp[axis] * dt);
+        }
 
         float spin = s.AngularVelocity.Length();
         if (spin > 1e-7f)
@@ -155,13 +182,14 @@ public static class FlightModel
         bool hover = stats.IsHover;
         Basis frame = Frame(s.Control, hover);
         Vector3 local = frame.Inverse() * s.Velocity;
-        float top = stats.TopSpeed;
+        float top = stats.TopAt(where);
         Vector3 move = input.Move.Clamp(-Vector3.One, Vector3.One).LimitLength(1f);
 
+        bool holds = Holds(s, input, stats);
         Vector3 desired;
         if (!input.Seated)
         {
-            desired = local.LimitLength(top); // the autopilot holds course
+            desired = input.HoldStation ? Vector3.Zero : local.LimitLength(top); // the autopilot holds course
             move = Vector3.Zero;
         }
         else if (s.Cruise)
@@ -184,13 +212,19 @@ public static class FlightModel
             if (Mathf.Abs(dv) < 1e-7f) continue;
 
             Direction dir = DirectionOf(axis, dv);
-            if (sinking && dir == Direction.Up) continue; // the lift thrusters are already flat out losing
             Direction hull = InHull(s.Seat, dir); // thrusters push along their own facing, whatever the seat
             float a = stats.Accel(hull) * boost;
+            bool driving = Mathf.Abs(move[axis]) > 0.01f && Mathf.Sign(move[axis]) == Mathf.Sign(dv);
+            if (!holds && !(s.Cruise && axis == 2)) // cruise still holds its set speed
+            {
+                // Assist off: thrust only where the pilot pushes; gravity is added below, not paid for here.
+                if (driving) local[axis] = Mathf.MoveToward(local[axis], desired[axis], a * dt);
+                continue;
+            }
+            if (sinking && dir == Direction.Up) continue; // the lift thrusters are already flat out losing
             if (weighed && dir == Direction.Up)
                 a = Mathf.Max(0f, (stats.Thrust[(int)hull] * boost - stats.Weight) / stats.Mass); // climbing pays for weight
 
-            bool driving = Mathf.Abs(move[axis]) > 0.01f && Mathf.Sign(move[axis]) == Mathf.Sign(dv);
             if (!driving)
             {
                 a = Mathf.Max(a, t.Assist.MinBrake * boost); // flight assist: the floor keeps every ship stoppable
@@ -207,11 +241,12 @@ public static class FlightModel
 
         // Each axis stays within top speed on its own, but mid-turn the old sideways drift and the
         // new forward push could add up past it. Thrust may never raise total speed above top
-        // speed (above it, as after dropping out of space, it can only fall). Hover vessels
-        // count horizontal speed only; climbing a hill is the hover controller's business.
+        // speed; over it (diving through a crossing, the cap falling) it is taken off at the brake,
+        // like strong drag, never all at once. Hover vessels count horizontal speed only; climbing
+        // a hill is the hover controller's business.
         var moving = new Vector3(local.X, hover ? 0f : local.Y, local.Z);
         var was = new Vector3(before.X, hover ? 0f : before.Y, before.Z);
-        float cap = Mathf.Max(top, was.Length());
+        float cap = Mathf.Max(top, was.Length() - stats.Brake * dt);
         if (moving.Length() > cap)
         {
             moving = moving.Normalized() * cap;
@@ -220,8 +255,14 @@ public static class FlightModel
         s.ThrustLocal = s.Seat * ((local - before) / dt);
 
         s.Velocity = frame * local;
+        if (!holds)
+        {
+            // Nothing holds it up: it falls, though never past top speed (nor faster than it already was).
+            Vector3 fell = s.Velocity + Vector3.Down * where.Gravity * dt;
+            s.Velocity = fell.LimitLength(Mathf.Max(top, s.Velocity.Length()));
+        }
         // Too heavy: the thrusters are flat out and still losing to gravity.
-        if (sinking) s.Velocity += Vector3.Down * (-stats.LiftMargin / stats.Mass) * dt;
+        else if (sinking) s.Velocity += Vector3.Down * (-stats.LiftMargin / stats.Mass) * dt;
     }
 
     /// <summary>The hull direction a direction of the seat's lies along (chairs stand on the grid's axes).</summary>

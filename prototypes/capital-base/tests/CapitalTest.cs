@@ -50,8 +50,8 @@ public partial class CapitalTest : Node
     Craft Prospector => _w.CraftById("prospector");
     Craft Outpost => _w.CraftById("outpost");
 
-    /// <summary>Bastion's landing pad, in its own frame: the middle of the roof aft of the tower.</summary>
-    static readonly N.Vector3 Pad = new(0f, 7f, 6f);
+    /// <summary>Bastion's landing pad, in its own frame: the middle of its hall's roof.</summary>
+    static readonly N.Vector3 Pad = new(-0.5f, 5.5f, 2.5f);
 
     public override void _Ready()
     {
@@ -156,10 +156,10 @@ public partial class CapitalTest : Node
         Check(CutFree.Plan(new[] { above }, 0f, rules, Flat).Cells.Count == 0, "a hull standing clear of the ground cuts nothing");
         Verdict Rock(TInt3 c) => c.Y < 10 ? Verdict.Bedrock : Verdict.AlreadyAir;
         CutPlan refused = CutFree.Plan(new[] { buried }, 0f, rules, Rock);
-        Check(!refused.Ok && refused.Refusal.Contains("bedrock"), $"keyed into bedrock: refused ({refused.Refusal})");
+        Check(!refused.Ok && refused.Refusal.Contains("BEDROCK"), $"keyed into bedrock: refused ({refused.Refusal})");
         var deep = new BlockBox(new N.Vector3(0.5f, -60f, 0.5f), N.Quaternion.Identity, new N.Vector3(1f), 0f);
         CutPlan tooDeep = CutFree.Plan(new[] { deep }, 0f, rules, Flat);
-        Check(!tooDeep.Ok && tooDeep.Refusal.Contains("buried"), "buried 70 m deep: refused, nothing cut");
+        Check(!tooDeep.Ok && tooDeep.Refusal.Contains("BURIED"), "buried 70 m deep: refused, nothing cut");
     }
 
     // ==== The world ================================================================================
@@ -178,7 +178,7 @@ public partial class CapitalTest : Node
         Check(_w.Spots.Count >= 4, $"planet built in {_w.PlanetBuildMs:F0} ms; {_w.Patch.ChunkCount} voxel chunks around the site; landing spots: {string.Join("; ", _w.Spots)}");
 
         Spot a = _w.Spots[0];
-        _w.SpawnBase("outpost", "outpost.gbp", _w.Spots[3].Flat, 0.6f);
+        _w.SpawnBase("outpost", "prototypes/slice/data/blueprints/outpost.gbp", _w.Spots[3].Flat, 0.6f);
         _w.SpawnFlying("bastion", "bastion.gbp", new N.Vector3(a.X, a.Ground + 45f, a.Z), 0f);
         _w.Spawn("prospector", "prospector.gbp", N.Vector3.Zero, N.Quaternion.Identity);
         _w.DockAt(Prospector, Bastion, Pad, 0f);
@@ -209,14 +209,13 @@ public partial class CapitalTest : Node
         Craft b = Bastion;
         LandingGear gear = b.Vessel.Gear;
         gear.Probe(_w.Physics, b.Body);
-        var clearances = Enumerable.Range(0, gear.Count).Where(i => gear.FootFound[i])
-            .Select(i => b.Body.ToParent(gear.Leg(i).Hip).Y - gear.Leg(i).Length - gear.FootGround[i].Y).ToList();
-        float lowest = clearances.Min(), highest = clearances.Max();
-        int standing = clearances.Count(c => c <= 0.25f);
-        bool onGear = lowest <= 0.25f && n == 1;
-        Check(b.State == CraftState.Landed && b.Tilt < 12.01f * Mathf.Pi / 180f && (n > 1 || onGear),
-            $"landed on uneven ground: settled at {b.Tilt * 180f / Mathf.Pi:F1}° (gear allows 12°), its feet {lowest:F2} to {highest:F2} m off the ground under them, " +
-            (n == 1 ? "standing on its gear" : $"{standing} of six feet on the ground, beside foundation pylons from earlier cycles that reach as low as its feet"));
+        // Each telescoping leg reaches its own ground: the feet that touch stand on it, however uneven.
+        var legs = Enumerable.Range(0, gear.Count).Where(i => gear.FootFound[i]).ToList();
+        int standing = legs.Count(gear.Touching);
+        float longest = legs.Count == 0 ? 0f : legs.Max(gear.Reach), shortest = legs.Count == 0 ? 0f : legs.Min(gear.Reach);
+        Check(b.State == CraftState.Landed && b.Tilt < 12.01f * Mathf.Pi / 180f && (n > 1 || gear.Attached),
+            $"landed on uneven ground at {b.Tilt * 180f / Mathf.Pi:F1}°, legs out {shortest:F2} to {longest:F2} m, " +
+            (n == 1 ? $"attached on its gear ({standing} of {gear.Count} feet on their own ground)" : $"{standing} of {gear.Count} feet on the ground, beside foundation pylons from earlier cycles that reach as low as its feet"));
         Check(Prospector.State == CraftState.Docked && Prospector.Pin.Host == b.Body && PadPoseKept(),
             "Prospector 3 rode the flight and the landing on the pad, its pose on the pad unchanged to the bit");
         Conserved("landed");
@@ -250,16 +249,16 @@ public partial class CapitalTest : Node
         foreach (int x in Farm(n)) yield return x;
         foreach (int x in Reload($"cycle {n}, farmed and parked")) yield return x;
 
-        // 6. Back to capital mode.
+        // 6. Back to flight mode.
         b = Bastion;
         was = HealthOf(b);
         before = Fingerprint(b);
-        reply = _w.SwitchMode(b, CoreMode.Capital);
+        reply = _w.SwitchMode(b, CoreMode.Flight);
         yield return 0;
         Check(!b.IsBase && Fingerprint(b) == before && HealthOf(b) == was,
-            $"capital mode again: every block unchanged, storage, power and life support carried on ({reply})");
-        Conserved("capital mode");
-        foreach (int x in Reload($"cycle {n}, capital mode")) yield return x;
+            $"flight mode again: every block unchanged, storage, power and life support carried on ({reply})");
+        Conserved("flight mode");
+        foreach (int x in Reload($"cycle {n}, flight mode")) yield return x;
 
         // 7. Lift off clean.
         if (n == 3)
@@ -299,7 +298,10 @@ public partial class CapitalTest : Node
             yield return 0;
         }
         for (int i = 0; i < 40; i++) yield return 0;
-        Check(t < limit, $"{c.Name} landed at ({spot.X:F0}, {spot.Y:F0}) after {t / 60f:F1} s of flight");
+        LandingGear gear = c.Vessel.Gear;
+        Check(t < limit, $"{c.Name} landed at ({spot.X:F0}, {spot.Y:F0}) after {t / 60f:F1} s of flight" + (t < limit ? "" :
+            $" (still {c.State}: {MathX.Flat(c.Body.Position - over).Length():F1} m off the spot, {c.Body.Position.Y - altitude:+0.0;-0.0} m from the altitude asked, " +
+            $"{c.Body.Velocity.Length():F2} m/s, gear out {gear?.Extension:F2}, attached {gear?.Attached}, {(gear == null ? 0 : Enumerable.Range(0, gear.Count).Count(gear.Touching))} feet touching, on a floor {c.Body.OnFloor})"));
     }
 
     bool PadPoseKept()
@@ -362,16 +364,16 @@ public partial class CapitalTest : Node
         _w.Inventory.Creative = !survival;
         if (survival)
         {
-            _w.Inventory.Add(new Dictionary<string, int> { ["iron"] = 120 });
-            _w.Declare(120, 0); // a stock to build with, given on purpose
+            _w.Inventory.Add(new Dictionary<string, int> { ["polymer"] = 12, ["iron-plate"] = 48 });
+            _w.Declare(60, 0); // a stock to build with, given on purpose
         }
 
         // A foundation pylon from the keel, where the ground under the hull stands highest, built
         // down block by block until it is in the ground (at least the plane of the feet).
         SInt3 column = PylonColumn(b);
         Block hazard = s.Get(new SInt3(-3, 3, -1));
-        BlockType steel = Type("steel");
-        int iron = _w.Inventory["iron"];
+        BlockType steel = Type("iron-plated");
+        int polymer = _w.Inventory["polymer"], plates = _w.Inventory["iron-plate"];
         int cleared = 0, placed = 0, pylon = 0;
         for (int y = -1; y >= -6 && (y >= -3 || cleared == 0); y--)
         {
@@ -384,22 +386,23 @@ public partial class CapitalTest : Node
         placed += pylon;
         // A container on the roof: more storage, built onto a base.
         SInt3 roof = new[] { new SInt3(3, 4, -3), new SInt3(-3, 4, -3), new SInt3(3, 4, -4) }[n - 1];
-        var (containerError, _) = _w.PlaceBlock(b, roof, Building.Make(s, Type("container")));
+        var (containerError, _) = _w.PlaceBlock(b, roof, Building.Make(s, Type("container-t1")));
         if (containerError == PlaceError.None) placed++;
         yield return 0;
         Check(placed == pylon + 1 && pylon >= 3 && cleared > 0,
             $"built onto the base in {(survival ? "survival" : "creative")}: a {pylon}-block foundation pylon into the ground (its ground cut through the edit API: {cleared} cells) and a container on the roof");
         if (survival)
         {
-            int cost = pylon * 10 + 16;
-            Check(_w.Inventory["iron"] == iron - cost, $"survival pays: {cost} iron for {pylon} steel blocks and a container ({iron} → {_w.Inventory["iron"]})");
-            BlockType combat = Type("combat");
+            // A plated block is its base block (one polymer) and four plates; a device's bill lives with the items, not here.
+            Check(_w.Inventory["polymer"] == polymer - pylon && _w.Inventory["iron-plate"] == plates - 4 * pylon,
+                $"survival pays: {pylon} polymer and {4 * pylon} iron plates for {pylon} iron-plated blocks ({plates} → {_w.Inventory["iron-plate"]} plates)");
+            BlockType combat = Type("combat-plated");
             int count = s.Count;
             var (refusedError, _) = _w.PlaceBlock(b, new SInt3(-3, 4, -4), Building.Make(s, combat));
-            Check(refusedError == PlaceError.NotEnoughMaterials && s.Count == count, "survival refuses a block the player can't pay for (no tungsten), changing nothing");
+            Check(refusedError == PlaceError.NotEnoughMaterials && s.Count == count, "survival refuses a block the player can't pay for (no combat plates), changing nothing");
             _w.Inventory.Creative = true;
         }
-        else Check(_w.Inventory["iron"] == iron, "creative places for free");
+        else Check(_w.Inventory["polymer"] == polymer && _w.Inventory["iron-plate"] == plates, "creative places for free");
         Check(_w.Ground.History.Last(e => e.Why == Cut.Build).Removed > 0, "the cleared ground is in the terrain log");
         Conserved("built onto");
     }
@@ -521,7 +524,7 @@ public partial class CapitalTest : Node
         if (run == null) yield break;
         GroundEdit cut = _w.Ground.History[edits];
         Check(cut.Why == Cut.LiftOff && cut.Removed == first.Cells.Count && first.Cells.All(c => !_w.Ground.Store.IsSolid(c)),
-            $"every cell of the plan was cut through the edit API and logged ({cut.Removed} cells: {Ground.Describe(cut.Materials)})");
+            $"every cell of the plan was cut through the edit API and logged ({cut.Removed} cells: {CapitalBase.World.Ground.Describe(cut.Materials)})");
         if (n == 1) Check(cut.Removed > 0, "the first lift-off had ground to cut: the foundation was keyed into it");
         int t = 0;
         for (; t < 1800 && _w.IsLiftingOff(b); t++)
@@ -553,29 +556,27 @@ public partial class CapitalTest : Node
     {
         Craft b = Bastion;
         Structure s = b.Structure;
-        BlockType combat = Type("combat");
+        BlockType combat = Type("combat-plated");
         Block dark = s.Get(new SInt3(-4, 1, 9));
         var bunker = new List<SInt3>();
-        foreach (int x in new[] { -5, 5 })
-        {
-            for (int z = 0; z <= 8; z++) bunker.Add(new SInt3(x, 2, z));
-            for (int z = 2; z <= 4; z++) bunker.Add(new SInt3(x, 3, z));
-        }
-        foreach (SInt3 c in bunker)
-        {
-            Block block = Building.Make(s, combat);
-            block.Paint = dark.Paint;
-            _w.PlaceBlock(b, c, block);
-        }
+        // Walls on both flanks, a course at a time, until the hull can't lift them: however much lift it has.
+        for (int y = 2; y < 64 && _w.LiftMargin(b).margin >= 0f; y++)
+            foreach (int x in new[] { -5, -4, 4, 5 })
+                for (int z = -3; z <= 8; z++)
+                {
+                    Block block = Building.Make(s, combat);
+                    block.Paint = dark.Paint;
+                    if (_w.PlaceBlock(b, new SInt3(x, y, z), block).error == PlaceError.None) bunker.Add(new SInt3(x, y, z));
+                }
         yield return 0;
         int edits = _w.Ground.History.Count;
         CraftState state = b.State;
         string reply = _w.LiftOffFrom(b);
         Check(reply.Contains("TOO HEAVY") && reply.Contains("Drop") && !_w.IsLiftingOff(b) && _w.Ground.History.Count == edits && b.State == state,
-            $"a bunker of {bunker.Count} combat-steel blocks ({bunker.Count * 4} t) makes it too heavy: refused with a clear message and nothing cut ({reply})");
+            $"a bunker of {bunker.Count} combat-plated blocks ({bunker.Count * combat.Mass:F0} t) makes it too heavy: refused with a clear message and nothing cut ({reply})");
         foreach (SInt3 c in bunker.AsEnumerable().Reverse()) _w.RemoveBlock(b, c);
         yield return 0;
-        Check(!bunker.Any(s.Has), $"the bunker comes off again (its materials to the player): {_w.Inventory["iron"]} iron in hand");
+        Check(!bunker.Any(s.Has), $"the bunker comes off again (its materials to the player): {_w.Inventory["combat-plate"]} combat plates in hand");
         Conserved("bunker built and taken down");
     }
 

@@ -13,7 +13,7 @@ public sealed class ProgressRules
     public int[] Levels { get; set; } = Array.Empty<int>();
     public int[] Points { get; set; } = Array.Empty<int>();
     public int PastCap { get; set; } = 1500;
-    /// <summary>Unlock points a new character starts with (the Small Core and the hover plate open at level 1).</summary>
+    /// <summary>Unlock points a new character starts with.</summary>
     public int StartPoints { get; set; }
     public XpRules Xp { get; set; } = new();
 
@@ -22,11 +22,11 @@ public sealed class ProgressRules
 
     public sealed class XpRules
     {
+        /// <summary>Scales every experience gain (0.05: a twentieth of the values listed here).</summary>
+        public double Gain { get; set; } = 1;
         public int OreCell { get; set; } = 3;
         public int Plant { get; set; } = 2;
         public double CraftSecondsPerXp { get; set; } = 2;
-        public int BlockLarge { get; set; } = 3;
-        public int BlockSmall { get; set; } = 1;
         public int Deposit { get; set; } = 15;
         public int Species { get; set; } = 10;
         public float DepositRadius { get; set; } = 30;
@@ -61,7 +61,7 @@ public sealed class ProgressRules
 /// </summary>
 public sealed class ProgressState
 {
-    public int Xp { get; set; }
+    public double Xp { get; set; }
     public int PointsEarned { get; set; }
     public int PointsSpent { get; set; }
     public List<string> Unlocked { get; set; } = new();
@@ -69,12 +69,12 @@ public sealed class ProgressState
     public List<string> Found { get; set; } = new();
 }
 
-/// <summary>One node of the tech tree: an item or a block on a grid that has an unlock.</summary>
-public sealed record TechNode(string Id, string Name, Unlock Unlock, string ItemId, string BlockId, bool? Small)
+/// <summary>One node of the tech tree: an item or a block that has an unlock.</summary>
+public sealed record TechNode(string Id, string Name, Unlock Unlock, string ItemId, string BlockId)
 {
     /// <summary>A sub-group on its tab (a deco piece's theme set), or null.</summary>
     public string Group { get; init; }
-    public string Tab => Progress.TabOf(Unlock.Tab);
+    public string Tab => Unlock.Tab;
     public int Level => Unlock.Level;
     public int Cost => Unlock.Cost;
 }
@@ -102,7 +102,7 @@ public sealed class Progress
     public bool Creative;
 
     /// <summary>Experience earned: amount and why ("+3 XP ore").</summary>
-    public event Action<int, string> Earned;
+    public event Action<double, string> Earned;
 
     /// <summary>A new level was reached, with the points it granted.</summary>
     public event Action<int, int> LevelledUp;
@@ -110,24 +110,13 @@ public sealed class Progress
     /// <summary>A node was unlocked.</summary>
     public event Action<TechNode> Unlocked;
 
-    /// <summary>
-    /// The tabs: Base &amp; Capital (the large grid; one tab since they share every block and
-    /// component), Small &amp; Hover (the small grid, likewise), then tools, weapons, deco and misc.
-    /// </summary>
-    public static readonly string[] Tabs = { "base", "small", "tools", "weapons", "deco", "misc" };
+    /// <summary>A free node came with a new level: a recipe learnt.</summary>
+    public event Action<TechNode> Learnt;
 
-    /// <summary>The tab a data name lands on: the old capital and hover tabs are part of base and small.</summary>
-    public static string TabOf(string tab) => tab switch { "capital" => "base", "hover" => "small", _ => tab };
+    /// <summary>The tabs: every structure block (one tree from the core), tools, weapons, the deco sets, and misc.</summary>
+    public static readonly string[] Tabs = { "structures", "tools", "weapons", "deco", "misc" };
 
-    public static string TabName(string tab) => tab switch
-    {
-        "base" => "BASE & CAPITAL",
-        "small" => "SMALL & HOVER",
-        "tools" => "TOOLS",
-        "weapons" => "WEAPONS",
-        "deco" => "DECO",
-        _ => "MISC",
-    };
+    public static string TabName(string tab) => tab.ToUpperInvariant();
 
     public Progress(ProgressRules rules, ItemCatalogue items, GalHack.Structures.Catalogue blocks, ProgressState state = null)
     {
@@ -143,8 +132,7 @@ public sealed class Progress
 
     /// <summary>
     /// Nodes that cost nothing unlock themselves as soon as their level and parent are reached:
-    /// the starting essentials at level 1, and later the free blocks under a node you bought
-    /// (the small vessel's hull and legs once the Small Core is unlocked and its level reached).
+    /// the starting essentials at level 1, and later the free blocks under a node you bought.
     /// </summary>
     void GrantFree()
     {
@@ -157,6 +145,7 @@ public sealed class Progress
                 if (n.Cost == 0 && n.Level <= level && !_unlocked.Contains(n.Id) && ParentOk(n))
                 {
                     Grant(n);
+                    Learnt?.Invoke(n);
                     more = true;
                 }
         }
@@ -164,20 +153,21 @@ public sealed class Progress
 
     static List<TechNode> Build(ItemCatalogue items, GalHack.Structures.Catalogue blocks)
     {
-        // Blocks are items: a block family's node is its item's (steel@large), so crafting and the
-        // tree agree. Deco pieces are block items too, grouped by their theme set on the deco tab.
+        // Blocks are items: a block's node is its item's (iron-plated), so crafting and the tree
+        // agree. Deco pieces are block items too, grouped by their theme set on the deco tab.
         var nodes = new List<TechNode>();
         foreach (ItemDef i in items.Items)
-            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, i.BlockId, i.IsBlock ? i.SmallGrid : null) { Group = i.Group });
+            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, i.BlockId) { Group = i.Group });
         return nodes.OrderBy(n => Array.IndexOf(Tabs, n.Tab)).ThenBy(n => n.Level).ThenBy(n => n.Name, StringComparer.Ordinal).ToList();
     }
 
     public TechNode Node(string id) => id != null && _byId.TryGetValue(id, out TechNode n) ? n : null;
-    public TechNode NodeOfBlock(string blockId, bool small) => Node(BlockBill.NodeId(blockId, small));
+    /// <summary>A block's node, by the block its item places (a door family's head).</summary>
+    public TechNode NodeOfBlock(string blockId) => Node(blockId);
 
     // ---- Levels --------------------------------------------------------------------------------
 
-    public int Xp => State.Xp;
+    public int Xp => (int)State.Xp;
 
     public int Level
     {
@@ -199,17 +189,18 @@ public sealed class Progress
             int level = Level;
             if (level >= Rules.Cap)
             {
-                int past = State.Xp - Rules.XpFor(Rules.Cap);
+                int past = Xp - Rules.XpFor(Rules.Cap);
                 return (past % Rules.PastCap, Rules.PastCap);
             }
             int from = Rules.XpFor(level), to = Rules.XpFor(level + 1);
-            return (State.Xp - from, to - from);
+            return (Xp - from, to - from);
         }
     }
 
-    /// <summary>Earns experience; levels and points follow (and keep accruing past the cap).</summary>
-    public void Earn(int xp, string why)
+    /// <summary>Earns experience, scaled by the gain (<paramref name="scaled"/> false: exactly this much); levels and points follow (and keep accruing past the cap).</summary>
+    public void Earn(double xp, string why, bool scaled = true)
     {
+        if (scaled) xp *= Rules.Xp.Gain;
         if (xp <= 0) return;
         int before = Level, pastBefore = PastCapPoints();
         State.Xp += xp;
@@ -230,7 +221,7 @@ public sealed class Progress
         }
     }
 
-    int PastCapPoints() => State.Xp <= Rules.XpFor(Rules.Cap) || Level < Rules.Cap ? 0 : (State.Xp - Rules.XpFor(Rules.Cap)) / Rules.PastCap;
+    int PastCapPoints() => State.Xp <= Rules.XpFor(Rules.Cap) || Level < Rules.Cap ? 0 : (int)(State.Xp - Rules.XpFor(Rules.Cap)) / Rules.PastCap;
 
     /// <summary>Exploring experience, paid once per thing found (a deposit, a species).</summary>
     public bool Discover(string key, int xp, string why)
@@ -251,14 +242,10 @@ public sealed class Progress
     public bool ItemAllowed(ItemDef item) => item.Unlock == null || IsUnlocked(item.Id);
 
     /// <summary>
-    /// Is this block family unlocked on this grid? (Blocks without a node always are.) Unlocks gate
-    /// crafting, as in Empyrion: a block item you carry (looted, say) places whether or not it is.
+    /// Is this block unlocked? (Blocks without a node always are.) Unlocks gate crafting, as in
+    /// Empyrion: a block item you carry (looted, say) places whether or not it is.
     /// </summary>
-    public bool BlockAllowed(string blockId, bool small)
-    {
-        string id = BlockBill.NodeId(blockId, small);
-        return Node(id) == null || IsUnlocked(id);
-    }
+    public bool BlockAllowed(string blockId) => Node(blockId) == null || IsUnlocked(blockId);
 
     bool ParentOk(TechNode n) => n.Unlock.Parent == null || Node(n.Unlock.Parent) == null || _unlocked.Contains(n.Unlock.Parent);
 
@@ -271,7 +258,7 @@ public sealed class Progress
         return UnlockState.Affordable;
     }
 
-    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS SMALL CORE".</summary>
+    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS HOVER PLATE T1".</summary>
     public string Needs(TechNode n) => StateOf(n) switch
     {
         UnlockState.Unlocked => "UNLOCKED",
@@ -286,7 +273,7 @@ public sealed class Progress
     {
         TechNode n = Node(nodeId);
         if (n == null || IsUnlocked(nodeId)) return null;
-        return StateOf(n) == UnlockState.NeedsLevel ? $"Locked: level {n.Level} in the tech tree" : "Locked: unlock it in the tech tree (Tab)";
+        return StateOf(n) == UnlockState.NeedsLevel ? $"LOCKED · LV {n.Level}" : "LOCKED · [TAB] TECH";
     }
 
     /// <summary>Spends points on a node. False if it isn't affordable now.</summary>

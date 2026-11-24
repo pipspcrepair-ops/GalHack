@@ -19,11 +19,11 @@ using Palette = DiegeticUi.Theme.Palette;
 namespace Slice.Ui;
 
 /// <summary>
-/// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): vitals
-/// along the bottom of the glass that flash while they are only a warning and turn red once
-/// they cost health, a compass with the pod, your vessels and the nearest deposits on it, the
-/// suit's assistant's lines, what the tool is aimed at, and a flight strip when seated. Calm
-/// vitals fade away after a few seconds. Drawn every frame onto the main canvas.
+/// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): the sleeper's gauges at the bottom
+/// left that flash while they are only a warning and turn red once they cost health (calm, they fade after a few
+/// seconds), the temperature at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
+/// the things themselves (the bunker, places, deposits, your vessels), the suit's assistant's lines, what the tool is
+/// aimed at, and seated, a flight strip and the structure's gauges at the bottom right. Drawn every frame onto the main canvas.
 /// </summary>
 public partial class Visor : CanvasLayer
 {
@@ -42,20 +42,26 @@ public partial class Visor : CanvasLayer
     /// <summary>The ore scanner the compass and the map read.</summary>
     public readonly DepositFinder Deposits = new();
     readonly List<(string text, double until)> _xp = new();
-    double _levelUntil = -1, _hitUntil = -1;
+    double _levelUntil = -1, _hitAt = -9;
+    bool _hitKill;
     string _level = "";
 
     /// <summary>Is this alert flashing right now? (tests read it)</summary>
     public bool Flashing(Alert a) => (Game.Suit?.Last.Warnings & a) != 0;
 
     public bool ThreatShowing => _time < _threatUntil;
+    /// <summary>Whether the visor's edge is reddened on the side a hit came from (tests).</summary>
+    public bool HurtShowing => _time < _hurtUntil;
+
+    /// <summary>Tests only: holds the glass's frost and red pulse at these levels (the visor staging view).</summary>
+    public (float frost, float harm)? PinnedGlass;
 
     public override void _Ready()
     {
         Layer = 1;
         _glass = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/visor_glass.gdshader") };
         // No straight reflection streaks: across the sky a straight line reads as a seam.
-        _glass.SetShaderParameter("streaks", 0f);
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("streaks"), 0f);
         var glass = new ColorRect { Name = "Glass", MouseFilter = Control.MouseFilterEnum.Ignore, Material = _glass };
         glass.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(glass);
@@ -72,7 +78,7 @@ public partial class Visor : CanvasLayer
     {
         _lines.RemoveAll(l => l.text == text);
         _lines.Add((text, colour, _time + 5));
-        if (_lines.Count > 5) _lines.RemoveAt(0);
+        if (_lines.Count > HudLayout.LinesShown) _lines.RemoveAt(0);
     }
 
     /// <summary>Experience earned: a short line at the upper right ("+3 XP ore").</summary>
@@ -82,15 +88,29 @@ public partial class Visor : CanvasLayer
         if (_xp.Count > 4) _xp.RemoveAt(0);
     }
 
-    /// <summary>A new level: a banner across the top for a few seconds that never blocks play.</summary>
+    /// <summary>A new level: news in the notices' slot (LEVEL · 4 · +1 PT), never on the suit's lines.</summary>
     public void LevelUp(int level, int points)
     {
-        _level = $"LEVEL UP  {level}   +{points} POINT{(points == 1 ? "" : "S")}";
-        _levelUntil = _time + 3.5;
+        _level = $"{level} · +{points} PT";
+        _levelUntil = _time + 4.0;
+        Game.Notices?.Post(NoticeKind.Level, "LEVEL", _level);
     }
 
-    /// <summary>A shot landed on a creature: a hit marker at the crosshair.</summary>
-    public void Hit() => _hitUntil = _time + 0.25;
+    /// <summary>How long the reticle's ring shows for a hit, and for a kill.</summary>
+    public const double HitSeconds = 0.35, KillSeconds = 0.7;
+
+    /// <summary>The player's hit landed: a ring flashes round the reticle; a kill rings twice, in the danger colour, crossed.</summary>
+    public void Hit(bool kill = false)
+    {
+        // A kill isn't undone by a hit straight after it.
+        if (!kill && RingShowing && _hitKill) return;
+        _hitAt = _time;
+        _hitKill = kill;
+    }
+
+    /// <summary>Whether the reticle's confirmation ring shows now, and whether it is a kill's (tests).</summary>
+    public bool RingShowing => _time - _hitAt < (_hitKill ? KillSeconds : HitSeconds);
+    public bool RingKill => RingShowing && _hitKill;
 
     public bool LevelUpShowing => _time < _levelUntil;
     public int XpLines => _xp.Count;
@@ -117,15 +137,16 @@ public partial class Visor : CanvasLayer
         Suit suit = Game.Suit;
         if (suit != null)
         {
-            bool calm = suit.Last.Warnings == Alert.None && !ThreatShowing;
+            bool calm = (suit.Last.Warnings & ~Alert.Fall) == Alert.None && !ThreatShowing; // a fall's alert is the suit's own: nothing on the glass
             _calm = calm ? _calm + dt : 0f;
             _vitalsAlpha = Mathf.MoveToward(_vitalsAlpha, _calm > 3f ? 0.25f : 1f, dt * (calm ? 0.8f : 4f));
             _harm = Mathf.MoveToward(_harm, suit.Last.Harm != Alert.None || _time < _hurtUntil ? 1f : 0f, dt * 2f);
             _frost = Mathf.MoveToward(_frost, (suit.Last.Warnings & Alert.Cold) != 0 ? 0.7f : 0f, dt * 0.2f);
         }
-        _glass.SetShaderParameter("harm", _harm);
-        _glass.SetShaderParameter("frost", _frost);
-        _glass.SetShaderParameter("aspect", _hud.Size.X / Mathf.Max(1, _hud.Size.Y));
+        if (PinnedGlass is var (pf, ph)) { _frost = pf; _harm = ph; }
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("harm"), _harm);
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("frost"), _frost);
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("aspect"), _hud.Size.X / Mathf.Max(1, _hud.Size.Y));
         _lines.RemoveAll(l => l.until < _time);
         _tracers.RemoveAll(t => t.until < _time);
         _xp.RemoveAll(x => x.until < _time);
@@ -135,7 +156,10 @@ public partial class Visor : CanvasLayer
     /// <summary>The player's UI scale (1 is the default).</summary>
     public float UiScale = 1f;
 
-    HudLayout Layout => HudLayout.Compute(_hud.Size, UiScale);
+    /// <summary>Where what is out there is marked: in the scene on the things themselves (WORLD), or on the compass strip (COMPASS). Option: MARKERS.</summary>
+    public bool MarkersInWorld => Game.Settings == null || Game.Settings.MarkersInWorld;
+
+    HudLayout Layout => HudLayout.Compute(_hud.Size, UiScale, !MarkersInWorld);
     float S => Layout.Scale;
 
     void Draw()
@@ -145,7 +169,7 @@ public partial class Visor : CanvasLayer
         Vector2 size = _hud.Size;
         if (Game.Phase == Phase.Generating)
         {
-            Banner("GENERATING PLANET", Game.World == null ? "" : $"{Game.World.Name} · seed {Game.World.Seed} · the cryopod is thawing", C.Accent);
+            Banner("GENERATING PLANET", Game.World == null ? "" : $"{Game.World.Name} · seed {Game.World.Seed}", C.Accent);
             return;
         }
         Survivor survivor = Game.Survivor;
@@ -153,18 +177,26 @@ public partial class Visor : CanvasLayer
         if (Game.Menu.IsOpen) return; // the Tab menu covers the view: the visor waits behind it
         DrawTracers();
         DrawHurtEdge();
+        DrawMarkers();
         DrawCompass(survivor);
         DrawChosenStar();
         DrawLines();
-        DrawWarnings();
         DrawProgress();
+        DrawPeople();
         if (Game.Suit.Dead)
         {
-            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", "R: wake in the bunker (your backpack stays where you fell)", C.Danger);
+            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", $"[R] RESPAWN", C.Danger);
             return;
         }
-        DrawVitals();
-        if (survivor.Seated is Vessel v) DrawFlight(v);
+        HudLayout layout = Layout;
+        DrawSleeper(layout);
+        DrawSurroundings(layout);
+        if (survivor.Seated is Vessel v)
+        {
+            DrawFlight(v);
+            DrawStructure(layout, v);
+            DrawBar(layout, v);
+        }
         else
         {
             DrawCrosshair();
@@ -177,7 +209,7 @@ public partial class Visor : CanvasLayer
     void DrawChosenStar()
     {
         Slice.Orbit.Charts charts = Game.Spaceflight.Charts;
-        GalHack.Stars.GalaxySky stars = Game.Surface.Sky.Stars;
+        GalHack.Stars.GalaxySky stars = Game.Spaceflight.Stars;
         if (charts.ChosenStar < 0 || stars?.View == null) return;
         Camera3D camera = Game.Camera;
         Vector3 point = camera.GlobalPosition + Game.Spaceflight.LookToward(charts.ChosenStar) * 1000f;
@@ -185,7 +217,7 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 at = camera.UnprojectPosition(point), r = new(13f * s, 13f * s);
         _hud.Frame(new Rect2(at - r, r * 2f), C.Holo, 1.5f);
-        string name = charts.Charted(stars.Galaxy, charts.ChosenStar) ? stars.Galaxy.Name(charts.ChosenStar).ToUpperInvariant() : "UNCHARTED STAR";
+        string name = stars.Galaxy.Name(charts.ChosenStar).ToUpperInvariant();
         _hud.TextIn(UiTheme.Label, (int)(15 * s), new Rect2(at + new Vector2(18f * s, -10f * s), new Vector2(260f * s, 22f * s)), name, C.Holo, HorizontalAlignment.Left);
     }
 
@@ -200,52 +232,45 @@ public partial class Visor : CanvasLayer
         _hud.TextIn(UiTheme.Label, (int)(24 * s), new Rect2(0, band.Position.Y + 64 * s, size.X, 36 * s), detail, C.Text, HorizontalAlignment.Center);
     }
 
-    // ---- Vitals along the bottom of the glass ----------------------------------------------------
+    /// <summary>How soon, seconds, a vessel coming down at an unsafe speed must be from the ground for the cockpit to warn of the impact.</summary>
+    public const float ImpactSeconds = 4f;
 
-    void DrawVitals()
+    /// <summary>
+    /// The cockpit's impact warning: the pilot of a vessel under way over the ground, coming down faster than it can safely touch
+    /// it, within <see cref="ImpactSeconds"/> of it. Only a pilot gets it (seated, flying, not in space and not landed); on foot
+    /// there is none.
+    /// </summary>
+    public bool CockpitImpact(Vessel v, out float seconds)
     {
-        Suit suit = Game.Suit;
-        Vitals v = suit.Vitals;
-        VitalsRules r = suit.Sim.Data.Vitals;
-        Alert warn = suit.Last.Warnings, harm = suit.Last.Harm;
-        double air = suit.Sim.Here.Temperature;
-        var items = new (string label, string value, double share, Alert alert)[]
-        {
-            ("HEALTH", $"{v.Health:F0}", v.Health / r.Health.Max, Alert.Health),
-            ("FOOD", $"{suit.FoodShare * 100:F0}%", suit.FoodShare, Alert.Food),
-            ("O2", (warn & Alert.Breath) != 0 ? $"{v.Breath:F0}s" : $"{suit.OxygenShare * 100:F0}%", (warn & Alert.Breath) != 0 ? v.Breath / r.Oxygen.HoldBreathSeconds : suit.OxygenShare, Alert.Oxygen | Alert.Breath),
-            ("TEMP", $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
-            ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
-            ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
-        };
-        HudLayout layout = Layout;
-        float s = layout.Scale;
+        seconds = float.PositiveInfinity;
+        if (Game.InSpace || v?.Flight == null || v.Controller == null || v.Controller.Frozen || Game.Survivor?.Seated != v) return false;
+        return ImpactSoon(-v.Body.Velocity.Y, v.AboveGround, Game.Zone.Physics.Rules.Contacts.SafeSpeed, out seconds);
+    }
+
+    /// <summary>Coming down at <paramref name="down"/> m/s, faster than the safe speed, with <paramref name="aboveGround"/> m left: how long, and whether that is within <see cref="ImpactSeconds"/>.</summary>
+    public static bool ImpactSoon(float down, float aboveGround, float safeSpeed, out float seconds)
+    {
+        seconds = float.PositiveInfinity;
+        if (down <= safeSpeed) return false;
+        seconds = MathF.Max(0f, aboveGround) / down;
+        return seconds < ImpactSeconds;
+    }
+
+    /// <summary>Whether the cockpit's impact warning is up right now (never on foot).</summary>
+    public bool ImpactWarning => Game.Survivor?.Seated is Vessel v && CockpitImpact(v, out _);
+
+    /// <summary>The cockpit warning: the sign of an impact (data/signs/impact.png) where the set has one, flashing under the flight line; the word until it does.</summary>
+    void DrawCockpitImpact(Vessel v)
+    {
+        if (!CockpitImpact(v, out _) || Mathf.PosMod((float)_time * 4f, 1f) >= 0.6f) return;
+        float s = S;
         Vector2 size = _hud.Size;
-        float w = HudLayout.VitalW * s, h = HudLayout.VitalH * s, gap = HudLayout.VitalGap * s;
-        for (int i = 0; i < items.Length; i++)
+        if (Alerts.Specific("impact") && Alerts.Sign("impact") is Texture2D sign)
         {
-            var (label, value, share, alert) = items[i];
-            bool warned = (warn & alert) != 0, harmed = (harm & alert) != 0 || (alert == Alert.Health && harm != Alert.None);
-            var at = layout.Vitals.Position + new Vector2(i * (w + gap), 0);
-            bool lit = harmed ? Mathf.PosMod((float)_time * 4.5f, 1f) < 0.55f : warned && Mathf.PosMod((float)_time * 2.2f, 1f) < 0.6f;
-            Color tone = harmed ? C.Danger : warned ? C.Warn : C.Good;
-            float a = warned || harmed ? 1f : _vitalsAlpha;
-            var box = new Rect2(at, new Vector2(w, h));
-            _hud.Block(box, new Color(lit ? tone : C.Glass, (lit ? 0.9f : 0.55f) * a));
-            _hud.Block(new Rect2(at, new Vector2(6 * s, h)), new Color(tone, a));
-            Color ink = new(lit ? C.Glass : warned || harmed ? tone : C.Text, a);
-            _hud.Text(UiTheme.Label, (int)(16 * s), at + new Vector2(14 * s, 4 * s), label, ink);
-            _hud.Text(UiTheme.Mono, (int)(20 * s), at + new Vector2(14 * s, 22 * s), value, ink);
-            _hud.Segments(new Rect2(at + new Vector2(80 * s, 30 * s), new Vector2(w - 90 * s, 12 * s)), Math.Clamp(share, 0, 1), 1, new Color(tone, a), count: 8, gap: 2 * s, alpha: a);
+            float icon = 96 * s;
+            _hud.DrawTextureRect(sign, new Rect2(size.X / 2f - icon / 2f, size.Y * 0.6f - icon / 2f, icon, icon), false);
         }
-        if ((warn & Alert.Fall) != 0 && Mathf.PosMod((float)_time * 4f, 1f) < 0.6f)
-            _hud.TextIn(UiTheme.Display, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
-        if (ThreatShowing && Mathf.PosMod((float)_time * 3f, 1f) < 0.6f)
-        {
-            Vector3 local = Game.Camera.GlobalBasis.Inverse() * (_threatFrom - Game.Camera.GlobalPosition);
-            string side = MathF.Abs(local.X) < MathF.Abs(local.Z) * 0.6f ? (local.Z < 0 ? "AHEAD" : "BEHIND") : local.X < 0 ? "LEFT" : "RIGHT";
-            _hud.TextIn(UiTheme.Display, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
-        }
+        else _hud.TextIn(UiTheme.Display, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
     }
 
     /// <summary>
@@ -304,31 +329,40 @@ public partial class Visor : CanvasLayer
 
     // ---- Compass ---------------------------------------------------------------------------------
 
+    /// <summary>How much of a compass item shows at this offset (degrees) from the heading: full inside, fading over the outer 8% of the strip, gone at its end (a letter is under 4 degrees wide, so it fades before it is cut).</summary>
+    public static float CompassFade(float off) => Mathf.Clamp((60f - MathF.Abs(off)) / (60f * 0.08f), 0f, 1f);
+
+    /// <summary>The heading as the strip reads it: whole degrees, rounded down, so 359.9 is 359, never 360.</summary>
+    public static string HeadingText(float heading) => ((int)heading % 360).ToString("000");
+
     void DrawCompass(Survivor survivor)
     {
         float s = S;
         Vector2 size = _hud.Size;
         Vector3 look = Game.Spaceflight.Local(survivor.WorldLook()); // in orbit, north stays north
-        float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)), 360f);
+        // Near the Husks it drifts off true (and everything on it with it).
+        float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)) + Game.CompassDrift, 360f);
         float width = 640 * s, y = 34 * s, cx = size.X / 2;
         _hud.Block(new Rect2(cx - width / 2, y + 22 * s, width, 2 * s), new Color(C.Text, 0.5f));
         for (int d = 0; d < 360; d += 15)
         {
             float off = Mathf.Wrap(d - heading, -180f, 180f);
-            if (MathF.Abs(off) > 60f) continue;
+            float fade = CompassFade(off);
+            if (fade <= 0f) continue;
             float x = cx + off / 60f * width / 2;
             bool major = d % 90 == 0;
-            _hud.Block(new Rect2(x - s, y + (major ? 8 : 14) * s, 2 * s, (major ? 14 : 8) * s), new Color(C.Text, 0.7f));
+            _hud.Block(new Rect2(x - s, y + (major ? 8 : 14) * s, 2 * s, (major ? 14 : 8) * s), new Color(C.Text, 0.7f * fade));
             if (major)
-                _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
+                _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, new Color(C.Text, fade), HorizontalAlignment.Center);
         }
-        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), $"{heading:000}", C.Text);
-
+        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), Garbled(HeadingText(heading), Game.WrongShown), C.Text);
+        // WORLD markers: what is out there is marked where it is (DrawMarkers). COMPASS: marked on the strip, as it was.
+        if (MarkersInWorld) return;
         Vector3 feet = survivor.WorldFeet;
         var labels = new List<(float x, int row)>();
-        _compassBottom = (y + 44 * s + 16 * s); // grows below with each row of contact labels
-        void Mark(Vector3 at, string tag, Color colour)
+        void Mark(Vector3 at, string tag, Color colour, float alpha)
         {
+            colour = new Color(colour, alpha);
             Vector3 to = Game.Spaceflight.Local(at - feet);
             float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
             float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
@@ -338,24 +372,64 @@ public partial class Visor : CanvasLayer
             // The first row whose neighbourhood is free, so labels at the same bearing stack.
             int row = 0;
             while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 170 * s)) row++;
+            if (row >= HudLayout.CompassRows) return; // the mark stays; its label would crowd the view
             labels.Add((x, row));
-            _compassBottom = MathF.Max(_compassBottom, y + (44 + (row + 1) * 16) * s);
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
-        if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
-        // Places you have found (coming near one finds it for good; the one seen from the bunker's way out starts found): the nearest few.
-        if (!Game.InOrbit)
-            foreach (var (label, at) in Game.Spaceflight.Charts.OfKind("place")
-                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
-                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(NearestPlaces).ToList())
-                Mark(at, label.ToUpperInvariant(), C.Accent);
-        foreach (Vessel v in Game.Zone.Vessels)
-            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
-        if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
-        if (survivor.Seated == null)
-            foreach (var (kind, at) in Deposits.Near(Game.Zone, feet))
-                Mark(at, kind.ToUpperInvariant(), C.Holo);
+        foreach (Marker m in Markers()) Mark(m.At, m.Tag, m.Colour, m.Alpha);
     }
+
+    /// <summary>A readout as the wrongness has it: now and then, the more the stronger it is, one digit comes up as another for a moment.</summary>
+    string Garbled(string text, float wrong)
+    {
+        if (wrong < 0.05f || text.Length == 0) return text;
+        int beat = (int)(_time * 9.0);
+        var roll = new Random(beat * 7919 + text.Length);
+        if (roll.NextDouble() > wrong * 0.22) return text;
+        char[] c = text.ToCharArray();
+        int at = c.Length - 1; // the last digit only, so it still reads as a heading
+        if (char.IsDigit(c[at])) c[at] = (char)('0' + (c[at] - '0' + 3 + roll.Next(6)) % 10);
+        return new string(c);
+    }
+
+    /// <summary>One marker: its label, the point it marks in the world, its colour, how strongly it shows, and its kind (its icon).</summary>
+    public readonly record struct Marker(string Tag, Vector3 At, Color Colour, float Alpha, string Kind);
+
+    /// <summary>
+    /// What is marked in the world (owner, 17 Nov): your bunker on its world, your structures and your bag, your own
+    /// map marks, always; and a scan's results for as long as they last (ores by name, places by their icon, cores
+    /// through the walls). Places and deposits you've found are not marked otherwise (the map shows them).
+    /// </summary>
+    public List<Marker> Markers()
+    {
+        var marks = new List<Marker>();
+        Survivor survivor = Game.Survivor;
+        if (survivor == null) return marks;
+        Vector3 feet = survivor.WorldFeet;
+        Vector3 Ground(Vector3 at, float lift)
+        {
+            float g = Game.Zone.GroundAt(at.X, at.Z).Y;
+            return float.IsFinite(g) ? new Vector3(at.X, g + lift, at.Z) : at;
+        }
+        // Your own: the bunker on its world, your structures, your bag (owner, 17 Nov: "we should always show the bag, our structures and the bunker if it's in the world we're on").
+        if (Game.Bunker != null && Game.Zone == Game.Surface) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        foreach (Vessel v in Game.Zone.Vessels)
+            if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && v.Structure.Owner == GalHack.Structures.Building.DefaultOwner && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
+        if (Game.DeathBag != null) marks.Add(new("BAG", Game.DeathBag.Position, C.Danger, 1f, "bag"));
+        // Your map marks on the body you're on.
+        if (!Game.InOrbit && Game.Zone.Planet != null)
+            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark", Game.Spaceflight.ChartOf(Game.Zone)))
+                marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
+        // The scan's marks: an ore by name, a place by its icon and distance alone.
+        foreach (Game.Game.Ping p in Game.Pings)
+            marks.Add(p.Place == null ? new(p.Label.ToUpperInvariant(), p.At, C.Holo, Game.PingAlpha(p), "ping") : new("", Ground(p.At, PlaceLift), C.Accent, Game.PingAlpha(p), p.Place));
+        // The handheld scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
+        foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
+        return marks;
+    }
+
+    /// <summary>How high over the ground a place's marker stands, m: over its roofs, on the place itself.</summary>
+    public const float PlaceLift = 8f;
 
     // ---- Lines, warnings, aim -------------------------------------------------------------------
 
@@ -372,65 +446,67 @@ public partial class Visor : CanvasLayer
         }
     }
 
-    /// <summary>How many found places the compass shows (the nearest).</summary>
-    public const int NearestPlaces = 3;
-
-    float _compassBottom;
-
-    void DrawWarnings()
-    {
-        float s = S;
-        float y = MathF.Max(90 * s, _compassBottom + 8 * s); // always below the compass labels
-        foreach (WarningEntry w in Game.WeatherWarnings())
-        {
-            Color c = w.Level == WarningLevel.Danger ? C.Danger : w.Level == WarningLevel.Warning ? C.Warn : C.Dim;
-            _hud.Text(UiTheme.Label, (int)(17 * s), new Vector2(40 * s, y), w.Text, c);
-            y += 24 * s;
-            if (y > _compassBottom + 130 * s) break;
-        }
-    }
-
-    /// <summary>Experience and levels: short lines at the upper right, a banner on a new level. Nothing blocks play.</summary>
-    void DrawProgress()
-    {
-        float s = S;
-        Vector2 size = _hud.Size;
-        float y = 96 * s;
-        foreach (var (text, until) in _xp)
-        {
-            float a = (float)Math.Clamp(until - _time, 0, 1);
-            _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(size.X - 440 * s, y, 400 * s, 22 * s), text, new Color(C.Accent2, a), HorizontalAlignment.Right);
-            y += 22 * s;
-        }
-        if (LevelUpShowing && Mathf.PosMod((float)_time * 2f, 1f) < 0.8f)
-        {
-            var band = new Rect2(size.X / 2 - 320 * s, 150 * s, 640 * s, 48 * s);
-            _hud.Block(band, new Color(C.Accent, 0.85f));
-            _hud.TextIn(UiTheme.Display, (int)(26 * s), band, _level, C.Glass, HorizontalAlignment.Center);
-        }
-    }
+    /// <summary>A new level shows in the notices' slot (<see cref="LevelUp"/>); experience itself counts quietly.</summary>
+    void DrawProgress() { }
 
     void DrawCrosshair()
     {
         float s = S;
         Vector2 c = _hud.Size / 2;
         _hud.DrawCircle(c, 3 * s, new Color(C.Text, 0.85f));
-        if (_time < _hitUntil)
-            foreach (var d in new[] { new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) })
-                _hud.DrawLine(c + d * 7 * s, c + d * 15 * s, C.Danger, 3 * s);
+        DrawHitRing(c, s);
         // Only a prompt for what is in reach and usable (E or F), the ore the tool is on, or the
         // build tool's verdict: never where you are.
         string label = Game.UsePrompt();
         if (string.IsNullOrEmpty(label)) label = Game.Builder.Projecting ? Game.Builder.Verdict : Game.Pack.Hand switch
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
+            HandKind.Tool => Game.Tool.TargetLabel,
+            HandKind.Plater => Game.Builder.Verdict,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
-            HandKind.Consumable => "click to use",
-            HandKind.Vehicle => "click to set it down",
+            HandKind.Consumable => "[LMB] USE",
+            HandKind.Vehicle => "[LMB] SET DOWN",
+            HandKind.Scanner => Game.ScanWait > 0 ? $"{Game.ScanWait:F0}" : "[LMB] PING",
+            HandKind.Weapon => WeaponLabel(),
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
-            _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, c.Y + 18 * s, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, PromptBox(_hud.Size, UiScale, label).Position.Y, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+        if (BlockHealth() is string hp)
+            _hud.TextIn(UiTheme.Label, (int)(16 * s), new Rect2(0, c.Y - 34 * s, _hud.Size.X, 20 * s), hp, C.Text, HorizontalAlignment.Center);
+    }
+
+    /// <summary>The block the Sleeper tool is on: its hit points over its most, shown just above the reticle; null when it's on none.</summary>
+    public string BlockHealth() =>
+        Game.Pack.Hand == HandKind.Tool && !Game.Builder.Projecting && Game.Tool.BlockHealth is (float hp, float max) ? $"{MathF.Ceiling(hp):F0} / {max:F0}" : null;
+
+    /// <summary>The hit ring's radius, and a kill's second thin ring's, in UI units (times the HUD scale: 8.4 and 10.8 px at 1080p).</summary>
+    public const float RingRadius = 7f, KillRadius = 9f;
+
+    /// <summary>The outermost ring's radius in pixels on a screen this size (tests).</summary>
+    public static float RingPixels(Vector2 screen, bool kill) => (kill ? KillRadius : RingRadius) * HudLayout.Compute(screen).Scale;
+
+    /// <summary>
+    /// The confirmation when the player's hit lands: a small, tight ring hugging the reticle that
+    /// fades; a kill is the same ring in the danger colour with a second thin ring just outside it.
+    /// </summary>
+    void DrawHitRing(Vector2 c, float s)
+    {
+        if (!RingShowing) return;
+        float life = (float)((_time - _hitAt) / (_hitKill ? KillSeconds : HitSeconds));
+        var tone = new Color(_hitKill ? C.Danger : C.Text, 1f - life * life);
+        _hud.DrawArc(c, RingRadius * s, 0f, MathF.Tau, 32, tone, 1.6f * s, true);
+        if (_hitKill) _hud.DrawArc(c, KillRadius * s, 0f, MathF.Tau, 32, tone, 1f * s, true);
+    }
+
+    /// <summary>Under the crosshair with a weapon in hand: reloading, out of ammo, or the charge stage reached.</summary>
+    string WeaponLabel()
+    {
+        GalHack.Arms.Gun gun = Game.Arms?.InHand;
+        if (gun == null) return "";
+        if (gun.Reloading) return "RELOADING";
+        if (gun.Loaded == 0) return gun.Reserve > 0 ? "RELOAD" : "NO AMMO";
+        if (gun.Charging) return gun.Stage == 0 ? "CHARGING" : $"STAGE {gun.Stage}";
+        return "";
     }
 
     /// <summary>What the toolbar's slot shows: a label, a count and the item's tone.</summary>
@@ -460,50 +536,40 @@ public partial class Visor : CanvasLayer
         if (Game.ToolHint is string hint) return hint;
         var items = Game.Zone.Data.Items;
         string bar = pack.OnRemoteBar ? $"REMOTE · {pack.HandRemote?.Origin.ToUpperInvariant()} · " : "";
-        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE: step back into the core's area to use it";
+        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE";
         HandKind hand = Game.Builder.Projecting ? HandKind.Blueprint : pack.Hand;
         switch (hand)
         {
             case HandKind.Tool:
                 string toolName = Game.Zone.Data.Rules.Tool.TierOf(pack.HandItem).Name.ToUpperInvariant();
-                return Game.Tool.Mode switch
-                {
-                    ToolMode.Shoot => $"{toolName} · SHOOT",
-                    ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
-                    _ => $"{toolName} · GATHER",
-                };
+                return Game.Tool.Mode == ToolMode.Repair ? $"{toolName} · REPAIR" : $"{toolName} · GATHER";
+            case HandKind.Plater:
+                return $"{items.Item(pack.HandItem).Name.ToUpperInvariant()} · {Game.Builder.PlateOf(Game.Builder.Plating).Name}";
             case HandKind.Vehicle:
-                return "HOVER BIKE · click to set it down";
+                return "HOVER BIKE";
+            case HandKind.Weapon when Game.Zone.Data.Arms.OfItem(pack.HandItem) is GalHack.Arms.WeaponDef w:
+                // The gun's name and mode, then what's in it and what's left to load.
+                GalHack.Arms.Gun held = Game.Arms?.InHand?.Base == w ? Game.Arms.InHand : null;
+                string mode = held != null && held.Def.Mode.Length > 0 ? $" · {held.Def.Mode}" : "";
+                string ammo = items.TryGet((held?.Def ?? w).Ammo, out var ammoItem) ? ammoItem.ShortName : "";
+                string count = held == null ? "" : w.Ammo == w.Item ? $" · {pack[w.Item]} LEFT" : $" · {held.Loaded}/{held.Def.Magazine} · {held.Reserve} {ammo}";
+                return $"{bar}{w.Name.ToUpperInvariant()}{mode}{count}";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
-                bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
-                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
-                string where = Game.Mode == GalHack.Items.GameMode.Creative ? "free"
-                    : pack.OnRemoteBar ? $"{pack.HandSource.Count(id)} in {pack.HandRemote?.Origin}"
-                    : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
+                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco()?.Name ?? "no piece"}" : "";
+                string where = Game.Mode == GalHack.Items.GameMode.Creative ? "FREE"
+                    : pack.OnRemoteBar ? $"{pack.HandRemote?.Origin.ToUpperInvariant()} {pack.HandSource.Count(id)}"
+                    : $"STACK {pack.InHand.Count}{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.LinkedName.ToUpperInvariant()} {pack.Linked.Count(id)}" : "")}";
                 return $"{bar}{item.Name}{shape} · {where}";
-            case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
-            case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
-            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT PROJECTOR: set the Skiff down";
-            case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}: click to use";
+            case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}";
+            case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}";
+            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name} · {Game.Builder.Remaining.Count} LEFT" : $"BLUEPRINT · {(Game.Builder.Plan?.Name ?? "Skiff").ToUpperInvariant()}";
+            case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}";
             default: return pack.HandItem != null && items.TryGet(pack.HandItem, out var other) ? $"{bar}{other.Name}" : bar;
         }
     }
 
-    /// <summary>The key hints, all on one quiet line.</summary>
-    public string HintLine()
-    {
-        HandKind hand = Game.Pack.Hand;
-        string keys = hand switch
-        {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
-            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => "[WHEEL] PIECE  [G] THEME  [R] TURN  [RMB] TAKE DOWN   ",
-            HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
-            _ => "",
-        };
-        string bar = Game.Pack.OnRemoteBar ? "[Y] YOUR TOOLBAR   " : "[Y] REMOTE TOOLBAR   ";
-        string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE: BUILDING IS FREE" : "";
-        return $"{keys}{bar}[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}{creative}";
-    }
+    /// <summary>The quiet line under the toolbar: level and game mode only. No key hints (owner, 16 Nov: the keys are in the controls settings).</summary>
+    public string HintLine() => $"LVL {Game.Progress.Level}{(Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE · FREE BUILD" : "")}";
 
     /// <summary>The toolbar, the selected item's line, the key hints and, with a block family in hand, the shape strip.</summary>
     void DrawHand()
@@ -547,7 +613,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? "REMOTE [Y]" : "YOURS [Y]", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? "REMOTE" : "BAG", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
@@ -576,18 +642,17 @@ public partial class Visor : CanvasLayer
     {
         float s = layout.Scale;
         var builder = Game.Builder;
-        bool small = builder.TargetVessel != null && builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
-        var choices = builder.DecoChoices(small);
-        var cur = builder.CurrentDeco(small);
+        var choices = builder.DecoChoices();
+        var cur = builder.CurrentDeco();
         Rect2 r = layout.Shapes;
         var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
         string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
         _hud.Block(chip, new Color(C.Holo, 0.85f));
-        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME [G]", C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME", C.Glass, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
         if (cur == null)
         {
-            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "no deco piece unlocked: the tech tree's DECO tab", C.Dim, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "NONE UNLOCKED", C.Dim, HorizontalAlignment.Center);
             return;
         }
         float cw = 46 * s, gap = 3 * s;
@@ -617,18 +682,20 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 size = _hud.Size;
         DrawMode(v);
+        DrawCockpitImpact(v);
         if (v.Flight == null || v.Stats == null) return;
         var c = v.Controller;
         string gear = c?.Gear == null ? "NO GEAR" : c.Gear.Deployed ? "GEAR DOWN" : "GEAR UP";
         string line = Game.InOrbit ? Game.Spaceflight.FlightLine(v)
             : $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
         // Under the compass, clear of the cockpit console.
-        var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
+        Rect2 flight = Layout.Flight;
+        var band = new Rect2(flight.Position, new Vector2(flight.Size.X, 34 * s));
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
-        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "BASE MODE: ENGINES OFF UNTIL IT LANDS AND ANCHORS" : v.ModeWarning ?? v.Stats.LiftWarning;
+        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "UNANCHORED · ENGINES OFF" : v.ModeWarning ?? v.Stats.LiftWarning;
         if (!string.IsNullOrEmpty(message))
-            _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(0, band.End.Y + 8 * s, size.X, 26 * s), message, C.Warn, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(flight.Position.X, band.End.Y + 8 * s, flight.Size.X, 26 * s), HudLayout.Fit(UiTheme.Label, (int)(20 * s), message, flight.Size.X), C.Warn, HorizontalAlignment.Center);
     }
 
     /// <summary>
@@ -640,8 +707,8 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 size = _hud.Size;
         CoreMode mode = v.Structure.Mode;
-        Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Capital => C.Accent, CoreMode.Hover => C.Holo, _ => C.Accent2 };
-        var box = new Rect2(size.X / 2 - 560 * s, 128 * s, 192 * s, 34 * s);
+        Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Hover => C.Holo, _ => C.Accent };
+        Rect2 box = Layout.Mode;
         _hud.Block(box, new Color(C.Glass, 0.75f));
         _hud.Block(new Rect2(box.Position, new Vector2(5 * s, box.Size.Y)), tone);
         _hud.Frame(box, new Color(tone, 0.8f), 1.5f * s);
@@ -650,7 +717,7 @@ public partial class Visor : CanvasLayer
         _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(box.Position + new Vector2(54 * s, 0), new Vector2(box.Size.X - 58 * s, box.Size.Y)), ModeFit.Name(mode), tone, HorizontalAlignment.Left);
     }
 
-    /// <summary>A little picture of the mode: a hull on hover lines, a craft climbing, an anchored block, a long hull under way.</summary>
+    /// <summary>A little picture of the mode: a hull on hover lines, an anchored block, a craft climbing.</summary>
     void DrawModeGlyph(CoreMode mode, Vector2 at, Color tone, float s)
     {
         void Line(float x0, float y0, float x1, float y1) => _hud.DrawLine(at + new Vector2(x0, y0) * s, at + new Vector2(x1, y1) * s, tone, 2.2f * s);
@@ -665,12 +732,6 @@ public partial class Visor : CanvasLayer
                 Line(4, 3, 10, 3);
                 Line(-6, 8, 6, 8);
                 break;
-            case CoreMode.Vessel:
-                Line(0, -9, -9, 8);
-                Line(0, -9, 9, 8);
-                Line(-9, 8, 0, 3);
-                Line(9, 8, 0, 3);
-                break;
             case CoreMode.Base:
                 Line(-8, -8, 8, -8);
                 Line(-8, -8, -8, 3);
@@ -681,12 +742,10 @@ public partial class Visor : CanvasLayer
                 Line(8, 3, 11, 9);
                 break;
             default:
-                Line(-12, -4, 8, -4);
-                Line(-12, 4, 8, 4);
-                Line(8, -4, 13, 0);
-                Line(8, 4, 13, 0);
-                Line(-12, -4, -12, 4);
-                Line(-12, 0, -16, 0);
+                Line(0, -9, -9, 8);
+                Line(0, -9, 9, 8);
+                Line(-9, 8, 0, 3);
+                Line(9, 8, 0, 3);
                 break;
         }
     }

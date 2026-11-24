@@ -96,7 +96,10 @@ static class Hydrology
                 map.RiverLevel[down] = Math.Min(map.RiverLevel[down], map.RiverLevel[c]);
         }
         for (int k = 0; k < n; k++)
+        {
+            map.SeaDepth[k] = -elevation[k];
             if (map.Has(k, CellFlags.River)) elevation[k] = Math.Min(elevation[k], map.RiverLevel[k] - 1f);
+        }
 
         MarkBanks(map);
         TraceRivers(map);

@@ -65,7 +65,7 @@ program cryo_vault
   rooms basement monitor plant storage
   rooms deep plant generator monitor
   rooms deepest vault! monitor reactor?
-  fill storage monitor
+  fill storage plant
 
 program biolab
   name Biolab
@@ -87,7 +87,7 @@ program biolab
   rooms basement lab*1-2 containment cold-store storage
   rooms deep containment*1-2 lab theatre plant
   rooms deepest vault! containment reactor?
-  fill storage lab
+  fill storage office
 
 # ---- research ------------------------------------------------------------------------------------------
 
@@ -112,7 +112,7 @@ program research_base
   rooms shallow lab*1-2 storage cold-store
   rooms basement lab containment archive plant
   rooms deepest vault! containment generator?
-  fill storage office lab
+  fill storage office archive
 
 program ice_outpost
   name Ice Research Outpost
@@ -292,21 +292,20 @@ program garrison_hq
   plans spine 2 plaza 1 jog 1 enfilade 1
   basement bar 1 same 1
   style meridian
-  width 24 30
-  depth 16 20
-  floors 2 3
+  width 40 60
+  depth 24 34
+  floors 3 3
   levels 1 2
   lift 0.6
   roof pad
   windows 0.45
   secrets 0 1
-  rooms ground lobby! security armoury? workshop? galley?
-  rooms upper quarters*1-3 office? mess? washroom? archive? armoury?
-  rooms top control! office? command?
-  rooms basement storage*1-2 armoury? generator? workshop? magazine?
-  rooms deepest vault! plant?
+  rooms ground lobby! vehicle-bay! armoury! security? galley?
+  rooms upper quarters*1-3! ward! mess? washroom?
+  rooms top command! vault! office?
+  rooms basement generator! workshop! plant! storage?
+  rooms deepest core-vault! storage?
   fill storage quarters office workshop
-
 program prison
   name Prison Block
   shapes cross 2 H 2 rect 2
@@ -321,11 +320,12 @@ program prison
   windows 0.15
   secrets 2 3
   rooms ground security! guardroom lobby
-  rooms upper cellblock*2-3 guardroom
+  hall upper cellblock
+  rooms upper guardroom cell*2-4
   rooms top guardroom command
   rooms basement cellblock solitary mess storage
   rooms deepest evidence! solitary vault
-  fill cellblock storage
+  fill cell storage
 
 # ---- industry ------------------------------------------------------------------------------------------
 
@@ -388,10 +388,12 @@ program factory_works
   lift 0.3
   windows 0.45
   secrets 0 1
-  rooms ground lobby! loading-dock! warehouse
+  hall ground warehouse
+  rooms ground lobby! loading-dock!
   rooms upper office control! parts-store
   rooms top office archive
-  rooms basement boiler-house! generator storage
+  hall basement boiler-house
+  rooms basement generator storage
   rooms deepest vault! plant
   fill storage parts-store
 
@@ -408,7 +410,8 @@ program farmhouse
   levels 1 1
   windows 0.6
   secrets 0 1
-  rooms ground farm-kitchen! quarters storage
+  hall ground farm-kitchen
+  rooms ground quarters storage
   rooms upper quarters washroom
   rooms basement cellar!
   rooms deepest vault! cellar
@@ -475,7 +478,8 @@ program cathedral
   rooms ground lobby! chapel! archive
   rooms upper chapel archive monitor
   rooms top chapel monitor
-  rooms deepest vault! cryo-bay
+  hall deepest cryo-bay
+  rooms deepest vault!
   fill chapel archive
 
 # A shed: one long room, a workbench and whatever was left in it.

@@ -61,7 +61,72 @@ public partial class SkyRig : Node3D
     public Godot.Environment Environment { get; private set; }
     public DirectionalLight3D Sun { get; private set; }
     public DirectionalLight3D NightLight { get; private set; }
+
+    /// <summary>
+    /// A small turn of the light that casts the shadows off the sun's true way (a game sets it, for
+    /// something wrong nearby): the sun stays where it truly is in the sky, drawn by a light of its
+    /// own that lights nothing, and only the shadows fall a little wrong. Identity is no turn.
+    /// </summary>
+    public Basis ShadowSkew = Basis.Identity;
+    DirectionalLight3D _skySun;
+
+    void Skew()
+    {
+        if (ShadowSkew.IsEqualApprox(Basis.Identity))
+        {
+            if (_skySun is { Visible: true })
+            {
+                _skySun.Visible = false;
+                Sun.SkyMode = DirectionalLight3D.SkyModeEnum.LightAndSky;
+            }
+            return;
+        }
+        if (_skySun == null)
+        {
+            _skySun = new DirectionalLight3D { Name = "SkySun", SkyMode = DirectionalLight3D.SkyModeEnum.SkyOnly, ShadowEnabled = false };
+            AddChild(_skySun);
+        }
+        _skySun.Visible = true;
+        _skySun.GlobalBasis = Sun.GlobalBasis;
+        _skySun.LightEnergy = Sun.LightEnergy;
+        _skySun.LightColor = Sun.LightColor;
+        Sun.SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly;
+        Sun.GlobalBasis = ShadowSkew * Sun.GlobalBasis;
+    }
     public Vector3 ToSun { get; private set; } = Vector3.Up;
+
+    /// <summary>The share of the sun's disc in sight from where you stand, 0 to 1 (an eclipse hides the rest): its light, the sky's and the shadows go with it.</summary>
+    public float SunLit { get; private set; } = 1f;
+
+    /// <summary>Where this sky is seen from, in the home globe's frame, m from its centre.</summary>
+    public D3 Eye => _eye;
+
+    /// <summary>
+    /// The deepest eclipse seen from here with the sun up (its light at least <paramref name="up"/>
+    /// over the horizon), searched over <paramref name="days"/> from now: when, and how much of the
+    /// sun is hidden then (0: none found).
+    /// </summary>
+    public (double Days, double Covered) NextEclipse(double days, double up = 0.2)
+    {
+        StarSystem m = Model;
+        if (m == null) return (Days, 0.0);
+        double from = Days, best = from, most = 0.0;
+        D3 zenith = _eye.Normalized;
+        double Seen(double t) => m.See(m.Star, t, _eye).Direction.Dot(zenith) >= up ? m.Eclipse(t, _eye).Covered : 0.0;
+        for (double t = from; t < from + days; t += 0.002)
+        {
+            double c = Seen(t);
+            if (c > most) (most, best) = (c, t);
+        }
+        // Refined to its deepest.
+        for (double step = 0.0005; step > 1e-6; step *= 0.5)
+            foreach (double t in new[] { best - step, best + step })
+                if (Seen(t) > most) (most, best) = (Seen(t), t);
+        return (best, most);
+    }
+
+    /// <summary>Tests: false leaves eclipses out of the light, to measure against.</summary>
+    public static bool Eclipses = true;
     public float Daylight { get; private set; } = 1f;
     public AtmosphereState Air { get; private set; }
 
@@ -75,7 +140,8 @@ public partial class SkyRig : Node3D
     readonly List<Sighting> _seen = new(), _inSlots = new();
     readonly List<(Orbiter Body, Vector3 Direction, float Angular)> _drawn = new();
     readonly Vector3[] _bodyDirs = new Vector3[BodySlots], _bodyLights = new Vector3[BodySlots], _bodyColors = new Vector3[BodySlots];
-    readonly float[] _bodyRadii = new float[BodySlots];
+    readonly float[] _bodyRadii = new float[BodySlots], _bodySun = new float[BodySlots], _bodyRed = new float[BodySlots];
+    readonly Vector4[] _bodyCasters = new Vector4[BodySlots];
     readonly int[] _bodyLayers = new int[BodySlots];
     readonly Vector3[] _bodyAxes = new Vector3[BodySlots], _bodyZeros = new Vector3[BodySlots];
     Vector3 _brightest = Vector3.Up;
@@ -93,6 +159,9 @@ public partial class SkyRig : Node3D
     /// <summary>How much of the cloud deck shows, on top of what the eye's height over it allows, 0 to 1 (the air thinning away).</summary>
     public float CloudDeckFade = 1f;
 
+    /// <summary>How the cloud layer curves, 1 / m: nothing from the ground and at flight heights, then the ground's own bend as the climb brings the globe in.</summary>
+    public float CloudBend;
+
     /// <summary>
     /// Keeps the cloud deck under an eye: it sits in the layer, shows once the eye is climbing
     /// through it, and is lit as the sky's clouds are.
@@ -105,13 +174,14 @@ public partial class SkyRig : Node3D
         InCloud(eye, air, seen);
         if (!CloudDeck.Visible) return;
         CloudDeck.GlobalPosition = new Vector3(eye.X, air.CloudBase + air.CloudThickness * 0.45f, eye.Z);
-        _deck.SetShaderParameter("seen", seen);
-        _deck.SetShaderParameter("cover", air.CloudCover);
-        _deck.SetShaderParameter("dark", air.CloudDarkness);
-        _deck.SetShaderParameter("drift", _cloudDrift);
-        _deck.SetShaderParameter("scale", CloudScale);
-        _deck.SetShaderParameter("noise", _noise);
-        _deck.SetShaderParameter("light", Daylight * (0.35f + 0.65f * Smooth(0f, 0.3f, ToSun.Y)));
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("seen"), seen);
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("bend"), CloudBend);
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("cover"), air.CloudCover);
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("dark"), air.CloudDarkness);
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("drift"), _cloudDrift);
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("scale"), CloudScale);
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("noise"), _noise);
+        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("light"), Daylight * (0.35f + 0.65f * Smooth(0f, 0.3f, ToSun.Y)));
     }
 
     /// <summary>How thick the cloud is around the eye, 0 to 1.</summary>
@@ -149,19 +219,19 @@ public partial class SkyRig : Node3D
         _deck = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/clouddeck.gdshader") };
         CloudDeck = new MeshInstance3D
         {
-            Name = "CloudDeck", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) }, MaterialOverride = _deck, Visible = false,
+            Name = "CloudDeck", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 31, SubdivideDepth = 31 }, MaterialOverride = _deck, Visible = false,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
         };
         AddChild(CloudDeck);
         _noise = new NoiseTexture2D
         {
             Width = 512, Height = 512, Seamless = true, GenerateMipmaps = true,
-            Noise = new FastNoiseLite { Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
+            Noise = CloudNoiseSource(),
         };
         GalaxyShader.Register();
         _sky = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/sky.gdshader") };
-        _sky.SetShaderParameter("cloud_noise", _noise);
-        _sky.SetShaderParameter("cloud_detail", new NoiseTexture3D
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_noise"), _noise);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_detail"), new NoiseTexture3D
         {
             Width = 64, Height = 64, Depth = 64, Seamless = true,
             Noise = new FastNoiseLite { Seed = 5, Frequency = 0.06f, FractalOctaves = 3, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
@@ -172,9 +242,6 @@ public partial class SkyRig : Node3D
             Sky = new Sky { SkyMaterial = _sky, RadianceSize = Sky.RadianceSizeEnum.Size64, ProcessMode = Sky.ProcessModeEnum.Incremental },
             AmbientLightSource = Godot.Environment.AmbientSource.Sky,
             ReflectedLightSource = Godot.Environment.ReflectionSource.Sky,
-            TonemapMode = Godot.Environment.ToneMapper.Filmic,
-            TonemapWhite = 6f,
-            TonemapExposure = 1.0f,
             FogEnabled = true,
             FogMode = Godot.Environment.FogModeEnum.Exponential,
             FogAerialPerspective = 0.35f,
@@ -189,62 +256,195 @@ public partial class SkyRig : Node3D
         };
         AddChild(new WorldEnvironment { Environment = Environment });
 
-        Sun = new DirectionalLight3D
-        {
-            Name = "Sun", ShadowEnabled = true,
-            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits,
-            DirectionalShadowMaxDistance = 320f,
-        };
-        AddChild(Sun);
-        NightLight = new DirectionalLight3D
-        {
-            Name = "NightLight", ShadowEnabled = false, LightEnergy = 0f, SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly,
-            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits, DirectionalShadowMaxDistance = 320f,
-        };
+        AddChild(Sun = SunShadows.Light("Sun", true));
+        NightLight = SunShadows.Light("NightLight", false);
+        (NightLight.LightEnergy, NightLight.SkyMode) = (0f, DirectionalLight3D.SkyModeEnum.LightOnly);
         AddChild(NightLight);
         Air = Atmosphere.Compute(SkySystem.For(new Planets.Gen.PlanetSpec(1, Planets.Gen.Archetype.Temperate, 0, 0)), Atmosphere.Clear(), 0.5f);
     }
 
-    public void SetWorld(PlanetWorld world)
+    /// <param name="surfaces">The far looks another sky of the same system already paints (a moon's sky takes the start world's), or null to paint them.</param>
+    public void SetWorld(PlanetWorld world, BodySurfaces surfaces = null)
     {
         _world = world;
         System = world.Sky;
         SkySystem s = System;
-        _sky.SetShaderParameter("zenith_day", C(s.Zenith));
-        _sky.SetShaderParameter("horizon_day", C(s.Horizon));
-        _sky.SetShaderParameter("zenith_night", C(s.NightZenith));
-        _sky.SetShaderParameter("sunset", C(s.Sunset));
-        _sky.SetShaderParameter("haze", C(s.Haze));
-        _sky.SetShaderParameter("star_color", C(s.StarColor));
-        _sky.SetShaderParameter("sun_radius", world.StarSystem.See(world.StarSystem.Star, 0.0, new D3(0, world.StarSystem.Home.Radius, 0)).Angular);
-        _sky.SetShaderParameter("sun_energy", s.SunEnergy);
-        _sky.SetShaderParameter("density", s.Density);
-        _sky.SetShaderParameter("stars_by_day", s.StarsByDay);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_day"), C(s.Zenith));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("horizon_day"), C(s.Horizon));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("band_day"), C(s.Palette?.Band ?? s.Horizon));
+        // Today's look keeps its sky as it was, with no band of its own; a vivid sky brings its deep zenith down toward the horizon,
+        // so its grading reads in a level view; an earthy one's pale horizon reaches well up.
+        bool today = s.Palette?.Today ?? false, vivid = s.Palette?.VividParts.HasFlag(Planets.Look.Parts.Sky) ?? false;
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("band_share"), today ? 0f : 0.8f);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_curve"), today ? 0.42f : vivid ? 0.45f : 0.75f);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_night"), C(s.NightZenith));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sunset"), C(s.Sunset));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("haze"), C(s.Haze));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("star_color"), C(s.StarColor));
+        ShowSun(_sky, world.StarSystem, s);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_energy"), s.SunEnergy);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("density"), s.Density);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("stars_by_day"), s.StarsByDay);
         // The game's seed is the galaxy's; the world found its home star in it when it was built.
         world.ChartStars();
         Stars = new GalaxySky(world.Catalogue, world.HomeStar, world.Spec.Seed);
         Stars.Bind(_sky);
         // The noise tile must divide the planet both ways, so clouds join across the seams.
         float W = (float)world.Width, H = (float)world.Height;
-        _sky.SetShaderParameter("cloud_scale", new Vector2(W / MathF.Max(1, MathF.Round(W / 8000f)), H / MathF.Max(1, MathF.Round(H / 8000f))));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_scale"), new Vector2(W / MathF.Max(1, MathF.Round(W / 8000f)), H / MathF.Max(1, MathF.Round(H / 8000f))));
         Orbiter giant = world.StarSystem.Neighbour;
-        _sky.SetShaderParameter("giant", giant != null);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant"), giant != null);
         if (giant != null)
         {
-            _sky.SetShaderParameter("giant_color", C(giant.Color));
-            _sky.SetShaderParameter("giant_band", C(giant.Band));
-            _sky.SetShaderParameter("rings", giant.Rings);
-            _sky.SetShaderParameter("ring_color", C(giant.RingColor));
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_color"), C(giant.Color));
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_band"), C(giant.Band));
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("rings"), giant.Rings);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_color"), C(giant.RingColor));
         }
-        Surfaces = new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
-        _sky.SetShaderParameter("surfaces", Surfaces.Texture);
-        _sky.SetShaderParameter("home_ring", world.StarSystem.Home.Rings);
-        _sky.SetShaderParameter("home_ring_color", C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
+        FindLitPlaces(world);
+        Surfaces = surfaces ?? new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("surfaces"), Surfaces.Texture);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring"), world.StarSystem.Home.Rings);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_color"), C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
+        Grade.Apply(Environment);
+    }
+
+    // ---- Lamps under the clouds ---------------------------------------------------------------------
+
+    const int GlowSlots = 4;
+
+    /// <summary>The glow of a place's lamps on the cloud base at night, at the most (a town's full of them).</summary>
+    public const float PlaceGlow = 0.05f;
+
+    /// <summary>This world's lit places: where each stands (canonical x, z), how far its glow reaches, its lamps' light and their colour.</summary>
+    readonly List<(Vector2 At, float Reach, float Lamps, Vector3 Colour)> _litPlaces = new();
+    readonly Vector4[] _glow = new Vector4[GlowSlots];
+    readonly Vector3[] _glowColours = new Vector3[GlowSlots];
+    readonly float[] _glowLamps = new float[GlowSlots];
+    Vector2 _glowEye = new(float.MaxValue, float.MaxValue);
+    int _glowCount;
+
+    /// <summary>How many lit places light the clouds over the eye now (tests).</summary>
+    public int GlowingPlaces => _glowCount;
+
+    /// <summary>Every place with lamps that still work above its ground: a town's glow on the cloud over it.</summary>
+    void FindLitPlaces(PlanetWorld world)
+    {
+        _litPlaces.Clear();
+        _glowEye = new Vector2(float.MaxValue, float.MaxValue);
+        foreach (Poi.PoiSite site in world.Pois)
+        {
+            if (site.Pending || site.Layout == null) continue;
+            float lamps = 0f;
+            Vector3 colour = Vector3.Zero;
+            // As spawned, or as laid out until it is (a state's dead lamps only show once it is built).
+            foreach (PoiGenerator.Gen.LightSpot l in site.Built?.Lights ?? site.Layout.Extras.Lights)
+            {
+                if (l.Mode is PoiGenerator.Gen.LightMode.Dead or PoiGenerator.Gen.LightMode.Bloom || l.Cell.Y < 0) continue;
+                lamps += l.Energy;
+                colour += new Vector3(l.Color.R, l.Color.G, l.Color.B) / 255f * l.Energy;
+            }
+            if (lamps <= 0f) continue;
+            var (x, z) = site.Center;
+            float size = MathF.Max((float)(site.Stamp.MaxX - site.Stamp.MinX), (float)(site.Stamp.MaxZ - site.Stamp.MinZ));
+            _litPlaces.Add((new Vector2((float)x, (float)z), size * 0.5f + 500f + 45f * MathF.Sqrt(lamps), lamps, colour / lamps));
+        }
+    }
+
+    /// <summary>The nearest lit places to the eye light the cloud over them, by night: their reach and their lamps' light.</summary>
+    void GlowUnder(float night)
+    {
+        Camera3D camera = IsInsideTree() ? GetViewport()?.GetCamera3D() : null;
+        if (camera == null || _world == null || _litPlaces.Count == 0 || night <= 0.01f)
+        {
+            if (_glowCount != 0) _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_count"), 0);
+            _glowCount = 0;
+            _glowEye = new Vector2(float.MaxValue, float.MaxValue);
+            return;
+        }
+        var eye = new Vector2(camera.GlobalPosition.X, camera.GlobalPosition.Z);
+        if (eye.DistanceSquaredTo(_glowEye) > 150f * 150f)
+        {
+            // Into the eye's own frame, the near way round the planet: the glow sits over the place wherever the frame is.
+            _glowEye = eye;
+            double w = _world.Width, h = _world.Height;
+            var near = new List<(float Gap, Vector2 At, float Reach, float Lamps, Vector3 Colour)>();
+            foreach (var (at, reach, lamps, colour) in _litPlaces)
+            {
+                var to = new Vector2((float)Planets.Gen.Mathx.WrapDelta(at.X - eye.X, w), (float)Planets.Gen.Mathx.WrapDelta(at.Y - eye.Y, h));
+                float gap = to.Length() - reach;
+                if (gap < 9000f) near.Add((gap, eye + to, reach, lamps, colour));
+            }
+            near.Sort((a, b) => a.Gap.CompareTo(b.Gap));
+            _glowCount = Math.Min(near.Count, GlowSlots);
+            for (int i = 0; i < _glowCount; i++)
+            {
+                _glow[i] = new Vector4(near[i].At.X, near[i].At.Y, near[i].Reach, 0f);
+                _glowLamps[i] = near[i].Lamps;
+                _glowColours[i] = near[i].Colour;
+            }
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground_glow_color"), _glowColours);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_count"), _glowCount);
+        }
+        // A camp's few lamps barely touch it; a town's many light it as much as it gets.
+        for (int i = 0; i < _glowCount; i++) _glow[i].W = PlaceGlow * night * (1f - MathF.Exp(-_glowLamps[i] / 25f));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground_glow"), _glow);
+    }
+
+    /// <summary>The storm towers to draw: (x, z, radius, strength) in the frame, up to four.</summary>
+    public void SetCells(Vector4[] cells, int count, float[] funnels = null)
+    {
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("tower_wall"), funnels ?? new float[4]);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("tower"), cells);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("tower_count"), count);
+    }
+
+    /// <summary>
+    /// The front to draw (zeros for none): <paramref name="line"/> a point of its edge's straight line (x, z, the copy
+    /// nearest the eye) and the way it advances; <paramref name="shape"/> its strength, period along the line, spacing
+    /// of its copies and depth; <paramref name="wave"/> the next copy's shift along, its bows' depth, bows and bays;
+    /// <paramref name="kind"/> a shelf cloud along it (1), a roll cloud ahead (1), its seed and severity.
+    /// </summary>
+    public void SetFront(Vector4 line, Vector4 shape, Vector4 wave, Vector4 kind)
+    {
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("front_line"), line);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("front_shape"), shape);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("front_wave"), wave);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("front_kind"), kind);
+    }
+
+    /// <summary>
+    /// The noise the clouds are cut from: smooth simplex under one gentle warp, with nothing in it finer than
+    /// about sixteen texels (the 3D detail is the fine grain, and it varies with height). The warp is one octave:
+    /// FastNoiseLite's default is five, each six times the last, and the top three ran far past the texture's
+    /// own resolution and scratched it at every texel, wrinkles the sky drew straight up into columns.
+    /// </summary>
+    public static FastNoiseLite CloudNoiseSource() => new()
+    {
+        Seed = 11, Frequency = 0.008f, FractalOctaves = 4, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+        DomainWarpEnabled = true, DomainWarpType = FastNoiseLite.DomainWarpTypeEnum.SimplexReduced, DomainWarpAmplitude = 30f, DomainWarpFrequency = 0.012f,
+        DomainWarpFractalType = FastNoiseLite.DomainWarpFractalTypeEnum.None,
+    };
+
+    /// <summary>Growing cumulus to swell over fair-weather waterspouts: (x, z, radius, how far grown), up to two.</summary>
+    public void SetCumulus(Vector4[] cells, int count)
+    {
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cumulus"), cells);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cumulus_count"), count);
+    }
+
+    /// <summary>Hands a rain shaft the sky's own cloud-base inputs, so its top meets the underside the sky draws.</summary>
+    public void ShareCloudBase(ShaderMaterial m)
+    {
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_noise"), _noise);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_scale"), _sky.GetShaderParameter("cloud_scale"));
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_drift"), _sky.GetShaderParameter("cloud_drift"));
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_base"), _sky.GetShaderParameter("cloud_base"));
     }
 
     /// <summary>Screenshots: 1 shows cloud coverage, 2 cloud colour, 0 the normal sky.</summary>
-    public void DebugView(int view) => _sky.SetShaderParameter("debug_view", view);
+    public void DebugView(int view) => _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("debug_view"), view);
 
     /// <summary>Sets the time and the weather's air for this frame. <paramref name="latitude"/> is -1 (one pole) to 1 (the other): where you stand, unless <see cref="Stand"/> has said better.</summary>
     public void Advance(double delta, float latitude, AtmosphereState air, Vector2 wind)
@@ -254,6 +454,7 @@ public partial class SkyRig : Node3D
         Air = air;
         RunClock(delta);
         _cloudDrift += wind * (float)delta * 1.8f;
+        if (wind.LengthSquared() > 0.01f) _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("storm_wind"), wind.Normalized());
         Apply();
     }
 
@@ -308,13 +509,15 @@ public partial class SkyRig : Node3D
         SkyToStars = system * _skyToGlobe;
         Vector3 toSun = InSky(m.See(m.Star, days, _eye, o).Direction);
         ToSun = toSun;
+        SunLit = (float)(1.0 - m.EclipseAt(days, m.Position(m.Home, days) + o.ToSystem(_eye), m.Home).Covered);
         StarInField = (V(m.Position(m.Star, days) - m.Position(m.Home, days))).Normalized();
         Sun.LookAt(Sun.GlobalPosition - toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
-        _sky.SetShaderParameter("star_turn", Stars.Field * SkyToStars);
-        _sky.SetShaderParameter("sky_to_globe", _skyToGlobe);
+        Skew();
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("star_turn"), Stars.Field * SkyToStars);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_to_globe"), _skyToGlobe);
         // The eye against the sphere the ring stands round, at the height it really is over it.
         double ringSphere = RingRadius > 0f ? RingRadius : m.Home.Radius;
-        _sky.SetShaderParameter("home_ring_eye", V(_eye.Normalized * (1.0 + (_eye.Length - m.Home.Radius) / ringSphere)));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_eye"), V(_eye.Normalized * (1.0 + (_eye.Length - m.Home.Radius) / ringSphere)));
 
         _seen.Clear();
         foreach (Orbiter b in m.Bodies)
@@ -334,14 +537,14 @@ public partial class SkyRig : Node3D
             }
             Vector3 dir = InSky(s.Direction), light = InSky(s.ToItsLight);
             giantAt = s.Distance;
-            _sky.SetShaderParameter("giant_dir", dir);
-            _sky.SetShaderParameter("giant_radius", s.Angular);
-            _sky.SetShaderParameter("giant_light", light);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_dir"), dir);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_radius"), s.Angular);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_light"), light);
             var (giantAxis, giantZero) = Turned(s.Body);
-            _sky.SetShaderParameter("giant_layer", Surfaces?.LayerOf(s.Body) ?? -1);
-            _sky.SetShaderParameter("giant_zero", giantZero);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_layer"), Surfaces?.LayerOf(s.Body) ?? -1);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_zero"), giantZero);
             NeighbourRing = giantAxis;
-            _sky.SetShaderParameter("ring_normal", NeighbourRing);
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_normal"), NeighbourRing);
             float lit = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f);
             if (dir.Y > 0f && 0.25f * lit > _brightestEnergy) (_brightestEnergy, _brightest) = (0.25f * lit, dir);
             _drawn.Add((s.Body, dir, s.Angular));
@@ -357,21 +560,27 @@ public partial class SkyRig : Node3D
             _bodyRadii[slot] = s.Angular;
             (_bodyAxes[slot], _bodyZeros[slot]) = Turned(s.Body);
             _bodyLayers[slot] = Surfaces?.LayerOf(s.Body) ?? -1;
+            // Another body's shadow on it, drawn point by point (an umbra in a soft penumbra), dull red behind a world with air.
+            if (Umbrae(s.Body, _bodyCasters, slot, 1, out _bodySun[slot]) == 0) _bodyCasters[slot] = Vector4.Zero;
+            _bodyRed[slot] = _casters.Count > 0 && StarSystem.HasAir(_casters[0]) ? 1f : 0f;
             _bodyColors[slot++] = new Vector3(s.Body.Color.R, s.Body.Color.G, s.Body.Color.B);
             float phase = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f); // full when opposite the sun
             float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (s.Angular / 0.03f);
             if (e > _brightestEnergy) (_brightestEnergy, _brightest) = (e, dir);
             _drawn.Add((s.Body, dir, s.Angular));
         }
-        _sky.SetShaderParameter("giant_at", behindGiant);
-        _sky.SetShaderParameter("moon_count", slot);
-        _sky.SetShaderParameter("moon_dir", _bodyDirs);
-        _sky.SetShaderParameter("moon_light", _bodyLights);
-        _sky.SetShaderParameter("moon_radius", _bodyRadii);
-        _sky.SetShaderParameter("moon_color", _bodyColors);
-        _sky.SetShaderParameter("moon_layer", _bodyLayers);
-        _sky.SetShaderParameter("moon_axis", _bodyAxes);
-        _sky.SetShaderParameter("moon_zero", _bodyZeros);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_at"), behindGiant);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_count"), slot);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_dir"), _bodyDirs);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_light"), _bodyLights);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_radius"), _bodyRadii);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_color"), _bodyColors);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_layer"), _bodyLayers);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_axis"), _bodyAxes);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_zero"), _bodyZeros);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_caster"), _bodyCasters);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_sun"), _bodySun);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("moon_red"), _bodyRed);
     }
 
     /// <summary>Recomputes lights and the sky from the current time and air (screenshots call it directly).</summary>
@@ -386,11 +595,18 @@ public partial class SkyRig : Node3D
 
         // The sun: star-coloured, warming toward the horizon, dimmed by weather and, low down, by
         // the long path its light takes through the air (to under half near the horizon).
-        float low = Smooth(0.35f, 0f, toSun.Y);
+        // With no air (a vacuum world) nothing reddens or dims it on its way down: a hard white disc to the horizon.
+        bool vacuum = s.Thickness <= 0f;
+        float low = vacuum ? 0f : Smooth(0.35f, 0f, toSun.Y);
         Rgb light = Rgb.Lerp(s.StarColor, s.Sunset, low * 0.7f);
+        // An eclipse: the light goes with the share of the disc still in sight, cooler as it goes,
+        // and the shadows fade as the sun thins to a ring.
+        float lit = Eclipses ? SunLit : 1f;
+        light = Rgb.Lerp(light, new Rgb(0.6f, 0.68f, 0.86f), (1f - lit) * 0.55f);
         Sun.LightColor = C(light);
-        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * AirMass(toSun.Y) * air.SunScale;
-        Sun.ShadowOpacity = Math.Clamp(0.25f + air.SunScale, 0f, 1f);
+        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * (vacuum ? 1f : AirMass(toSun.Y)) * air.SunScale * lit;
+        Sun.ShadowOpacity = Math.Clamp(0.25f + air.SunScale, 0f, 1f) * Smooth(0.02f, 0.35f, lit);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_lit"), lit);
         // The sun stays the sky's light even below the horizon (the shader reads its direction for
         // twilight); it just gives no light and casts no shadows then.
         Sun.ShadowEnabled = toSun.Y > -0.03f;
@@ -401,40 +617,87 @@ public partial class SkyRig : Node3D
         NightLight.ShadowEnabled = !Sun.ShadowEnabled;
         NightLight.LightEnergy = Smooth(-0.03f, -0.08f, toSun.Y) * Math.Clamp(_brightestEnergy, 0.06f, 0.35f) * air.SunScale;
         NightLight.LightColor = new Color(0.62f, 0.7f, 0.95f);
-        NightLight.LookAt(NightLight.GlobalPosition - (_brightest.Y > 0.1f ? _brightest : new Vector3(0.3f, 1f, 0.2f).Normalized()), Vector3.Forward);
+        Vector3 nightWay = _brightest.Y > 0.1f ? _brightest : new Vector3(0.3f, 1f, 0.2f).Normalized();
+        NightLight.LookAt(NightLight.GlobalPosition - nightWay, Vector3.Forward);
+        // The clouds are lit by night as the ground is, from the same way in the same colour (over the clouds,
+        // with none of them in the way); and from under them by the lamps of lit places nearby.
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_light"), new Vector4(nightWay.X, nightWay.Y, nightWay.Z, Math.Clamp(_brightestEnergy, 0.06f, 0.35f)));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_color"), NightLight.LightColor);
+        GlowUnder(1f - day);
         Stars.Poll();
         GalaxySky.SetPixel(_sky, IsInsideTree() ? GetViewport() : null);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_time"), SunTime);
 
         // Clouds and overcast from the weather.
-        _sky.SetShaderParameter("cloud_cover", air.CloudCover);
-        _sky.SetShaderParameter("cloud_dark", air.CloudDarkness);
-        _sky.SetShaderParameter("cloud_base", air.CloudBase);
-        _sky.SetShaderParameter("cloud_thick", air.CloudThickness);
-        _sky.SetShaderParameter("cloud_drift", _cloudDrift);
-        _sky.SetShaderParameter("overcast", air.Overcast);
-        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.7f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
-        _sky.SetShaderParameter("overcast_color", C(grey));
-        _sky.SetShaderParameter("cloud_lit", C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_cover"), air.CloudCover);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_dark"), air.CloudDarkness);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_base"), air.CloudBase);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_thick"), air.CloudThickness);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_drift"), _cloudDrift);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast"), air.Overcast);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("stratus"), air.Stratus);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cirrus"), air.Cirrus);
+        // Overcast keeps the air's own hue under its cloud: it changes the sky's colour, never drains it (today's look greys
+        // it, its clouds and its haze as it did, and keeps its grade's saturation).
+        bool today = s.Palette?.Today ?? false;
+        float greyed = today ? 0.7f : 0.35f;
+        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), greyed), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast_color"), C(grey));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lit"), C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));
         // Ash over lava glows red from underneath, more so as daylight fades.
-        _sky.SetShaderParameter("cloud_underglow", s.Air == AirKind.Ash ? new Color(0.55f, 0.16f, 0.05f) * (0.35f + 0.65f * (1f - day)) : new Color(0, 0, 0));
-        _sky.SetShaderParameter("cloud_shade", C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), 0.6f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_underglow"), s.Air == AirKind.Ash ? new Color(0.55f, 0.16f, 0.05f) * (0.35f + 0.65f * (1f - day)) : new Color(0, 0, 0));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_shade"), C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), today ? 0.6f : 0.35f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
 
         // Fog: the air's haze colour, lit by the sun, greyed by overcast, dark at night. It is lit
         // as the ground is: by a sun that has climbed clear of the horizon's air, so haze and
         // valley fog under a low sun are dim and warm, never a white wall. The glow toward the sun
         // (sun scatter) is kept modest: a low sun shines through the haze, it doesn't blind.
         float fogLight = Smooth(-0.16f, 0.25f, toSun.Y);
-        Rgb fog = Rgb.Lerp(s.Haze, grey, air.Overcast * 0.8f) * (0.08f + 0.92f * fogLight);
+        Rgb fog = Rgb.Lerp(s.Haze, grey, (today ? air.Overcast : Smooth(0.5f, 1f, air.Overcast)) * 0.8f) * (0.08f + 0.92f * fogLight); // the haze keeps its air's colour until the sky is really overcast
         fog = Rgb.Lerp(fog, s.Sunset * (0.8f * fogLight), low * day * 0.35f);
         Environment.FogLightColor = C(fog);
         Environment.FogDensity = air.FogDensity;
         Environment.FogSkyAffect = air.FogSkyAffect;
-        Environment.FogSunScatter = (0.08f + 0.12f * s.Density) * (1f - air.Overcast);
+        // The scatter toward the sun and the glitter off water are the sun's own light: a low sun has
+        // little left to give them, or the haze and the sea go white under it.
+        float climbed = Smooth(0.02f, 0.38f, toSun.Y);
+        Environment.FogSunScatter = (0.08f + 0.12f * s.Density) * (1f - air.Overcast) * (0.25f + 0.75f * climbed);
+        Sun.LightSpecular = 0.2f + 0.8f * climbed;
         // Ash worlds are lit as much by their lava as their sun: never quite black.
         float floor = s.Air == AirKind.Ash ? 0.45f : 0.25f;
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
-        Environment.AdjustmentSaturation = air.Saturation;
+        // The shade's own colour goes with the daylight, as the sky's light does: night keeps its dark.
+        Environment.AmbientLightColor = C(s.Shade * (0.06f + 0.94f * day));
+        Environment.AdjustmentSaturation = today ? air.Saturation : 1f;
+        // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey; today's look
+        // keeps all its shade light the sky's. No air, no sky light: a vacuum sky's radiance is black space, its stars and the bodies
+        // in it (the planet overhead lighting the shade); what else reaches a shadow is the sunlit ground's bounce, as strong as its
+        // grey rock throws back, in the shade's own colour opposite the star (owner: "deep grey moons, but saturated").
+        Environment.AmbientLightSkyContribution = vacuum ? VacuumSkyShare : today ? 1f : 0.5f;
+        if (vacuum && _world != null)
+        {
+            Color ground = _world.Look.Dust.SrgbToLinear(), shade = C(s.Shade).SrgbToLinear();
+            float bounce = GroundBounce * Sun.LightEnergy * Math.Max(0f, toSun.Y) / ((1f - VacuumSkyShare) * Math.Max(0.05f, Environment.AmbientLightEnergy));
+            float thrown = (0.2126f * ground.R * light.R + 0.7152f * ground.G * light.G + 0.0722f * ground.B * light.B) * bounce * VacuumShadeLift;
+            Environment.AmbientLightColor = (shade * (thrown / Math.Max(1e-4f, 0.2126f * shade.R + 0.7152f * shade.G + 0.0722f * shade.B))).LinearToSrgb();
+        }
+        // A deposit keeps its colour: the terrain shader takes the shade light's own colour back off its ore (its grey stays).
+        Color fill = Environment.AmbientLightColor.SrgbToLinear() * Environment.AmbientLightEnergy * (1f - Environment.AmbientLightSkyContribution);
+        float luma = 0.2126f * fill.R + 0.7152f * fill.G + 0.0722f * fill.B;
+        RenderingServer.GlobalShaderParameterSet("shade_fill", new Vector3(fill.R - luma, fill.G - luma, fill.B - luma));
     }
+
+    /// <summary>The share of a vacuum world's shade light its sky's radiance gives (the planet overhead), the rest the ground's bounce.</summary>
+    const float VacuumSkyShare = 0.5f;
+
+    /// <summary>
+    /// How much brighter than the ground's bounce a vacuum world's shade is drawn: enough that its colour opposite the star shows (deep
+    /// violet, blue or magenta shadows on grey rock: owner, 23 Nov, "deep grey moons, but saturated"), the shade still deep.
+    /// </summary>
+    const float VacuumShadeLift = 3f;
+
+    /// <summary>How much of the sunlight on the ground comes back up into a shadow: a dim fill, the shade still near black.</summary>
+    const float GroundBounce = 0.08f;
 
     /// <summary>
     /// Pools valley fog below a height: the low ground around the player plus the fog's depth. Godot's
@@ -456,7 +719,11 @@ public partial class SkyRig : Node3D
         float layer = 1f - Smooth(0f, 0.3f, inside);
         Environment.FogHeight = top;
         Environment.FogHeightDensity = valley * 0.09f * layer;
-        Environment.FogDensity = air.FogDensity + valley * 0.004f * (1f - layer);
+        // The haze lies low: from high up the far land is seen through less of it (Atmosphere.FogFrom).
+        float over = camera == null ? 0f : camera.GlobalPosition.Y - floor;
+        // The weather's fog lies in the layer: full density inside it, fading out over a band above its top.
+        float inFog = camera == null ? 1f : 1f - Smooth(0f, depth * 0.5f, camera.GlobalPosition.Y - top);
+        Environment.FogDensity = Atmosphere.FogFrom(air.AirFog, over) + (air.FogDensity - air.AirFog) * inFog + valley * 0.004f * (1f - layer);
     }
 
     /// <summary>
@@ -467,6 +734,82 @@ public partial class SkyRig : Node3D
 
     static Color C(Rgb c) => new(c.R, c.G, c.B);
 
+    /// <summary>How bright the sun's disc is high in a clear sky, times its energy: the same with no air in the way.</summary>
+    public const float DiscEnergy = 18f;
+
+    /// <summary>
+    /// The sun as a sky draws it, this sky or space's (GalaxyShader's <c>sun_disc</c> and
+    /// <c>sun_in_space</c>): one size, its real one (<see cref="StarSystem.SunAngular"/>), and with
+    /// no air in the way one light, the star's colour as bright as a high sun's disc here. The
+    /// air's glow round it and the screen's bloom go on top.
+    /// </summary>
+    public static void ShowSun(ShaderMaterial sky, StarSystem model, SkySystem system)
+    {
+        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_radius"), model.SunAngular);
+        Rgb disc = system.Palette?.Disc ?? system.StarColor; // the disc in its own colour: the eye adapts to its light, not to it
+        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_disc_light"), new Vector3(disc.R, disc.G, disc.B) * system.SunEnergy * DiscEnergy);
+        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_rim"), RimOf(system.Star));
+        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_heat"), model.SunHeat);
+    }
+
+    /// <summary>The colour at a star's limb, round its white-hot core: deep orange-red for a cool star, pale for a hot one.</summary>
+    public static Vector3 RimOf(StarClass star) => star switch
+    {
+        StarClass.RedDwarf => new Vector3(1f, 0.32f, 0.12f),
+        StarClass.Orange => new Vector3(1f, 0.46f, 0.18f),
+        StarClass.Yellow => new Vector3(1f, 0.6f, 0.28f),
+        StarClass.White => new Vector3(1f, 0.86f, 0.68f),
+        _ => new Vector3(0.78f, 0.88f, 1f),
+    };
+
+    /// <summary>
+    /// What could shadow this world now, for its globe seen from orbit: the bodies nearest the
+    /// sun's direction from it, up to <paramref name="into"/>'s length, each where it stands from
+    /// the globe's centre in this sky's directions in globe radii (xyz) and its radius in globe
+    /// radii (w); <paramref name="sun"/> the sun's angular radius. The globe darkens under each
+    /// by the share of the sun it hides there (the eclipse's own sum, <see cref="StarSystem.Covered"/>).
+    /// </summary>
+    public int Umbrae(Vector4[] into, out float sun)
+    {
+        sun = 0f;
+        StarSystem m = Model;
+        return m == null ? 0 : Umbrae(m.Home, into, 0, into.Length, out sun);
+    }
+
+    readonly List<Orbiter> _casters = new();
+
+    /// <summary>The star's light on other bodies and the dark of space round them: the light their globes get up close, so a body in this sky is lit as it is there.</summary>
+    public void LightBodies(float energy, Color ambient)
+    {
+        _sky.SetShaderParameter("body_energy", energy);
+        _sky.SetShaderParameter("body_ambient", ambient);
+    }
+
+    /// <summary>
+    /// What could shadow a body (<see cref="StarSystem.Casters"/>), at most <paramref name="most"/> from <paramref name="at"/> in <paramref name="into"/>:
+    /// each where it stands from the body's centre in this sky's directions, in the body's radii (xyz), and its
+    /// radius in them (w). How many; <paramref name="sun"/> is the sun's angular radius from the body.
+    /// </summary>
+    int Umbrae(Orbiter body, Vector4[] into, int at, int most, out float sun)
+    {
+        StarSystem m = Model;
+        double days = Days, R = body.Radius;
+        sun = (float)m.Casters(body, days, _casters);
+        StarSystem.Orientation o = m.Orient(days);
+        D3 from = m.Position(body, days);
+        int n = Math.Min(_casters.Count, most);
+        for (int i = 0; i < n; i++)
+        {
+            Orbiter b = _casters[i];
+            Vector3 p = _skyToGlobe.Inverse() * V(o.ToGlobe(m.Position(b, days) - from) * (1.0 / R));
+            into[at + i] = new Vector4(p.X, p.Y, p.Z, (float)(b.Radius / R));
+        }
+        return n;
+    }
+
+    /// <summary>The sun's slow churn, seconds: wrapped so the shader never loses its precision.</summary>
+    public static float SunTime => (float)(Time.GetTicksMsec() % 3_600_000UL) / 1000f;
+
     /// <summary>The catalogue's name for the world's own star class.</summary>
     public static StarKind KindOf(StarClass c) => c switch
     {
@@ -475,6 +818,16 @@ public partial class SkyRig : Node3D
         StarClass.Yellow => StarKind.YellowDwarf,
         StarClass.White => StarKind.WhiteStar,
         _ => StarKind.BlueGiant,
+    };
+
+    /// <summary>The star class the system model builds for a catalogue kind (the model has five; the special kinds take the nearest).</summary>
+    public static StarClass ClassOf(StarKind k) => k switch
+    {
+        StarKind.BrownDwarf or StarKind.RedDwarf or StarKind.Protostar => StarClass.RedDwarf,
+        StarKind.OrangeDwarf or StarKind.RedGiant => StarClass.Orange,
+        StarKind.YellowDwarf => StarClass.Yellow,
+        StarKind.WhiteStar or StarKind.WhiteDwarf => StarClass.White,
+        _ => StarClass.BlueWhite,
     };
 
     static float Smooth(float e0, float e1, float x)

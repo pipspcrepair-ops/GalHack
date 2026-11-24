@@ -16,13 +16,23 @@ namespace GalHack.Structures.Presentation;
 /// </summary>
 public partial class DamageFx : Node3D
 {
-    const int MaxChips = 64, MaxMarks = 32, MaxSmokes = 8, MaxBurstsPerFrame = 4, MaxBurstsLive = 12;
+    /// <summary>
+    /// Render priority of every transparent effect near a ship. Sky bodies and rings draw late, as high as 5,
+    /// and a transparent effect earlier in the queue is painted over by a planet a million times farther.
+    /// Above them, only the entry veil (100) is nearer.
+    /// </summary>
+    public const int NearPriority = 10;
+
+    const int MaxChips = 64, MaxMarks = 32, MaxSmokes = 8, MaxPerChunk = 3, MaxBurstsPerFrame = 4, MaxBurstsLive = 12;
     const float Settled = 3f, Fade = 1.2f, MarkLife = 40f, MarkFade = 6f;
 
     /// <summary>What chips land on: every layer unless a game narrows it.</summary>
     public uint GroundMask = uint.MaxValue;
 
     public Structure Structure { get; private set; }
+
+    /// <summary>True out in vacuum: smoke then spreads out and thins fast, and doesn't rise.</summary>
+    public Func<bool> Airless;
 
     /// <summary>Chips in the air or fading, marks showing and devices smoking (tests).</summary>
     public int Chips => _chips.Count;
@@ -48,6 +58,8 @@ public partial class DamageFx : Node3D
     QuadMesh _smokeMesh;
     static ImageTexture _markTexture;
     uint _rng = 0x9e3779b9;
+    bool _vacuum;
+    static ImageTexture _puffTexture;
 
     public void Setup(Structure structure)
     {
@@ -66,12 +78,16 @@ public partial class DamageFx : Node3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, VertexColorUseAsAlbedo = true,
             EmissionEnabled = true, Emission = new Color(1f, 0.7f, 0.3f), EmissionEnergyMultiplier = 3f,
+            RenderPriority = NearPriority,
         };
         _smokeMaterial = new StandardMaterial3D
         {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, VertexColorUseAsAlbedo = true,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha, BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+            // Lit per vertex, so the sun and lamps tint it; a soft puff from a 2x2 sheet of noisy blobs, faded where it meets geometry.
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.PerVertex, VertexColorUseAsAlbedo = true, Roughness = 1f,
+            AlbedoTexture = _puffTexture ??= PuffTexture(), Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles, ParticlesAnimHFrames = 2, ParticlesAnimVFrames = 2,
+            ParticlesAnimLoop = false, CullMode = BaseMaterial3D.CullModeEnum.Disabled, RenderPriority = NearPriority,
+            ProximityFadeEnabled = true, ProximityFadeDistance = 0.25f, DisableReceiveShadows = true,
         };
         _pieces = new MultiMeshInstance3D
         {
@@ -97,6 +113,7 @@ public partial class DamageFx : Node3D
     {
         float dt = (float)delta;
         Drain();
+        Weather();
         StepChips(dt);
         for (int i = _bursts.Count - 1; i >= 0; i--)
         {
@@ -280,30 +297,101 @@ public partial class DamageFx : Node3D
                 _smokes[cell].QueueFree();
                 _smokes.Remove(cell);
             }
+        int here = 0;
+        foreach (Int3 cell in _smokes.Keys) if (Structure.ChunkOf(cell) == chunk) here++;
         foreach (Int3 cell in smoking)
         {
-            if (_smokes.ContainsKey(cell) || _smokes.Count >= MaxSmokes) continue;
+            if (_smokes.ContainsKey(cell)) continue;
+            if (_smokes.Count >= MaxSmokes || here >= MaxPerChunk) break;
             float size = Structure.Grid.CellSize;
             var wisp = new CpuParticles3D
             {
-                Name = $"Smoke{cell.X}_{cell.Y}_{cell.Z}", Amount = 10, Lifetime = 2.2f, Mesh = _smokeMesh, MaterialOverride = _smokeMaterial,
-                Direction = Vector3.Up, Spread = 12f, Gravity = new Vector3(0, 0.5f, 0),
-                InitialVelocityMin = 0.25f, InitialVelocityMax = 0.6f, ScaleAmountMin = size * 0.35f, ScaleAmountMax = size * 0.7f,
-                Color = new Color(0.16f, 0.15f, 0.15f, 0.4f), LocalCoords = false, Randomness = 0.5f,
-                Position = new Vector3(cell.X, cell.Y, cell.Z) * size,
+                Name = $"Smoke{cell.X}_{cell.Y}_{cell.Z}", Amount = 8, Mesh = _smokeMesh, MaterialOverride = _smokeMaterial,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Direction = Vector3.Up, LocalCoords = false, Randomness = 0.5f,
+                ScaleAmountMin = size * 0.45f, ScaleAmountMax = size * 0.8f, AnimOffsetMax = 1f, AngleMax = 360f,
+                ColorRamp = PuffRamp(), ScaleAmountCurve = GrowCurve(), Position = new Vector3(cell.X, cell.Y, cell.Z) * size,
             };
-            wisp.ScaleAmountCurve = FadeOutCurve();
+            Behave(wisp, _vacuum);
             AddChild(wisp);
             _smokes[cell] = wisp;
+            here++;
         }
     }
 
-    static Curve FadeOutCurve()
+    /// <summary>In air smoke drifts up and lingers; in vacuum it goes out every way at once, swells and is gone in a moment.</summary>
+    static void Behave(CpuParticles3D wisp, bool vacuum)
+    {
+        wisp.Lifetime = vacuum ? 1.3f : 2.4f;
+        wisp.Spread = vacuum ? 180f : 14f;
+        wisp.Gravity = vacuum ? Vector3.Zero : new Vector3(0, 0.5f, 0);
+        wisp.InitialVelocityMin = vacuum ? 0.5f : 0.25f;
+        wisp.InitialVelocityMax = vacuum ? 1.1f : 0.6f;
+        wisp.DampingMin = wisp.DampingMax = vacuum ? 0.3f : 0f;
+        wisp.Color = vacuum ? new Color(0.5f, 0.48f, 0.46f, 0.7f) : new Color(0.32f, 0.3f, 0.29f, 0.8f);
+    }
+
+    /// <summary>Re-tunes the live smokes when the ship passes from air to vacuum or back.</summary>
+    void Weather()
+    {
+        bool vacuum = Airless?.Invoke() ?? false;
+        if (vacuum == _vacuum) return;
+        _vacuum = vacuum;
+        foreach (CpuParticles3D wisp in _smokes.Values) Behave(wisp, vacuum);
+    }
+
+    /// <summary>Fade in, hold, fade out.</summary>
+    static Gradient PuffRamp() => new()
+    {
+        Offsets = new[] { 0f, 0.15f, 1f },
+        Colors = new[] { new Color(1, 1, 1, 0f), Colors.White, new Color(1, 1, 1, 0f) },
+    };
+
+    /// <summary>Four soft, irregular blobs (noise-eaten discs with a feathered edge) in a 2x2 sheet, drawn by code.</summary>
+    static ImageTexture PuffTexture()
+    {
+        const int tile = 64, n = tile * 2;
+        var image = Image.CreateEmpty(n, n, false, Image.Format.Rgba8);
+        for (int v = 0; v < 4; v++)
+            for (int y = 0; y < tile; y++)
+                for (int x = 0; x < tile; x++)
+                {
+                    float dx = (x + 0.5f) / tile * 2f - 1f, dy = (y + 0.5f) / tile * 2f - 1f;
+                    float noise = Fbm(dx * 2.2f + v * 7.3f, dy * 2.2f - v * 3.1f);
+                    float r = MathF.Sqrt(dx * dx + dy * dy) * (0.8f + 0.7f * noise);
+                    float shade = 0.55f + 0.45f * Fbm(dx * 3f - v, dy * 3f + v * 5f);
+                    image.SetPixel((v % 2) * tile + x, (v / 2) * tile + y, new Color(shade, shade, shade, Mathf.SmoothStep(1f, 0.15f, r) * 0.9f));
+                }
+        return ImageTexture.CreateFromImage(image);
+    }
+
+    static float Fbm(float x, float y)
+    {
+        float sum = 0f, amp = 0.5f;
+        for (int o = 0; o < 3; o++, amp *= 0.5f, x *= 2f, y *= 2f) sum += amp * Value(x, y);
+        return sum / 0.875f;
+    }
+
+    static float Value(float x, float y)
+    {
+        int ix = Mathf.FloorToInt(x), iy = Mathf.FloorToInt(y);
+        float fx = x - ix, fy = y - iy;
+        fx *= fx * (3f - 2f * fx);
+        fy *= fy * (3f - 2f * fy);
+        return Mathf.Lerp(Mathf.Lerp(Hash(ix, iy), Hash(ix + 1, iy), fx), Mathf.Lerp(Hash(ix, iy + 1), Hash(ix + 1, iy + 1), fx), fy);
+    }
+
+    static float Hash(int a, int b)
+    {
+        uint h = unchecked((uint)(a * 374761393 + b * 668265263));
+        h = unchecked((h ^ (h >> 13)) * 1274126177u);
+        return ((h ^ (h >> 16)) & 0xffff) / 65535f;
+    }
+
+    static Curve GrowCurve()
     {
         var curve = new Curve();
-        curve.AddPoint(new Vector2(0f, 0.4f));
-        curve.AddPoint(new Vector2(0.5f, 1f));
-        curve.AddPoint(new Vector2(1f, 0f));
+        curve.AddPoint(new Vector2(0f, 0.35f));
+        curve.AddPoint(new Vector2(1f, 1.4f));
         return curve;
     }
 

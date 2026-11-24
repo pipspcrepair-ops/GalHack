@@ -53,6 +53,10 @@ Each set is a strip: one column per piece, one row per state (intact, old world,
 
 **Salvage.** Vehicles and wreck sections carry a salvage class (light, medium, heavy, huge) whose yield table is in `deco.json`; see Integration for the deconstructor hook.
 
+## Surfaces
+
+Every part is drawn from what it is made of: wood (grain along the board, rings on its sawn ends, boards across a wide face), paint (a fine orange peel, sheet seams on a wide face), brushed steel, polished chrome, brass and bronze, moulded plastic, cloth (weave, stitched seams, soft rounded edges), leather (pebbled, creased, stitched), paper and card, glazed ceramic (tiles and grout on a wide face), rubber (a tyre's tread and wall rings), stone and concrete (mottle, aggregate, pits), screens and glass. A part takes its finish from its slot and flags (body and trim are painted, dark parts plastic, cushions and cloth in a body colour fabric, hay and food organic, a tyre rubber, a pane glass), or a model says so with `.As(DecoFinish.Leather)`. Wear follows the piece's state and age: dust on what faces up, chipped paint at the edges, rust blooms on bare metal and paint lifting over rust outside, faded and stained cloth, cracked leather, crazed glaze, greyed and split timber. The finish and wear ride in the vertex colour's alpha and each vertex's place on its face in UV and UV2, so a place still shares the same six materials (`shared/Deco/Engine/DecoShaders.cs`); every pattern fades as it shrinks below a few pixels.
+
 ## States, age and exposure
 
 Every state is made from the intact model, so all pieces get them for free:

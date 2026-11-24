@@ -112,7 +112,7 @@ public partial class WorkshopProbe : Node
             $"restock has settled: {w.Fab.Restock.Status}");
 
         // The multi-tool places a steel block item from storage, and gives it back.
-        string steel = w.Items.BlockItem("steel", false).Id;
+        string steel = "iron-plated";
         int plates = w.Storage.Count(steel);
         _main.SelectSlot(0);
         _main.AimAt(new Int3(4, 0, 2), new Int3(5, 0, 2));
@@ -154,7 +154,7 @@ public partial class WorkshopProbe : Node
         int spawned = _main.Spawned.Count;
         factoryPage.Handle(ScreenKey.Act);
         await Frames(3);
-        Check(_main.Spawned.Count == spawned + 1 && _main.Spawned.Last().Structure.Count == 249, "in creative the Gadfly appears on the pad at once");
+        Check(_main.Spawned.Count == spawned + 1 && _main.Spawned.Last().Structure.Count == w.Blueprints[0].Structure.Count, "in creative the Skiff appears on the pad at once");
         w.ToggleMode();
 
         // Salvage the wreck on the pad: click it on the deconstructor's list.

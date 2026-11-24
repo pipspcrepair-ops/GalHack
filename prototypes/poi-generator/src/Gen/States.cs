@@ -30,9 +30,10 @@ public static partial class StateTransforms
             case PoiState.Active:
                 break;
             case PoiState.Abandoned:
-                PowerOff(inst);
+                if (!inst.Ruin.Falling) PowerOff(inst);
                 SetDoors(inst, rng, DoorState.Jammed, DoorState.Open);
-                if (inst.Extras.Plain.Count > 0) Weathered(inst, rng, 0.05f, walls: false);
+                Fences.Decay(inst, rng, 0.05f + 0.15f * inst.Ruin.Wear, ruined: false);
+                if (inst.Extras.Plain.Count > 0) Weathered(inst, rng, 0.015f + 0.06f * inst.Ruin.Wear, walls: false);
                 else Abandon(inst, rng);
                 break;
             case PoiState.Infested:
@@ -41,7 +42,9 @@ public static partial class StateTransforms
                 Infest(inst, rng);
                 break;
             case PoiState.Ruined:
-                PowerOff(inst);
+                // Mid-collapse the power still runs; the older the fall, the more of it is down, and blast takes more.
+                if (!inst.Ruin.Falling) PowerOff(inst);
+                Fences.Decay(inst, rng, 0.15f + 0.4f * inst.Ruin.Wear + 0.1f * inst.Ruin.Violence, ruined: true);
                 if (inst.Extras.Plain.Count > 0)
                 {
                     // Doors hang on or have gone, one by one.
@@ -50,11 +53,11 @@ public static partial class StateTransforms
                         bool gone = rng.Chance(0.5f);
                         foreach (Int3 c in d.Cells) { if (gone) inst.Blocks.Set(c, Block.Air); else inst.Blocks.At(c).Variant = DoorState.Jammed; }
                     }
-                    Weathered(inst, rng, 0.22f, walls: true);
+                    Weathered(inst, rng, 0.05f + 0.24f * inst.Ruin.Wear + 0.08f * inst.Ruin.Violence, walls: true);
                     break;
                 }
                 BlowDoors(inst);
-                Ruin(inst, rng, 0.3f);
+                Ruin(inst, rng, 0.08f + 0.3f * inst.Ruin.Wear + 0.1f * inst.Ruin.Violence);
                 break;
         }
     }
@@ -64,7 +67,7 @@ public static partial class StateTransforms
     static void PowerOff(PoiInstance inst)
     {
         var g = inst.Blocks;
-        foreach (Int3 p in g.Cells())
+        foreach (var (p, _) in g.Blocks())
         {
             ref Block b = ref g.At(p);
             if (b.Material != Material.Lumen || b.Type == BlockType.Core) continue;
@@ -72,7 +75,7 @@ public static partial class StateTransforms
             b.Color = b.Color.Lerp(DeadGlass, 0.78f);
         }
         ref Block core = ref g.At(inst.CoreCell);
-        core.Variant = 1; // dormant
+        if (core.Type == BlockType.Core) core.Variant = 1; // dormant (a place without one has no core cell: what stands at its origin stays as it is)
     }
 
     static void SetDoors(PoiInstance inst, Rng rng, byte usual, byte other)
@@ -80,12 +83,12 @@ public static partial class StateTransforms
         foreach (var d in inst.Layout.Doorways)
         {
             if (d.ModuleB == inst.Layout.VaultModule) continue; // vault doors hold
-            if (d.Cells.Count > 0 && DoorState.IsLocked(inst.Blocks.Get(d.Cells[0]).Variant)) continue; // so do locks
+            if (d.Cells.Count > 0 && inst.Blocks.Get(d.Cells[0]).Variant == DoorState.Blast) continue; // so do blast doors
             if (inst.Layout.Extras.Lifts.Any(l => l.StopDoors.Contains(inst.Layout.Doorways.IndexOf(d)))) continue; // lift doors follow the car
             byte state = rng.Chance(0.7f) ? usual : other;
-            foreach (Int3 c in d.Cells) inst.Blocks.At(c).Variant = state;
+            foreach (Int3 c in d.Cells) if (!Shapes.IsFence(inst.Blocks.Get(c))) inst.Blocks.At(c).Variant = state;
         }
-        foreach (Int3 c in inst.Layout.ExitCells) inst.Blocks.At(c).Variant = DoorState.Open;
+        foreach (Int3 c in inst.Layout.ExitCells) if (!Shapes.IsFence(inst.Blocks.Get(c))) inst.Blocks.At(c).Variant = DoorState.Open;
     }
 
     static void BlowDoors(PoiInstance inst)
@@ -93,13 +96,13 @@ public static partial class StateTransforms
         foreach (var d in inst.Layout.Doorways)
         {
             bool lift = inst.Layout.Extras.Lifts.Any(l => l.StopDoors.Contains(inst.Layout.Doorways.IndexOf(d)));
-            bool locked = d.Cells.Count > 0 && DoorState.IsLocked(inst.Blocks.Get(d.Cells[0]).Variant);
+            bool blast = d.Cells.Count > 0 && inst.Blocks.Get(d.Cells[0]).Variant == DoorState.Blast;
             foreach (Int3 c in d.Cells)
-                if (d.ModuleB == inst.Layout.VaultModule || locked) continue;          // vault and secure doors hold
+                if (d.ModuleB == inst.Layout.VaultModule || blast) continue;           // vault and blast doors hold
                 else if (lift) inst.Blocks.At(c).Variant = DoorState.Closed;
                 else inst.Blocks.Set(c, Block.Air);
         }
-        foreach (Int3 c in inst.Layout.ExitCells) inst.Blocks.Set(c, Block.Air);
+        foreach (Int3 c in inst.Layout.ExitCells) if (!Shapes.IsFence(inst.Blocks.Get(c))) inst.Blocks.Set(c, Block.Air);
     }
 
     /// <summary>Floor cells inside a module you could stand in right now.</summary>
@@ -127,6 +130,7 @@ public static partial class StateTransforms
 
     static void Abandon(PoiInstance inst, Rng rng)
     {
+        if (Fences.Only(inst.Blocks)) return; // (a fence run: its own decay, nothing dropped by it)
         var nav = inst.Nav();
         foreach (var m in inst.Layout.Modules)
         {
@@ -167,7 +171,7 @@ public static partial class StateTransforms
             switch (rng.Range(0, 5))
             {
                 case 0: case 1: Put(inst, c, BlockType.Crate, Material.Scrap, wood.Lerp(inst.Kit.Palette[0].Colors[0], 0.4f), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)], 1); break;
-                case 2: Put(inst, c, BlockType.Rubble, Material.Rock, inst.Kit.Palette[0].Colors[0].Scale(0.8f), Role.Debris); break;
+                case 2: if (!inst.Protected[c]) inst.Blocks.Set(c, Debris.Of(Material.Concrete, inst.Kit.Palette[0].Colors[0].Scale(0.8f), Debris.Chunks)); break;
                 case 3: Put(inst, c, BlockType.Barricade, Material.Timber, wood.Scale(0.7f), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)]); break;
                 default: Put(inst, c, BlockType.Plant, Material.Plant, Moss, Role.Debris); break;
             }
@@ -349,7 +353,7 @@ public static partial class StateTransforms
     static bool Removable(PoiInstance inst, Int3 p)
     {
         var b = inst.Blocks.Get(p);
-        return !b.IsAir && !inst.Protected[p] && b.Role is Role.Wall or Role.Roof or Role.Window or Role.Light or Role.Decor;
+        return !b.IsAir && !inst.Protected[p] && b.Role is Role.Wall or Role.Roof or Role.Window or Role.Light or Role.Decor && !Shapes.IsFence(b); // (a fence breaks its own way: Fences.Decay)
     }
 
     /// <summary>
@@ -360,16 +364,17 @@ public static partial class StateTransforms
     {
         var g = inst.Blocks;
         // Even glyphs fade in a ruin; they never quite go out.
-        foreach (Int3 p in g.Cells())
+        foreach (var (p, _) in g.Blocks())
         {
             ref Block b = ref g.At(p);
             if (b.Material is Material.Glyph or Material.Crystal) b.Color = b.Color.Scale(0.6f);
         }
         int before = PoiFactory.CountStructure(g);
-        Carve(inst, rng, (int)(before * share), 1.6f, 3.8f);
+        var fallen = new List<(Int3 Cell, Block Block)>();
+        Carve(inst, rng, (int)(before * share), 1.6f, 3.8f, fallen);
         // Big places (towers) protect long paths: keep carving until a fair share is really gone.
         for (int pass = 0; pass < 4 && before - PoiFactory.CountStructure(g) < before * share * 0.6f; pass++)
-            Carve(inst, rng, (int)(before * share * 0.3f), 1.6f, 3.8f);
+            Carve(inst, rng, (int)(before * share * 0.3f), 1.6f, 3.8f, fallen);
 
         // A whole roof comes down on one side room.
         var branches = inst.Layout.Modules.Where(m => !m.OnPath && !m.Underground).ToList();
@@ -377,10 +382,17 @@ public static partial class StateTransforms
         {
             var m = rng.Pick(branches);
             foreach (Int3 c in m.Cells.Where(c => g.Get(c).Role == Role.Roof && Removable(inst, c)).ToList())
+            {
+                fallen.Add((c, g.Get(c)));
                 g.Set(c, Block.Air);
+            }
         }
 
-        Collapse(inst, rng);
+        Collapse(inst, rng, fallen);
+        // What came down lies under where it came from, heaped where a lot fell.
+        Debris.Lay(inst, fallen, rng, 0.45f, 160);
+        inst.Fallen.AddRange(fallen.Select(f => f.Cell));
+        float wear = inst.Ruin.Wear, fire = inst.Ruin.Violence;
 
         var nav = inst.Nav();
         foreach (var m in inst.Layout.Modules)
@@ -389,21 +401,20 @@ public static partial class StateTransforms
             foreach (Int3 c in floor)
             {
                 bool sky = OpenToSky(g, c);
-                if (sky && rng.Chance(0.6f)) Put(inst, c, BlockType.Ash, Material.Ash, AshGrey, Role.Debris);
-                else if (sky && rng.Chance(0.35f)) Put(inst, c, BlockType.Plant, Material.Plant, Moss.Lerp(new Rgb(0x7a, 0x8a, 0x3a), rng.Float()), Role.Debris);
-                else if (!inst.Protected[c] && rng.Chance(0.06f)) Put(inst, c, BlockType.Rubble, Material.Rock, inst.Kit.Palette[0].Colors[0].Scale(0.7f), Role.Debris);
+                if (sky && rng.Chance(0.15f + 0.5f * fire)) Put(inst, c, BlockType.Ash, Material.Ash, AshGrey, Role.Debris);
+                else if (sky && rng.Chance(0.5f * wear)) Put(inst, c, BlockType.Plant, Material.Plant, Moss.Lerp(new Rgb(0x7a, 0x8a, 0x3a), rng.Float()), Role.Debris);
             }
         }
         // Moss on what's left of the roofs.
-        foreach (Int3 p in g.Cells())
+        foreach (var (p, _) in g.Blocks())
         {
             ref Block b = ref g.At(p);
-            if (b.Role is Role.Roof or Role.Wall && g.Get(p + Int3.Up).IsAir && Hash.Cell(new Int3(p.X >> 2, p.Y >> 2, p.Z >> 2), 103 + (uint)inst.SpawnSeed % 7) % 100 < 30)
+            if (b.Role is Role.Roof or Role.Wall && g.Get(p + Int3.Up).IsAir && Hash.Cell(new Int3(p.X >> 2, p.Y >> 2, p.Z >> 2), 103 + (uint)inst.SpawnSeed % 7) % 100 < 45 * wear)
                 b.Color = b.Color.Lerp(Moss, 0.55f);
         }
     }
 
-    static void Carve(PoiInstance inst, Rng rng, int target, float rMin, float rMax)
+    static void Carve(PoiInstance inst, Rng rng, int target, float rMin, float rMax, List<(Int3 Cell, Block Block)>? fallen = null)
     {
         var g = inst.Blocks;
         var candidates = new List<Int3>();
@@ -424,6 +435,7 @@ public static partial class StateTransforms
                 if (!Removable(inst, p)) continue;
                 float d = MathF.Sqrt((p.X - c.X) * (p.X - c.X) + (p.Y - c.Y) * (p.Y - c.Y) + (p.Z - c.Z) * (p.Z - c.Z));
                 if (!rng.Chance(0.95f - d / r * 0.35f)) continue;
+                fallen?.Add((p, g.Get(p)));
                 g.Set(p, Block.Air);
                 removed++;
             }
@@ -434,27 +446,30 @@ public static partial class StateTransforms
                 ref Block s = ref g.At(p);
                 if (s.IsAir || s.Role is not (Role.Wall or Role.Roof or Role.Floor)) continue;
                 float away = MathF.Sqrt((p.X - c.X) * (p.X - c.X) + (p.Y - c.Y) * (p.Y - c.Y) + (p.Z - c.Z) * (p.Z - c.Z));
-                s.Color = s.Color.Lerp(Soot, 0.5f * Math.Clamp((r + 1.2f - away) / 2.4f, 0f, 1f)); // a burn is a ring round the hole that fades outward, not speckle
+                s.Color = s.Color.Lerp(Soot, (0.12f + 0.6f * inst.Ruin.Violence) * Math.Clamp((r + 1.2f - away) / 2.4f, 0f, 1f)); // a burn is a ring round the hole that fades outward, not speckle
             }
         }
     }
 
-    /// <summary>Anything no longer joined to the ground falls and becomes rubble.</summary>
-    static void Collapse(PoiInstance inst, Rng rng)
+    /// <summary>Anything no longer joined to the ground falls and becomes rubble (or, given <paramref name="fallen"/>, joins what fell, to be laid with it).</summary>
+    static void Collapse(PoiInstance inst, Rng rng, List<(Int3 Cell, Block Block)>? fallen = null)
     {
         var g = inst.Blocks;
         var anchors = inst.Layout.Extras.InSpace ? LayoutCheck.StationAnchors(inst.Layout) : null;
         bool solid = inst.Extras.Plain.Count > 0;
         var floating = Structure.Floating(g, inst.Layout.Occupied, anchors, solid);
         var nav = new NavGrid(g, inst.Layout.Occupied, null, inst.Layout.Extras.InSpace);
+        var was = floating.Select(p => g.Get(p)).ToList();
         foreach (Int3 p in floating) g.Set(p, Block.Air);
-        foreach (Int3 p in floating)
+        for (int i = 0; i < floating.Count; i++)
         {
-            if (!rng.Chance(0.3f)) continue;
+            Int3 p = floating[i];
+            if (fallen != null) { if (was[i].Role != Role.Debris) fallen.Add((p, was[i])); continue; }
+            if (!rng.Chance(0.3f) || was[i].Role == Role.Debris) continue;
             Int3 c = p;
             while (c.Y > g.Min.Y && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
             if (g.Get(c).IsAir && !inst.Protected[c] && inst.Layout.Occupied[c] && !g.Get(c + Int3.Down).IsAir && (!solid || BlockInfo.Supports(g.Get(c + Int3.Down).Type)))
-                Put(inst, c, BlockType.Rubble, Material.Rock, g.Get(c + Int3.Down).Color.Scale(0.8f), Role.Debris);
+                g.Set(c, Debris.Of(was[i], Debris.KindOf(was[i])));
         }
         // Rubble can't hang either.
         foreach (Int3 p in Structure.Floating(g, inst.Layout.Occupied, anchors, solid)) g.Set(p, Block.Air);
@@ -483,7 +498,7 @@ public static partial class StateTransforms
         var rotten = new List<Int3>();
         foreach (var (p, b) in g.Blocks())
         {
-            if (b.Material != Material.Timber || b.Role is not (Role.Wall or Role.Roof) || p.Y < 0 || inst.Protected[p]) continue;
+            if (b.Material != Material.Timber || b.Role is not (Role.Wall or Role.Roof) || p.Y < 0 || inst.Protected[p] || Shapes.IsFence(b)) continue; // (a fence rots its own way: Fences.Decay)
             bool sheltered = false;
             for (int y = p.Y + 1; y <= Math.Min(g.Max.Y, p.Y + 8) && !sheltered; y++)
             {
@@ -502,12 +517,13 @@ public static partial class StateTransforms
         foreach (var m in inst.Layout.Modules)
             foreach (Int3 c in m.Cells)
             {
-                if (c.Y != m.Min.Y || Math.Abs(c.Y) > 1 || inst.Protected[c] || !g.Get(c).IsAir || !nav.Standable(c) || !OpenToSky(g, c)) continue;
+                // Through the ground floor's gaps; on an old enough ruin, on any storey open to the sky (a planter, a crack in a slab).
+                if (c.Y != m.Min.Y || Math.Abs(c.Y) > 1 && inst.Ruin.Wear < 0.6f || inst.Protected[c] || !g.Get(c).IsAir || !nav.Standable(c) || !OpenToSky(g, c)) continue;
                 bool clear = true;
                 foreach (Dir d in Dirs.Horizontal) clear &= !inst.Protected[c + d.Vec()];
                 if (clear) spots.Add(c);
             }
-        inst.GrowthWanted = Math.Min(spots.Count / 30 + (inst.State == PoiState.Ruined ? 3 : 1), 8);
+        inst.GrowthWanted = Math.Min((int)MathF.Round((spots.Count / 30 + (inst.State == PoiState.Ruined ? 3 : 1)) * (0.2f + inst.Ruin.Wear)), 8);
         rng.Shuffle(spots);
         foreach (Int3 root in spots)
         {
@@ -561,6 +577,57 @@ public static partial class StateTransforms
         inst.Blasted = strength;
     }
 
+    /// <summary>
+    /// A big blast's grading of what stood round it, column by column, by how hard it came down there
+    /// (<paramref name="strength"/> at a local cell column, 0..1; <see cref="Strike.Strength"/>): by the rim
+    /// only foundations, slabs and the stumps and bases of former towers; then stumps a storey or two tall;
+    /// then gutted shells, their roofs, upper floors and windows gone; past that what the plain blast
+    /// leaves standing. Run before <see cref="Blast"/>, which strips and burns what is left.
+    /// </summary>
+    public static void Flattened(PoiInstance inst, Func<int, int, float> strength)
+    {
+        var g = inst.Blocks;
+        var gone = new List<Int3>();
+        var columns = new Dictionary<(int, int), (float S, int Cap)>();
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (p.Y <= 0 || b.IsAir) continue;
+            if (!columns.TryGetValue((p.X, p.Z), out var col))
+            {
+                float s = strength(p.X, p.Z);
+                columns[(p.X, p.Z)] = col = (s, Cap(s, Hash.Cell(new Int3(p.X, 0, p.Z), 233)));
+            }
+            if (col.S < ShellFrom) continue;
+            if (p.Y > col.Cap) { gone.Add(p); continue; }
+            // A gutted shell: open to the sky, its upper floors fallen through, not a pane left.
+            uint h = Hash.Cell(p, 239);
+            if (b.Role is Role.Roof or Role.Window
+                || b.Role == Role.Floor && h % 100 < 100 * Math.Clamp((col.S - ShellFrom) / (StumpFrom - ShellFrom), 0f, 1f)) gone.Add(p);
+        }
+        foreach (Int3 p in gone) g.Set(p, Block.Air);
+        Structure.DropUntethered(g);
+    }
+
+    /// <summary>The strength from which a blast guts what it leaves standing, and from which it leaves only stumps.</summary>
+    public const float ShellFrom = 0.45f, StumpFrom = 0.6f;
+
+    /// <summary>The strength from which only slabs and the bases of towers are left: the ground by a big crater's rim.</summary>
+    public const float Rim = 0.85f;
+
+    /// <summary>
+    /// The tallest a column stands (cells above the ground floor) where a blast came down this hard: two
+    /// storeys or so where stumps begin, down to the slab by the rim; ragged column to column, and the odd
+    /// one a tower's base standing a little proud. No cap short of stumps.
+    /// </summary>
+    public static int Cap(float strength, uint hash)
+    {
+        if (strength < StumpFrom) return int.MaxValue;
+        float f = Math.Clamp((strength - StumpFrom) / (Rim - StumpFrom), 0f, 1f);
+        int cap = (int)MathF.Round(9f * (1f - f)) + (int)(hash % 2);
+        if (f >= 0.9f && hash % 100 < 12) cap += 2;
+        return cap;
+    }
+
     // ---- crash sites ------------------------------------------------------------------
 
     /// <summary>Baseline wreckage for crash sites: torn hull, scorch, and pieces strewn outside.</summary>
@@ -603,6 +670,8 @@ public static class Structure
         var loose = new List<Int3>();
         foreach (var (p, b) in g.Blocks())
         {
+            // Bars stand out of the face they are cast in: with the face gone, they go.
+            if (b.Type == BlockType.Rebar) { if (!BlockInfo.IsFullCube(g.Get(p + b.Facing.Vec()).Type)) loose.Add(p); continue; }
             if (!Hangs(b.Type)) continue;
             Int3 up = p + Int3.Up;
             while (Hangs(g.Get(up).Type)) up += Int3.Up;
@@ -618,6 +687,80 @@ public static class Structure
         var loose = Untethered(g);
         foreach (Int3 p in loose) g.Set(p, Block.Air);
         return loose.Count;
+    }
+
+    /// <summary>
+    /// The head of every stair or ramp cut down into the ground is a floor the place holds: where the
+    /// cell past a flight's top, at its top step's level, is the ground, it becomes a floor block (the
+    /// flight's own stuff) that the place draws and stands on. Left to the ground, the head is the cut's
+    /// edge, and the ground's surface rounds off into the cut there, falling away from the top step: the
+    /// step's edge stood proud of it, a lip at the head of every flight dug into the ground that stopped
+    /// a walker. Now floor and step meet flush, and the ground holds back inside the block as at any
+    /// outer wall (<see cref="OuterWall"/>). Returns how many were laid.
+    /// </summary>
+    public static int HeadFloors(Layout layout)
+    {
+        BlockGrid g = layout.Blocks;
+        CellMask occupied = layout.Occupied;
+        if (layout.Extras.InSpace) return 0;
+        var heads = new Dictionary<Int3, Block>();
+        foreach (var (c, b) in g.Blocks())
+        {
+            if (!BlockInfo.IsSlope(b.Type) || b.Facing is Dir.Up or Dir.Down) continue;
+            Int3 head = c + b.Facing.Vec();
+            // Ground there (below the ground's level, nothing built, not the place's open space), and the place's way on over it.
+            if (head.Y > Assembler.GroundY || !g.InBounds(head) || occupied[head] || !g.Get(head).IsAir) continue;
+            if (!occupied[head + Int3.Up] || BlockInfo.Collides(g.Get(head + Int3.Up).Type)) continue;
+            heads.TryAdd(head, new Block(BlockType.Cube, b.Material, b.Color.Scale(0.93f), Role.Floor));
+        }
+        foreach (var (head, floor) in heads)
+        {
+            g.Set(head, floor);
+            occupied[head] = true;
+        }
+        return heads.Count;
+    }
+
+    /// <summary>
+    /// Every ladder lies flat against a wall: each run of ladder up a column turns, as one, to the side
+    /// with the most wall along it (its back to the wall, Facing out), keeping the way it was drawn
+    /// when that side is as good as any. A ladder with nothing beside it (one standing free on a
+    /// gantry) stays as it was. However the place's plan turned it, it never stands side-on to its
+    /// wall or hangs out in the shaft. Returns how many runs turned.
+    /// </summary>
+    public static int LadderWalls(Layout layout)
+    {
+        BlockGrid g = layout.Blocks;
+        CellMask occupied = layout.Occupied;
+        bool Wall(Int3 c)
+        {
+            Block b = g.Get(c);
+            if (b.IsAir) return !layout.Extras.InSpace && c.Y <= Assembler.GroundY && !occupied[c];
+            return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Lattice or BlockType.Tank or BlockType.Machine or BlockType.SealedDoor or BlockType.Shelf or BlockType.Growth;
+        }
+        int turned = 0;
+        foreach (var (c, b) in g.Blocks().ToList())
+        {
+            if (b.Type != BlockType.Ladder || g.Get(c + Int3.Down).Type == BlockType.Ladder) continue; // each run from its foot
+            if (b.Role == Role.Decor) continue; // railings and gate leaves: bars along their line, not a ladder up a wall
+            var run = new List<Int3>();
+            for (Int3 p = c; g.Get(p).Type == BlockType.Ladder; p += Int3.Up) run.Add(p);
+            Dir back = (b.Facing is Dir.Up or Dir.Down ? Dir.South : b.Facing).Opposite();
+            int Along(Dir d) => run.Count(p => Wall(p + d.Vec()));
+            Dir best = back;
+            int most = Along(back);
+            foreach (Dir d in new[] { back.Opposite(), back.RotateCw(1), back.RotateCw(3) })
+                if (Along(d) > most) { best = d; most = Along(d); }
+            if (best == back && b.Facing is not (Dir.Up or Dir.Down)) continue;
+            foreach (Int3 p in run)
+            {
+                Block l = g.Get(p);
+                l.Facing = best.Opposite();
+                g.Set(p, l);
+            }
+            turned++;
+        }
+        return turned;
     }
 
     /// <summary>
@@ -651,7 +794,8 @@ public static class Structure
     /// ground level that touch rock count as grounded.
     /// </summary>
     /// <summary>Building fabric, which holds up what joins it. Rubble, furniture and weeds only rest on what is under them.</summary>
-    static bool Holds(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Ramp or BlockType.Stair or BlockType.Pillar or BlockType.Rib or BlockType.Lattice or BlockType.Pane or BlockType.Rail;
+    static bool Holds(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Pillar or BlockType.Rib or BlockType.Beam or BlockType.Lattice or BlockType.Pane or BlockType.Rail or BlockType.Pipe
+        || BlockInfo.IsShaped(t);
 
     /// <param name="solidOnly">Only fabric holds others up, and a thin thing (a floor plate, a weed) only rests on what is under it; a wall stub standing on a floor plate is still floating.</param>
     public static List<Int3> Floating(BlockGrid g, CellMask occupied, IReadOnlyCollection<Int3>? anchors = null, bool solidOnly = false)
@@ -686,10 +830,22 @@ public static class Structure
         foreach (var (p, b) in g.Blocks())
         {
             if (grounded[p]) continue;
-            // A thin thing rests on what is under it, a door hangs in the wall beside it.
-            if (solidOnly && !Holds(b.Type) && (nav.IsRock(p + Int3.Down) || grounded[p + Int3.Down] || b.Type == BlockType.Door && Dirs.Horizontal.Any(d => grounded[p + d.Vec()]))) continue;
+            // A thin thing rests on what is under it, a door hangs in the wall beside it, bars stand out of their face, a ladder is fixed to its wall or stands on its foot.
+            if (solidOnly && !Holds(b.Type) && (nav.IsRock(p + Int3.Down) || grounded[p + Int3.Down] || b.Type == BlockType.Door && Dirs.Horizontal.Any(d => grounded[p + d.Vec()])
+                || b.Type == BlockType.Rebar && grounded[p + b.Facing.Vec()] || b.Type == BlockType.Ladder && LadderHeld(p))) continue;
             floating.Add(p);
         }
         return floating;
+
+        // Anywhere down its run: the wall behind it, or the floor under its foot.
+        bool LadderHeld(Int3 p)
+        {
+            for (Int3 q = p; g.Get(q).Type == BlockType.Ladder; q += Int3.Down)
+            {
+                Int3 back = q - g.Get(q).Facing.Vec();
+                if (grounded[back] || nav.IsRock(back) || grounded[q + Int3.Down] || nav.IsRock(q + Int3.Down)) return true;
+            }
+            return false;
+        }
     }
 }

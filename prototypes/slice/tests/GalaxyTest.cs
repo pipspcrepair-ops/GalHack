@@ -157,15 +157,18 @@ public partial class GalaxyTest : Node
             int home = g.Home(want, spec.Seed, sky.Nebula);
             Star s = g.Stars[home];
             bool rim = new Vector2(s.Position.X, s.Position.Z).Length() >= Galaxy.RimFrom;
-            if (s.Kind != want || !rim || g.Neighbours(home).Count == 0)
+            // At the outer tip of an arm: on the rim and well inside the arm, not in the gap beside it (a nebula
+            // world may take its nebula on the rim instead, where no arm's tip holds one).
+            bool tip = g.ArmShare(s.Position) <= Galaxy.TipShare || sky.Nebula && s.Nebula >= 0;
+            if (s.Kind != want || !rim || !tip || g.Neighbours(home).Count == 0)
             {
-                Check(false, $"a home for {spec}: {s.Kind} wanted {want}, {g.Neighbours(home).Count} neighbours, rim {rim}");
+                Check(false, $"a home for {spec}: {s.Kind} wanted {want}, {g.Neighbours(home).Count} neighbours, rim {rim}, {g.ArmShare(s.Position):F2} of an arm's width off its line");
                 return;
             }
             if (sky.Nebula && (s.Nebula < 0 || g.Nebulae[s.Nebula].Kind == NebulaKind.Dark) && g.Stars.Any(c => c.Kind == want && c.Nebula >= 0 && new Vector2(c.Position.X, c.Position.Z).Length() >= Galaxy.RimFrom && g.Neighbours(c.Id).Count >= 4 && g.Nebulae[c.Nebula].Kind != NebulaKind.Dark))
                 Check(false, $"a nebula world's home is in a nebula ({spec})");
         }
-        Check(true, "40 random worlds: each home is a real star of the world's own class, on the rim, with neighbours");
+        Check(true, "40 random worlds: each home is a real star of the world's own class, at the outer tip of a spiral arm, with neighbours");
         foreach (StarKind k in new[] { StarKind.RedDwarf, StarKind.OrangeDwarf, StarKind.YellowDwarf, StarKind.WhiteStar, StarKind.BlueGiant })
             Check(g.Stars[g.Home(k, 77, false)].Kind == k, $"a {k} home exists");
     }

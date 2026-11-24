@@ -1,0 +1,673 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Godot;
+
+namespace Wildlife;
+
+/// <summary>One shared material per species: its pattern, accent and glow.</summary>
+public static class CreatureMaterials
+{
+    static Shader _shader;
+    static StandardMaterial3D _blur;
+    static readonly ConditionalWeakTable<Species, ShaderMaterial> Cache = new();
+
+    public static Shader Shader => _shader ??= DataFiles.Shader("creature.gdshader");
+
+    public static ShaderMaterial For(Species s) => Cache.GetValue(s, sp =>
+    {
+        var m = new ShaderMaterial { Shader = Shader };
+        m.SetShaderParameter("accent", sp.Colors.Accent);
+        m.SetShaderParameter("glow_color", sp.Colors.Glow);
+        m.SetShaderParameter("glow_strength", sp.Colors.GlowStrength > 0f ? 0.6f + sp.Colors.GlowStrength : 0f);
+        m.SetShaderParameter("glow_tint", 1f);
+        m.SetShaderParameter("pattern", (int)sp.Colors.Pattern);
+        float width = sp.Rig == RigKind.Swarm ? sp.Body.Size : MathF.Max(0.2f, sp.Body.Width);
+        m.SetShaderParameter("pattern_freq", sp.Colors.PatternScale * 2.2f / width);
+        m.SetShaderParameter("veins_glow", sp.Corrupted ? 1f : 0f);
+        m.SetShaderParameter("roughness_value", sp.Form == "boulder" ? 0.95f : 0.7f);
+        // Pebbled hide at a scale that suits the animal: fine on a critter, coarse on a giant.
+        m.SetShaderParameter("detail_freq", 48f / MathF.Sqrt(MathF.Max(0.3f, sp.Body.Size)));
+        m.SetShaderParameter("detail_strength", sp.Rig == RigKind.Swarm ? 0f : 0.1f);
+        // A Husk's worms reach about a third of their own length either way.
+        if (sp.Husk) m.SetShaderParameter("worm_scale", WormSway(sp));
+        return m;
+    });
+
+    /// <summary>How far a Husk's worm tips sway, m, by the size of its head (a beast's by its width, as its worms are, <see cref="Husks.Decorate"/>).</summary>
+    public static float WormSway(Species s) => (s.Figure?.HeadRadius ?? s.Body.Width * 0.25f) * 0.55f;
+
+    /// <summary>The soft see-through fan of a wing beating too fast to see. Its colour and strength come from the mesh's vertices.</summary>
+    public static StandardMaterial3D Blur => _blur ??= new StandardMaterial3D
+    {
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        VertexColorUseAsAlbedo = true,
+        CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        Roughness = 0.6f,
+        DisableReceiveShadows = true,
+    };
+
+    static ShaderMaterial _clothed;
+
+    /// <summary>The one material every person shares: their colours are in their meshes.</summary>
+    public static ShaderMaterial Clothed => _clothed ??= MakeClothed();
+
+    static ShaderMaterial MakeClothed()
+    {
+        var m = new ShaderMaterial { Shader = Shader };
+        m.SetShaderParameter("glow_strength", 0.6f);
+        m.SetShaderParameter("glow_tint", 0f);
+        m.SetShaderParameter("pattern", 0);
+        m.SetShaderParameter("roughness_value", 0.82f);
+        m.SetShaderParameter("detail_freq", 90f);
+        m.SetShaderParameter("detail_strength", 0.05f);
+        m.SetShaderParameter("rim_strength", 0.45f);
+        m.SetShaderParameter("far_lift", 0.28f);
+        m.SetShaderParameter("worm_scale", 0.065f); // only a Husk has worms to sway
+        return m;
+    }
+
+    /// <summary>Drops the shared materials and shader on the main thread (at shutdown).</summary>
+    public static void Release()
+    {
+        var materials = new List<ShaderMaterial>();
+        foreach (var (_, material) in (IEnumerable<KeyValuePair<Species, ShaderMaterial>>)Cache) materials.Add(material);
+        Cache.Clear();
+        foreach (ShaderMaterial material in materials) material.Dispose();
+        _shader?.Dispose();
+        _shader = null;
+        _blur?.Dispose();
+        _blur = null;
+        _clothed?.Dispose();
+        _clothed = null;
+        ProceduralAudio.ReleaseHum();
+    }
+
+    /// <summary>A plain vertex-colour material for plants and props, glowing in their own colours.</summary>
+    public static ShaderMaterial Plain(float glow)
+    {
+        var m = new ShaderMaterial { Shader = Shader };
+        m.SetShaderParameter("glow_strength", glow);
+        m.SetShaderParameter("glow_tint", 0f);
+        m.SetShaderParameter("pattern", 0);
+        m.SetShaderParameter("roughness_value", 0.85f);
+        return m;
+    }
+}
+
+/// <summary>
+/// Draws one creature: its rig's pieces as one skinned body (a mesh for its solid pieces that cast
+/// shadows, one for those that don't, one for its blurs), each piece a bone posed straight from the rig;
+/// its small parts drop out by size on screen through the mesh's levels of detail, as a person's do.
+/// (The old way, a mesh per rig piece, stays behind <see cref="Merged"/> for measuring.) Posed from the rig every physics tick
+/// (physics interpolation smooths it on fast screens). Pieces are direct children of a node at
+/// the origin, so a pose is just a local transform. Swarms are one MultiMesh.
+/// </summary>
+public partial class CreatureView : Node3D
+{
+    public Creature Creature { get; private set; }
+
+    /// <summary>How much of it shows (0..1) as the view last faded it, and how far it has come in since it was built (WildlifeView.Fader).</summary>
+    public float Shows = 1f, Arrived = 1f;
+
+    /// <summary>A body as a few skinned meshes rather than a node per piece (one draw a material, and nothing to move but the bones).</summary>
+    public static bool Merged = true;
+
+    /// <summary>Each species' body meshes, made once: its shadowed, unshadowed and blur pieces.</summary>
+    static readonly ConditionalWeakTable<Species, List<(ArrayMesh Mesh, bool Shadow, bool Blur)>> Bodies = new();
+
+    /// <summary>The meshes drawn: the skinned body's few, or (not merged) one a piece; and those of them that cast shadows.</summary>
+    readonly List<MeshInstance3D> _parts = new(), _casters = new();
+    bool _casting = true;
+
+    /// <summary>Casts its shadow only out to where the shadow is worth drawing: 60 m, and 40 m more for each metre of it (a critter's near, a giant's far).</summary>
+    public void ShadowsAt(float distance)
+    {
+        bool cast = distance < 60f + 40f * Creature.Species.Body.Size;
+        if (cast == _casting) return;
+        _casting = cast;
+        foreach (MeshInstance3D m in _casters) m.CastShadow = cast ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off;
+    }
+    Skeleton3D _skeleton;
+    Dictionary<string, BoneAttachment3D> _attached;
+    MultiMeshInstance3D _swarm;
+    float _hurtShown, _wakeShown;
+    AudioStreamPlayer3D _hum;
+    /// <summary>How near the listener has to be for a hoverer's hum to play at all, m.</summary>
+    const float HumReach = 24f;
+
+    public int NodeCount => _swarm != null ? 1 : _parts.Count;
+
+    /// <summary>The node a rig piece is drawn on (it follows the piece wherever the rig puts it), or null: what a game hangs a held weapon on.</summary>
+    public Node3D Part(string piece)
+    {
+        if (Creature?.Rig == null) return null;
+        int i = Creature.Rig.Layout.Pieces.FindIndex(p => p.Name == piece);
+        if (i < 0) return null;
+        if (_skeleton == null) return i < _parts.Count ? _parts[i] : null;
+        _attached ??= new Dictionary<string, BoneAttachment3D>();
+        if (!_attached.TryGetValue(piece, out BoneAttachment3D at))
+        {
+            _attached[piece] = at = new BoneAttachment3D { Name = piece, BoneIdx = i };
+            _skeleton.AddChild(at);
+        }
+        return at;
+    }
+
+    public void Build(Creature c)
+    {
+        Creature = c;
+        Name = $"Creature{c.Id}";
+        ShaderMaterial material = CreatureMaterials.For(c.Species);
+        float range = c.Species.Plan == BodyPlan.Giant ? 600f : c.Species.Body.Size < 0.8f ? 110f : 220f;
+        if (c.Species.InSpace) range = MathF.Max(400f, c.Species.Body.Size * 45f); // nothing hides a leviathan in open space
+        if (c.Species.Importance != Importance.Ambient || WildlifeView.Field(c)) range = 0f; // drawn wherever the game shows them (a fight is seen far)
+
+        if (c.Rig is SwarmRig swarm)
+        {
+            var mm = new MultiMesh
+            {
+                TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+                Mesh = MeshBuilder.For(c.Rig.Layout.Pieces[0]),
+                InstanceCount = swarm.Members.Length,
+            };
+            _swarm = new MultiMeshInstance3D
+            {
+                Multimesh = mm,
+                MaterialOverride = material,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                VisibilityRangeEnd = range,
+            };
+            AddChild(_swarm);
+        }
+        else if (Merged)
+        {
+            var pieces = c.Rig.Layout.Pieces;
+            _skeleton = new Skeleton3D { Name = "Bones" };
+            var skin = new Skin();
+            for (int i = 0; i < pieces.Count; i++)
+            {
+                // (A second head, paired horns: pieces share names, a skeleton's bones can't.)
+                string bone = pieces[i].Name;
+                _skeleton.AddBone(_skeleton.FindBone(bone) >= 0 ? $"{bone}#{i}" : bone);
+                skin.AddBind(i, Transform3D.Identity);
+            }
+            AddChild(_skeleton);
+            _skeleton.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // eased by Glide
+            foreach (var (mesh, shadow, blur) in Bodies.GetValue(c.Species, s => BodyMeshes(s, pieces)))
+            {
+                var mi = new MeshInstance3D
+                {
+                    Mesh = mesh, Skin = skin, MaterialOverride = blur ? CreatureMaterials.Blur : material, VisibilityRangeEnd = range,
+                    CastShadow = shadow ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+                };
+                _skeleton.AddChild(mi);
+                mi.Skeleton = new NodePath("..");
+                _parts.Add(mi);
+                if (shadow) _casters.Add(mi);
+            }
+        }
+        else
+        {
+            foreach (Piece piece in c.Rig.Layout.Pieces)
+            {
+                Mesh mesh = MeshBuilder.For(piece);
+                var mi = new MeshInstance3D
+                {
+                    Mesh = mesh,
+                    MaterialOverride = piece.Blur ? CreatureMaterials.Blur : material,
+                    CastShadow = piece.Shadow ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+                    // The small pieces go first: a body keeps its shape from afar and draws a fraction of the meshes.
+                    VisibilityRangeEnd = MathF.Min(range, 36f + 160f * mesh.GetAabb().GetLongestAxisSize()),
+                };
+                AddChild(mi);
+                _parts.Add(mi);
+                if (piece.Shadow) _casters.Add(mi);
+            }
+            if (c.Species.Flight == FlightKind.Hover)
+            {
+                _hum = new AudioStreamPlayer3D
+                {
+                    Stream = ProceduralAudio.Hum,
+                    UnitSize = 1.4f,
+                    MaxDistance = HumReach,
+                    VolumeDb = -9f,
+                    PitchScale = Math.Clamp(0.34f / c.Species.Body.Size, 0.8f, 1.4f) * (0.96f + 0.08f * (c.Id % 5) / 4f),
+                    Bus = "Master",
+                };
+                AddChild(_hum);
+            }
+        }
+        Sync();
+        ResetPhysicsInterpolation();
+        foreach (var p in _parts) p.ResetPhysicsInterpolation();
+    }
+
+    /// <summary>A body's meshes: its solid pieces that cast shadows, those that don't, and its blurs, each piece on its own bone; small parts drop out by size on screen as a person's do.</summary>
+    static List<(ArrayMesh, bool, bool)> BodyMeshes(Species s, IReadOnlyList<Piece> pieces)
+    {
+        var meshes = new List<(ArrayMesh, bool, bool)>();
+        foreach (var (body, shadow, blur) in Preparing.TryRemove(s, out var job) ? job.Result : Prepare(pieces))
+        {
+            ArrayMesh m = body.Commit();
+            if (m.GetSurfaceCount() > 0) meshes.Add((m, shadow, blur));
+        }
+        return meshes;
+    }
+
+    /// <summary>The vertex work of a species' body (no engine calls): on a worker, started the first time one of its kind is near enough to be drawn.</summary>
+    static List<(MeshBuilder.Prepared, bool, bool)> Prepare(IReadOnlyList<Piece> pieces)
+    {
+        var bodies = new List<(MeshBuilder.Prepared, bool, bool)>();
+        foreach (var (shadow, blur) in new[] { (true, false), (false, false), (false, true) })
+            bodies.Add((MeshBuilder.Skinning(pieces, PersonView.Keep, PersonView.Edges, p => p.Blur == blur && (blur || p.Shadow == shadow)), shadow, blur));
+        return bodies;
+    }
+
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<Species, System.Threading.Tasks.Task<List<(MeshBuilder.Prepared, bool, bool)>>> Preparing = new();
+
+    /// <summary>
+    /// Whether a creature's body can be built now without its species' vertex work on the main thread (a few ms the first
+    /// time a kind is seen): false starts that work on a worker, and a view waits a frame or two for it.
+    /// </summary>
+    public static bool Ready(Creature c)
+    {
+        if (!Merged || c.Rig == null || c.Rig is SwarmRig || Bodies.TryGetValue(c.Species, out _)) return true;
+        IReadOnlyList<Piece> pieces = c.Rig.Layout.Pieces;
+        return Preparing.GetOrAdd(c.Species, _ => System.Threading.Tasks.Task.Run(() => Prepare(pieces))).IsCompleted;
+    }
+
+    /// <summary>A hoverer's hum runs while it is up and someone is near enough to hear; nothing plays for the rest.</summary>
+    public void Listen(float distance)
+    {
+        if (_hum == null) return;
+        Creature c = Creature;
+        bool humming = !c.Landed && !c.Dead && distance < HumReach && c.Space == null; // inside a place nothing makes a constant noise
+        if (humming) _hum.GlobalPosition = c.Position;
+        if (humming != _hum.Playing)
+        {
+            if (humming) _hum.Play();
+            else _hum.Stop();
+        }
+    }
+
+    /// <summary>Whether one creature's built meshes fit another's rig: the same species (a person is a species of one).</summary>
+    public static bool SameBody(Creature a, Creature b) => a != null && b != null && ReferenceEquals(a.Species, b.Species);
+
+    /// <summary>The same body for a creature carried into a new sim: its meshes stay, so nothing is built or freed. False if it isn't the same body.</summary>
+    public bool Rebind(Creature c)
+    {
+        // Only its own body: another of its kind (another person, the other sex) has other proportions,
+        // and its meshes on this rig would leave gaps at every joint.
+        if (_swarm != null || !SameBody(Creature, c) || c.Rig.Layout.Pieces.Count != (_skeleton?.GetBoneCount() ?? _parts.Count)) return false;
+        Creature = c;
+        _smooth.Cut();
+        _blend.Reset();
+        Sync();
+        ResetPhysicsInterpolation();
+        foreach (var p in _parts) p.ResetPhysicsInterpolation();
+        return true;
+    }
+
+    /// <summary>Where the creature stood when its pose was last put on the meshes (tests: what you see is where it is).</summary>
+    public Vector3 DrawnAt { get; private set; }
+
+    /// <summary>Copies the rig's pose onto the meshes.</summary>
+    public void Sync()
+    {
+        Creature c = Creature;
+        DrawnAt = c.Position;
+        if (_swarm != null)
+        {
+            var swarm = (SwarmRig)c.Rig;
+            MultiMesh mm = _swarm.Multimesh;
+            mm.VisibleInstanceCount = swarm.Alive;
+            for (int i = 0; i < swarm.Alive; i++) mm.SetInstanceTransform(i, new Transform3D(swarm.MemberBasis(i), swarm.Members[i]));
+            return;
+        }
+
+        Transform3D[] live = c.Rig.Pose;
+        Transform3D jolt = Jolt(c);
+        if (!c.Tumble.IsEqualApprox(Quaternion.Identity))
+        {
+            // Thrown or downed: the whole body turned about its middle, whatever its rig does.
+            Vector3 middle = c.Position + Vector3.Up * c.Species.Body.Height * 0.5f;
+            jolt = new Transform3D(new Basis(c.Tumble), middle) * new Transform3D(Basis.Identity, -middle) * jolt;
+        }
+        _jolt = jolt;
+        // Root and pose eased from the last one drawn (DrawSmoother, PoseBlend): the rig's steps never show as jumps.
+        double now = DrawSmoother.Clock();
+        _smooth.Note(c.Position, c.Yaw, c.Velocity.Length(), now);
+        float span = c.RigInterval >= 4 && now - _synced < 0.4 ? (float)(now - _synced) : 0f;
+        _synced = now;
+        _root = new Transform3D(new Basis(Vector3.Up, c.Yaw), c.Position);
+        Transform3D[] pose = _blend.Frame(live, _root, PoseKey(c), span, MathF.Max(0.3f, c.Species.Body.Size), now);
+        if (_skeleton != null)
+        {
+            // A body posed every frame has the easing in its bones (no move of the whole skeleton node, which costs far more);
+            // one posed less often has it on the node, which moves every frame between its poses (Glide).
+            bool bake = _baked = c.RigInterval <= 1;
+            Place(now, bake);
+            Transform3D ease = bake ? _smooth.Placement(now) : Transform3D.Identity;
+            if (ease == Transform3D.Identity) for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+            else for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, ease * pose[i]);
+        }
+        else for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = jolt * pose[i];
+
+        // Only touch the per-instance hurt flash when it changes.
+        float hurt = MathF.Round(c.HurtFlash * 10f) / 10f;
+        if (MathF.Abs(hurt - _hurtShown) > 0.01f)
+        {
+            _hurtShown = hurt;
+            foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("hurt", hurt);
+        }
+        // A lurker's eyes opening in the dark.
+        float wake = MathF.Round(c.Wake * 10f) / 10f;
+        if (MathF.Abs(wake - _wakeShown) > 0.01f)
+        {
+            _wakeShown = wake;
+            foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("wake", wake);
+        }
+        // A Husk's worms reaching for whatever moves near (only its head has any).
+        float stir = MathF.Round(c.Stir * 10f) / 10f;
+        if (MathF.Abs(stir - _stirShown) > 0.01f)
+        {
+            _stirShown = stir;
+            foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("worm_stir", stir);
+        }
+    }
+
+    readonly DrawSmoother _smooth = new();
+    readonly PoseBlend _blend = new();
+    Transform3D _jolt, _root, _put = Transform3D.Identity;
+    double _synced, _wrote;
+    bool _baked;
+
+    /// <summary>What it is doing, as far as its pose is concerned: a change of this blends the pose over <see cref="PoseBlend.Switch"/>.</summary>
+    static int PoseKey(Creature c) =>
+        (int)c.State | (int)c.Phase << 5 | (c.Dead ? 1 : 0) << 8 | (c.Landed ? 1 : 0) << 9 | (c.Flapping ? 1 : 0) << 10 | (c.Thrown ? 1 : 0) << 11
+        | (c.Downed > 0f ? 1 : 0) << 12 | (int)c.Act << 13 | (c.Climbing ? 1 : 0) << 20 | (c.Falling ? 1 : 0) << 21;
+
+    void Place(double now, bool bake)
+    {
+        Transform3D put = bake ? _jolt : _smooth.Placement(now) * _jolt;
+        if (put == _put) return;
+        _put = put;
+        _skeleton.Transform = put;
+    }
+
+    /// <summary>Where it is drawn now, with the easing of its root (tests); the sim's position when nothing is easing.</summary>
+    public Vector3 DrawnRoot => _skeleton == null ? DrawnAt : _smooth.Placement(DrawSmoother.Clock()) * DrawnAt;
+
+    /// <summary>How far the drawn root is from the sim's (tests).</summary>
+    public Vector4 Eased => _smooth.Offset(DrawSmoother.Clock());
+
+    /// <summary>The root its pose was last made about: position and heading as of the rig's last update (tests).</summary>
+    public Transform3D PoseRoot => _root;
+
+    /// <summary>The same, as drawn: eased from the sim's (tests).</summary>
+    public Transform3D DrawnPoseRoot => _baked ? _smooth.Placement(DrawSmoother.Clock()) * _root : _root;
+
+    /// <summary>A piece's pose as drawn (tests).</summary>
+    public Transform3D DrawnBone(int i) => _skeleton.GetBonePose(i);
+
+    /// <summary>The heading it is drawn at, rad (tests).</summary>
+    public float DrawnYaw => _smooth.Yaw + _smooth.Offset(DrawSmoother.Clock()).W;
+
+    /// <summary>Every frame: the root eases on towards the sim's, and a pose still blending is posed again a step on.</summary>
+    public void Glide()
+    {
+        if (_skeleton == null) return;
+        double now = DrawSmoother.Clock();
+        // (A blend between a far rig's updates is posed 30 times a second: it is small and far.)
+        if (_blend.Active(now) && now - _wrote >= 1.0 / 30.0)
+        {
+            _wrote = now;
+            Transform3D[] pose = _blend.Apply(Creature.Rig.Pose, _root, now);
+            for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+        }
+        if (_smooth.Easing(now) || _put != _jolt) Place(now, false);
+    }
+
+    float _stirShown;
+    int _hitSeen;
+    float _hitAt = -9f;
+
+    /// <summary>
+    /// An animal struck: its whole body knocked away from the hit about its feet, at once and gone in
+    /// half a second, the bigger the less (a person's rig shows its own, part by part).
+    /// </summary>
+    Transform3D Jolt(Creature c)
+    {
+        if (c.HitSerial != _hitSeen)
+        {
+            _hitSeen = c.HitSerial;
+            _hitAt = c.Age;
+        }
+        float a = c.Age - _hitAt;
+        if (a > 0.6f || c.Rig is HumanRig || c.HitDir.LengthSquared() < 1e-4f) return Transform3D.Identity;
+        float e = a / 0.07f * MathF.Exp(1f - a / 0.07f);
+        Vector3 axis = Vector3.Up.Cross(c.HitDir);
+        if (axis.LengthSquared() < 1e-4f) return Transform3D.Identity;
+        float size = MathF.Max(0.3f, c.Species.Body.Size);
+        var tilt = new Transform3D(new Basis(axis.Normalized(), 0.3f * e * (0.5f + c.HitHeavy) / MathF.Sqrt(size)), c.Position) * new Transform3D(Basis.Identity, -c.Position);
+        return tilt.Translated(c.HitDir * 0.08f * e * MathF.Sqrt(size));
+    }
+}
+
+/// <summary>
+/// Keeps a CreatureView for every creature in the simulation: creates views for newcomers,
+/// frees views of the removed, and syncs poses. Distant creatures re-pose less often (their
+/// rigs update every few frames) and very distant ones are hidden, which is most of what keeps
+/// a planet full of animals cheap on a low-end PC.
+/// </summary>
+public partial class WildlifeView : Node3D
+{
+    WildSim _sim;
+    readonly Dictionary<Creature, CreatureView> _views = new();
+    readonly List<Creature> _gone = new();
+
+    public float NearDistance = 60f, MidDistance = 120f, FarDistance = 220f;
+
+    /// <summary>
+    /// The harmless (<see cref="Importance.Ambient"/>) are drawn to here, m, and of those near and in sight only the nearest
+    /// <see cref="AmbientBudget"/> are stepped: a land's grazers and scavengers cost the frame what a few do. A threat past the
+    /// far distance sleeps where it is (<see cref="ThreatsSleep"/>). Left as they are, every creature is about and drawn as before.
+    /// </summary>
+    public float AmbientDistance = float.PositiveInfinity;
+    public int AmbientBudget = int.MaxValue;
+    public bool ThreatsSleep;
+    /// <summary>Within this of the eye one is about whichever way you look (you hear it), m.</summary>
+    const float AmbientAround = 20f;
+    /// <summary>Whether a point (the sim's frame) is in the eye's view; left out, everything is.</summary>
+    public System.Func<Vector3, bool> InView;
+    readonly List<(Creature C, float D)> _ambient = new();
+    readonly HashSet<Creature> _awake = new();
+
+    /// <summary>
+    /// Far off, how far up a creature's body is drawn from where the sim has it, m: the game's far land
+    /// is a coarser mesh than the sim's ground, and a body stands on what is drawn under it, never over
+    /// or in it. Left out, or nearer than <see cref="LiftFrom"/>, nothing moves.
+    /// </summary>
+    public System.Func<Creature, float> Lift;
+    public float LiftFrom = 200f;
+    /// <summary>Where heavy footfalls are heard; left out, they aren't.</summary>
+    public ProceduralAudio Audio;
+    /// <summary>The lightest thing heard walking from any way off, kg, and how far.</summary>
+    const float HeavyStep = 180f, StepHeard = 45f;
+
+    public int NodeCount
+    {
+        get
+        {
+            int n = 0;
+            foreach (var v in _views.Values) n += v.NodeCount;
+            return n;
+        }
+    }
+
+    public int ViewCount => _views.Count;
+
+    /// <summary>Bodies drawn at the last sync (measurements).</summary>
+    public int DrawnCount { get; private set; }
+
+    /// <summary>Whether a creature's body is drawn now (tests).</summary>
+    public bool Drawn(Creature c) => _views.TryGetValue(c, out CreatureView v) && v.Visible;
+
+    /// <summary>How far up a creature's body is drawn from where the sim has it (<see cref="Lift"/>), m (tests).</summary>
+    public float DrawnLift(Creature c) => _views.TryGetValue(c, out CreatureView v) ? v.Position.Y : 0f;
+
+    /// <summary>The most new bodies built in a frame (a whole herd coming into view is spread over a few).</summary>
+    public int MostNew = int.MaxValue;
+
+    /// <summary>A creature's body came into view or went (built in view, or crossing the far distance), how far off, and how much of it showed or went in that frame (measurements).</summary>
+    public System.Action<Creature, float, bool, float> Shown;
+
+    /// <summary>
+    /// Shows part of a body (0..1) through a dissolve, and 1 all of it again: the game's fade (left
+    /// out, bodies show or go whole). With it, a body dissolves in over <see cref="ArriveSeconds"/>
+    /// once built and out over the last <see cref="FadeBand"/> metres before the far distance.
+    /// </summary>
+    public System.Action<Node, float> Fader;
+    const float ArriveSeconds = 0.6f, FadeBand = 30f, MostFadeStep = 0.08f;
+    double _lastSync = -1;
+
+    /// <summary>Takes up a new sim. Creatures carried into it from the last (old to new) keep their bodies.</summary>
+    public void Bind(WildSim sim, Node unused, IReadOnlyDictionary<Creature, Creature> carried = null)
+    {
+        if (carried != null)
+        {
+            var kept = new List<(Creature, CreatureView)>();
+            foreach (var (c, v) in _views)
+            {
+                if (carried.TryGetValue(c, out Creature next) && v.Rebind(next)) kept.Add((next, v));
+                else v.QueueFree();
+            }
+            _views.Clear();
+            foreach (var (c, v) in kept) _views[c] = v;
+        }
+        else Clear();
+        _sim = sim;
+    }
+
+    public void Clear()
+    {
+        foreach (var v in _views.Values) v.QueueFree();
+        _views.Clear();
+    }
+
+    public CreatureView ViewOf(Creature c) => _views.GetValueOrDefault(c);
+
+    public void Sync(Vector3 camera)
+    {
+        if (_sim == null) return;
+        int built = 0;
+        double now = Time.GetTicksMsec() / 1000.0;
+        float dt = _lastSync < 0 ? 0f : (float)Math.Min(now - _lastSync, 0.1);
+        _lastSync = now;
+        DrawnCount = 0;
+        _frame++;
+        foreach (Creature c in _sim.Creatures)
+        {
+            if (c.Removed) continue;
+            float d = WildSim.Flat(c.Position - camera).Length();
+            Importance rank = c.Species.Importance;
+            float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
+            if (rank == Importance.Ambient)
+            {
+                // The harmless, near and in sight: the nearest of them (last frame's pick) are stepped and drawn, the rest in
+                // sight dissolve away; out of sight they hold still as they are. Past their distance none is drawn.
+                bool candidate = d < AmbientDistance && (d < AmbientAround || InView?.Invoke(c.Position + Vector3.Up) != false);
+                if (candidate) _ambient.Add((c, d));
+                bool awake = Stirred(c) || candidate && _awake.Contains(c);
+                c.Dormant = !awake;
+                far = awake || !candidate ? MathF.Min(far, AmbientDistance) : 0f;
+            }
+            // A threat sleeps past where it is drawn, unless something has it up; people are always about.
+            else c.Dormant = ThreatsSleep && rank == Importance.Threat && d > far && !Stirred(c);
+            // Past the near ring (unless it is in a fight) nothing casts a line through the world's collision for it; the harmless never do.
+            c.NoRays = rank == Importance.Ambient || d > NearDistance && !Stirred(c);
+            // People and machines, and a danger shot at lately, are drawn out to wherever the patch has them: a fight is seen and heard far further than life is drawn.
+            float shown = Field(c) || FieldDrawn && rank != Importance.Ambient && c.ProvokedBy != null && _sim.Time - c.ProvokedAt < 10f ? float.PositiveInfinity : far;
+            bool fresh = false;
+            if (!_views.TryGetValue(c, out CreatureView view))
+            {
+                c.Shown = false;
+                if (d >= shown || built >= MostNew || !CreatureView.Ready(c)) continue;
+                built++;
+                fresh = true;
+                view = new CreatureView();
+                AddChild(view);
+                view.Build(c);
+                _views[c] = view;
+            }
+
+            c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
+            c.ThinkScale = d < MidDistance || Stirred(c) ? 1f : d < far ? 2f : 3f;
+            bool visible = d < shown;
+            float shows = visible ? 1f : 0f, was = view.Shows;
+            if (Fader != null)
+            {
+                // Built in sight: it dissolves in. Near the far distance: it dissolves out by distance.
+                if (fresh) view.Arrived = visible ? 0f : 1f;
+                else if (view.Arrived < 1f) view.Arrived = Math.Min(1f, view.Arrived + dt / ArriveSeconds);
+                shows = Math.Min(Math.Clamp((shown - d) / FadeBand, 0f, 1f), view.Arrived);
+                // Never more than a step of the dissolve a frame, however long the frame or fast the eye
+                // (a flyer crosses the fade band in a few frames): it always takes a dozen frames or so.
+                if (!fresh) shows = Math.Clamp(shows, was - MostFadeStep, was + MostFadeStep);
+                visible = shows > 0f;
+                if (visible && (shows != view.Shows || fresh)) Fader(view, shows);
+                view.Shows = shows;
+            }
+            if (fresh ? visible : view.Visible != visible) Shown?.Invoke(c, d, visible, visible ? shows : Fader != null ? was : 1f);
+            if (view.Visible != visible) view.Visible = visible;
+            c.Shown = visible;
+            if (visible) DrawnCount++;
+            // Posed as the rig is near, and so is one fighting or taking aim (its shots leave the muzzle drawn); a few times a second
+            // past the middle distance, and past the far distance held, re-posed twice a second.
+            bool posed = d < MidDistance || c.Attacking || c.WantAim > 0f;
+            if (visible && (posed ? c.RigInterval == 1 || c.RigPending == 0f : (_frame + c.Id) % (d < far ? MidEvery : FarEvery) == 0))
+            {
+                view.Sync();
+                float lift = Lift != null && d > LiftFrom ? Lift(c) : 0f;
+                if (MathF.Abs(view.Position.Y - lift) > 0.01f) view.Position = new Vector3(0f, lift, 0f);
+            }
+            else if (visible && d < far) view.Glide(); // (held past the far distance: nothing eases between its poses, it's a few pixels tall)
+            view.Listen(d);
+            view.ShadowsAt(d);
+            if (Audio != null && d < StepHeard && c.Rig.Steps != c.StepsHeard)
+            {
+                c.StepsHeard = c.Rig.Steps;
+                if (Heft.Mass(c.Species) >= HeavyStep) Audio.Footfall(c);
+            }
+        }
+
+        // Next frame's harmless at large: the nearest few of those near and in sight.
+        _awake.Clear();
+        _ambient.Sort(static (a, b) => a.D.CompareTo(b.D));
+        for (int i = 0; i < _ambient.Count && i < AmbientBudget; i++) _awake.Add(_ambient[i].C);
+        _ambient.Clear();
+
+        _gone.Clear();
+        foreach (var (c, v) in _views)
+            if (c.Removed)
+            {
+                v.QueueFree();
+                _gone.Add(c);
+            }
+        foreach (Creature c in _gone) _views.Remove(c);
+    }
+
+    /// <summary>People and machines (anyone who fights as people do): drawn at every distance, as far as the patch has them.</summary>
+    public static bool Field(Creature c) => FieldDrawn && (c.Species.Importance == Importance.Person || Arming.Fights(c.Species));
+
+    /// <summary>Measurements: off, people and machines are drawn as far as other life (the old way, for an A/B).</summary>
+    public static bool FieldDrawn = true;
+
+    /// <summary>Frames between poses past the middle distance and past the far distance.</summary>
+    const int MidEvery = 8, FarEvery = 30;
+    int _frame;
+
+    /// <summary>Stirred up (fighting, wary, hurt lately, held, thrown), falling, or in the water till it is out (never left on its bed): awake and drawn wherever it is.</summary>
+    bool Stirred(Creature c) => c.Attacking || c.Alert > 0f || c.HeldBy != null || c.Holding != null || c.Thrown || c.Falling || c.ShorewardReach > 0f || c.ProvokedBy != null && _sim.Time - c.ProvokedAt < 10f;
+}

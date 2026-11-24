@@ -40,7 +40,31 @@ public static class InfraViews
                 return Look(w, vx, vz, eye, px, pz, target);
             }, 0.4, WeatherKind.Clear);
         }
-        bool town = what is "town" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
+        if (what == "roads")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: RoadSeries);
+        }
+        // The tracks and dirt roads, close and from the air; "ways-wet" the same after rain (clear sky, wet ground).
+        if (what is "ways" or "ways-wet")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Ground: what == "ways-wet" ? new GroundCover { Wetness = 0.75f } : null, Series: WaySeries);
+        }
+        // Where a track leaves a road (and a road with its markings): from standing height and from 30 m up.
+        if (what == "junction")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: JunctionSeries);
+        }
+        // The grid: a substation and its lines, a house's drop close, and a street of drops from above.
+        if (what == "power")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: PowerSeries);
+        }
+        if (what == "pylon") PylonBearing = a.Length > 4 ? float.Parse(a[4]) : 20f;
+        bool town = what is "town" or "manhole" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
         if (town) PlanetSurface.Poi.PoiSiting.StartWorld = true;
         Action<Main> torch = what is "sewer" or "drain" or "metro" or "gallery" ? Torch : null;
         return new(PlanetSpec.Roll(seed, arch, 0), m => Frame(m, what), 0.4, WeatherKind.Clear, BeforeCapture: torch);
@@ -52,10 +76,25 @@ public static class InfraViews
         LightColor = new Color("ffeeda"), LightEnergy = 5f, OmniRange = 48f, OmniAttenuation = 0.8f, ShadowEnabled = false, Position = new Vector3(0.2f, -0.2f, 0f),
     });
 
+    static float PylonBearing = 20f;
+
     static (Vector3, float, float) Frame(Main m, string what)
     {
         var w = m.World;
         InfraNetwork net = w.Infra;
+        // The standing pylon on the steepest ground (the feet's spread), from the side so the slope shows.
+        if (what == "pylon" && net.Power != null)
+        {
+            Func<double, double, float> gr = (x, z) => w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            var p = net.Power.Poles.Where(q => q.Pylon && !q.Fallen).OrderByDescending(q => { var g = q.FeetXZ().Select(f => gr(f.X, f.Z)).ToList(); return g.Max() - g.Min(); }).FirstOrDefault();
+            if (p != null)
+            {
+                var g = p.FeetXZ().Select(f => gr(f.X, f.Z)).ToList();
+                GD.Print($"STEEPEST PYLON at {p.X:F0},{p.Z:F0}: feet spread {g.Max() - g.Min():F2} m, height {p.Height}");
+                double vx = p.X + Math.Sin(Mathf.DegToRad(PylonBearing)) * 40, vz = p.Z + Math.Cos(Mathf.DegToRad(PylonBearing)) * 40;
+                return Look(w, vx, vz, Math.Max(gr(vx, vz) + 3f, p.Ground + 4f), p.X, p.Z, p.Ground + 8f);
+            }
+        }
         double lx = w.Landing.X, lz = w.Landing.Y;
         double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
         // A cave mouth, from out in front of it.
@@ -159,6 +198,12 @@ public static class InfraViews
             {
                 // A corner of a junction chamber, looking across it.
                 return Look(w, room.Min.X + 1.5, room.Max.Z - 0.5, room.Min.Y + 2.6f, room.Max.X, room.Min.Z, room.Min.Y + 1f);
+            }
+            if (under != null && what == "manhole" && under.Scheme.Shafts.FirstOrDefault(k => k.Network == UnderKind.Sewer && k.ToSurface) is UnderShaft hole)
+            {
+                // From above and behind, over the footpath: the open manhole beside the street.
+                double hx = hole.Foot.X + 1, hz = hole.Foot.Z + 1;
+                return Look(w, hx - town.AlongX * 14 + town.AlongZ * 6, hz - town.AlongZ * 14 - town.AlongX * 6, hole.TopY + 14f, hx, hz, hole.TopY);
             }
             if (under != null && what == "drain" && under.Scheme.Runs.FirstOrDefault(r => r.Kind == UnderKind.Drain) is UnderRun run)
             {
@@ -265,6 +310,241 @@ public static class InfraViews
         if (best == null) return (new Vector3((float)lx, w.GroundHeight(lx, lz) + 20f, (float)lz), 0f, -8f);
         int ahead = Math.Min(best.Count - 1, bestI + 14);
         return Look(w, best.X[bestI], best.Z[bestI], best.Y[bestI] + 2.2f, best.X[ahead], best.Z[ahead], best.Y[ahead] + 1f);
+    }
+
+    /// <summary>
+    /// infra:roads: the start town's street grid and a road bending across open country, each from the
+    /// ground, from low flight and from about 400 m up: how roads read at every distance.
+    /// </summary>
+    static System.Collections.Generic.List<Screenshot.Shot> RoadSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        void Add(string name, double x, double z, float y, double tx, double tz, float ty)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, ty);
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        double ox = w.Landing.X, oz = w.Landing.Y;
+        if (w.StartTown is StartTown town)
+        {
+            ox = town.CenterX;
+            oz = town.CenterZ;
+            float c = G(town.CenterX, town.CenterZ);
+            // On the main street near its end, looking down it into the town.
+            double gx = town.CenterX - town.AlongX * (town.MainHalf - 12) + town.AlongZ * 1.5, gz = town.CenterZ - town.AlongZ * (town.MainHalf - 12) - town.AlongX * 1.5;
+            Add("town-ground", gx, gz, G(gx, gz) + 1.8f, town.CenterX + town.AlongX * 30, town.CenterZ + town.AlongZ * 30, c + 0.5f);
+            double bx = town.CenterX + (town.AlongX * 0.6 + town.AlongZ * 0.8) * 150, bz = town.CenterZ + (town.AlongZ * 0.6 - town.AlongX * 0.8) * 150;
+            Add("town-low", bx, bz, c + 45f, town.CenterX, town.CenterZ, c);
+            double hx = town.CenterX + (town.AlongX * 0.6 + town.AlongZ * 0.8) * 520, hz = town.CenterZ + (town.AlongZ * 0.6 - town.AlongX * 0.8) * 520;
+            Add("town-high", hx, hz, c + 400f, town.CenterX, town.CenterZ, c);
+            // A corner of the grid from above, where the back street turns into a cross street.
+            double sx0 = -town.AlongZ, sz0 = town.AlongX;
+            double kx = town.CenterX + town.AlongX * town.Block + sx0 * town.BackSide * town.Arm, kz = town.CenterZ + town.AlongZ * town.Block + sz0 * town.BackSide * town.Arm;
+            Add("town-corner", kx - town.AlongX * 14 - sx0 * town.BackSide * 14, kz - town.AlongZ * 14 - sz0 * town.BackSide * 14, G(kx, kz) + 55f, kx, kz, G(kx, kz));
+        }
+        else GD.Print("ROADS: no start town on this world");
+        // A ground stretch that bends and runs off the map's axes, a little way from the town.
+        InfraRoute best = null;
+        int at = 0;
+        double bestScore = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway or RouteKind.Track))
+            for (int i = 40; i + 40 < r.Count; i += 4)
+            {
+                bool ground = true;
+                for (int k = i - 40; k < i + 40 && ground; k++) ground = r.Span[k] == RoadSpan.Ground;
+                if (!ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - ox, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - oz, w.Height), 2));
+                if (d < 400 || d > 4000) continue;
+                double a0 = Math.Atan2(r.Z[i] - r.Z[i - 30], r.X[i] - r.X[i - 30]), a1 = Math.Atan2(r.Z[i + 30] - r.Z[i], r.X[i + 30] - r.X[i]);
+                double bend = Math.Abs(Mathf.Wrap((float)(a1 - a0), -Mathf.Pi, Mathf.Pi)) * 180 / Math.PI;
+                double diag = Math.Abs(((a0 + a1) * 0.5 * 180 / Math.PI % 90 + 90) % 90 - 45);
+                double score = Math.Abs(bend - 35) + diag * 0.8 + d * 0.004 + (r.Kind == RouteKind.Track ? 15 : 0);
+                if (score < bestScore) { bestScore = score; best = r; at = i; }
+            }
+        if (best != null)
+        {
+            GD.Print($"ROADS: country {best.Kind} {best.Id} ({best.Surface}, wear {best.Wear:F2}) at {best.X[at]:F0}, {best.Z[at]:F0}");
+            double dx = best.X[at + 12] - best.X[at - 12], dz = best.Z[at + 12] - best.Z[at - 12], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            dx /= len; dz /= len;
+            int from = at - 16;
+            double sx = best.X[from] + dz * best.HalfWidth * 0.5, sz = best.Z[from] - dx * best.HalfWidth * 0.5;
+            Add("road-ground", sx, sz, best.Y[from] + 1.8f, best.X[at + 14], best.Z[at + 14], best.Y[at + 14] + 0.5f);
+            Add("road-low", best.X[at] - dx * 70 + dz * 55, best.Z[at] - dz * 70 - dx * 55, best.Y[at] + 40f, best.X[at], best.Z[at], best.Y[at]);
+            Add("road-high", best.X[at] - dx * 380 + dz * 300, best.Z[at] - dz * 380 - dx * 300, best.Y[at] + 400f, best.X[at], best.Z[at], best.Y[at]);
+        }
+        else GD.Print("ROADS: no country road found");
+        // A paved road out in the country, from its own deck: its joints, cracks, patches and holes up close.
+        InfraRoute paved = null;
+        int pavedAt = 0;
+        double pavedAway = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 20; i + 20 < r.Count; i += 4)
+            {
+                if (r.Span[i - 20] != RoadSpan.Ground || r.Span[i + 19] != RoadSpan.Ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - ox, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - oz, w.Height), 2));
+                if (d < 400 || d >= pavedAway) continue;
+                // Out on its own, not by a place (whose pad would fill the view).
+                if (w.Pois.Any(q => Math.Sqrt(Math.Pow(Mathx.WrapDelta(q.Center.X - r.X[i], w.Width), 2) + Math.Pow(Mathx.WrapDelta(q.Center.Z - r.Z[i], w.Height), 2)) < Math.Max(q.Stamp.ReachX, q.Stamp.ReachZ) + 80)) continue;
+                pavedAway = d;
+                paved = r;
+                pavedAt = i;
+            }
+        if (paved != null)
+        {
+            GD.Print($"ROADS: paved {paved.Kind} {paved.Id} ({paved.Surface}, wear {paved.Wear:F2}) at {paved.X[pavedAt]:F0}, {paved.Z[pavedAt]:F0}");
+            double dx = paved.X[pavedAt + 6] - paved.X[pavedAt - 6], dz = paved.Z[pavedAt + 6] - paved.Z[pavedAt - 6], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            double sx = paved.X[pavedAt] + dz / len * paved.HalfWidth * 0.4, sz = paved.Z[pavedAt] - dx / len * paved.HalfWidth * 0.4;
+            Add("paved-ground", sx, sz, paved.Y[pavedAt] + 1.7f, paved.X[pavedAt + 10], paved.Z[pavedAt + 10], paved.Y[pavedAt + 10] - 0.6f);
+        }
+        // The tightest bend on a paved road near the landing, close up from above its inside.
+        InfraRoute bent = null;
+        int bentAt = 0;
+        double bentTurn = 0;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 12; i + 12 < r.Count; i += 2)
+            {
+                if (r.Span[i - 12] != RoadSpan.Ground || r.Span[i + 11] != RoadSpan.Ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - w.Landing.Y, w.Height), 2));
+                if (d > 3000) continue;
+                double a0 = Math.Atan2(r.Z[i] - r.Z[i - 12], r.X[i] - r.X[i - 12]), a1 = Math.Atan2(r.Z[i + 12] - r.Z[i], r.X[i + 12] - r.X[i]);
+                double turn = Math.Abs(Mathf.Wrap((float)(a1 - a0), -Mathf.Pi, Mathf.Pi));
+                if (turn > bentTurn) { bentTurn = turn; bent = r; bentAt = i; }
+            }
+        if (bent != null)
+        {
+            GD.Print($"ROADS: tightest bend on {bent.Kind} {bent.Id}: {bentTurn * 180 / Math.PI:F0} degrees over 96 m");
+            double mx = (bent.X[bentAt - 12] + bent.X[bentAt + 12]) * 0.5, mz = (bent.Z[bentAt - 12] + bent.Z[bentAt + 12]) * 0.5;
+            double ix = mx - bent.X[bentAt], iz = mz - bent.Z[bentAt], il = Math.Max(1e-6, Math.Sqrt(ix * ix + iz * iz));
+            Add("bend-close", bent.X[bentAt] + ix / il * 45, bent.Z[bentAt] + iz / il * 45, bent.Y[bentAt] + 22f, bent.X[bentAt], bent.Z[bentAt], bent.Y[bentAt]);
+        }
+        // A junction out in the country: two roads (not railways) meeting, the nearest to the landing.
+        var grid = new System.Collections.Generic.Dictionary<(long, long), InfraRoute>();
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail))
+            for (int i = 0; i < r.Count; i++)
+                grid.TryAdd(((long)Math.Floor(Mathx.WrapX(r.X[i], w.Width) / 4), (long)Math.Floor(Mathx.Wrap(r.Z[i], w.Height) / 4)), r);
+        InfraRoute jr = null;
+        int ji = 0;
+        double joinAway = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 0; i + 1 < r.Count; i += 2)
+            {
+                if (r.Span[i] != RoadSpan.Ground) continue;
+                if (!grid.TryGetValue(((long)Math.Floor(Mathx.WrapX(r.X[i], w.Width) / 4), (long)Math.Floor(Mathx.Wrap(r.Z[i], w.Height) / 4)), out InfraRoute o) || o == r) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - w.Landing.Y, w.Height), 2));
+                if (d < joinAway) { joinAway = d; jr = r; ji = i; }
+            }
+        if (jr != null)
+        {
+            GD.Print($"ROADS: junction of {jr.Kind} {jr.Id} at {jr.X[ji]:F0}, {jr.Z[ji]:F0}");
+            Add("junction-low", jr.X[ji] + 60, jr.Z[ji] + 45, jr.Y[ji] + 40f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+            Add("junction-close", jr.X[ji] + 10, jr.Z[ji] + 8, jr.Y[ji] + 38f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+            Add("junction-high", jr.X[ji] + 330, jr.Z[ji] + 250, jr.Y[ji] + 400f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+        }
+        else GD.Print("ROADS: no junction found");
+        return shots;
+    }
+
+    /// <summary>
+    /// infra:ways: a track and a graded dirt road near the landing, each from beside it at eye height, from a few
+    /// metres over its ruts, and from the air: the land's own ground, ruts and crown, berms, prints and wear.
+    /// </summary>
+    static System.Collections.Generic.List<Screenshot.Shot> WaySeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        void Add(string name, double x, double z, float y, double tx, double tz, float ty)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, ty);
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        foreach (var (name, pick) in new (string, Func<InfraRoute, bool>)[] { ("track", r => r.Kind == RouteKind.Track), ("graded", r => r.Graded), ("steep", r => r.Kind == RouteKind.Track || r.Graded) })
+        {
+            InfraRoute best = null;
+            int at = 0;
+            double bestScore = double.MaxValue;
+            foreach (InfraRoute r in w.Infra.Routes.Where(pick))
+                for (int i = 12; i + 12 < r.Count; i += 2)
+                {
+                    bool ground = true;
+                    for (int k = i - 12; k < i + 12 && ground; k++) ground = r.Span[k] == RoadSpan.Ground;
+                    if (!ground) continue;
+                    double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - w.Landing.Y, w.Height), 2));
+                    // Out on its own: not by a place, whose yard would fill the view.
+                    if (w.Pois.Any(q => Math.Sqrt(Math.Pow(Mathx.WrapDelta(q.Center.X - r.X[i], w.Width), 2) + Math.Pow(Mathx.WrapDelta(q.Center.Z - r.Z[i], w.Height), 2)) < Math.Max(q.Stamp.ReachX, q.Stamp.ReachZ) + 40)) continue;
+                    double grade = Math.Abs(r.Y[i + 6] - r.Y[i - 6]) / 48;
+                    double score = name == "steep" ? -grade * 20000 + d : d;
+                    if (score < bestScore) { bestScore = score; best = r; at = i; }
+                }
+            if (best == null) { GD.Print($"WAYS: no {name} found"); continue; }
+            GD.Print($"WAYS: {name} on {best.Kind} {best.Id} ({best.Surface}, graded {best.Graded}, wear {best.Wear:F2}, half width {best.HalfWidth:F1}) at {best.X[at]:F0}, {best.Z[at]:F0}, grade {Math.Abs(best.Y[at + 6] - best.Y[at - 6]) / 48:F2}");
+            double dx = best.X[at + 4] - best.X[at - 4], dz = best.Z[at + 4] - best.Z[at - 4], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            dx /= len; dz /= len;
+            int from = at - 6;
+            double sx = best.X[from] + dz * (best.HalfWidth + 1.2), sz = best.Z[from] - dx * (best.HalfWidth + 1.2);
+            Add($"{name}-ground", sx, sz, G(sx, sz) + 1.7f, best.X[at + 6], best.Z[at + 6], best.Y[at + 6]);
+            Add($"{name}-close", best.X[at] - dx * 3 + dz * 1.5, best.Z[at] - dz * 3 - dx * 1.5, best.Y[at] + 3.2f, best.X[at] + dx * 3, best.Z[at] + dz * 3, best.Y[at]);
+            if (name != "steep") Add($"{name}-high", best.X[at] - dx * 120 + dz * 90, best.Z[at] - dz * 120 - dx * 90, best.Y[at] + 160f, best.X[at], best.Z[at], best.Y[at]);
+        }
+        return shots;
+    }
+
+    /// <summary>The nearest track end that leaves a road on open ground, from standing height and 30 m up, and the road beside it with its markings.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> JunctionSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        var j = Junctions.Find(w).OrderBy(q => Math.Pow(Mathx.WrapDelta(q.X - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(q.Z - w.Landing.Y, w.Height), 2)).FirstOrDefault();
+        if (j == null) { GD.Print("JUNCTION: none found"); return shots; }
+        GD.Print($"JUNCTION: track meets {j.Road.Kind} at {j.X:F0}, {j.Z:F0}");
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        void Add(string name, double x, double z, float y, double tx, double tz)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, G(tx, tz));
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        Add("junction-ground", j.X + j.DirX * 14, j.Z + j.DirZ * 14, 0f, j.X, j.Z);
+        Add("junction-high", j.X + j.DirX * 20, j.Z + j.DirZ * 20, G(j.X, j.Z) + 30f, j.X, j.Z);
+        Add("road-ground", j.X + j.RoadX * 6 + j.RoadZ * 8, j.Z + j.RoadZ * 6 - j.RoadX * 8, 0f, j.X + j.RoadX * 25, j.Z + j.RoadZ * 25);
+        return shots;
+    }
+
+    /// <summary>infra:power: the nearest substation from the ground and from above, the nearest strung drop close, and its street from above.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> PowerSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        PowerLines power = w.Infra.Power;
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - w.Landing.Y, w.Height), 2));
+        void Add(string name, double x, double z, float y, double tx, double tz, float ty)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, ty);
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        if (power == null) { GD.Print("POWER: no lines"); return shots; }
+        GD.Print($"POWER: {power.Poles.Count(p => p.Role == PowerRole.Plant)} plants, {power.Poles.Count(p => p.Role == PowerRole.Substation)} substations, {power.Poles.Count(p => p.Pylon)} pylons, {power.Poles.Count(p => p.Role == PowerRole.Line && !p.Pylon)} poles, {power.Drops.Count} drops ({power.Drops.Count(d => d.State == DropState.Strung)} strung), {power.Unserved.Count} unserved");
+        PowerPole sub = power.Poles.Where(p => p.Role == PowerRole.Substation).OrderBy(p => Away(p.X, p.Z)).FirstOrDefault();
+        if (sub != null)
+        {
+            double ax = -sub.SideZ, az = sub.SideX;
+            Add("substation", sub.X - ax * 26 + sub.SideX * 18, sub.Z - az * 26 + sub.SideZ * 18, sub.Ground + 4f, sub.X, sub.Z, sub.Ground + 3f);
+            Add("substation-high", sub.X - ax * 90 + sub.SideX * 70, sub.Z - az * 90 + sub.SideZ * 70, sub.Ground + 70f, sub.X, sub.Z, sub.Ground);
+        }
+        ServiceDrop drop = power.Drops.Where(d => d.State == DropState.Strung).OrderBy(d => Away(d.Fixing.X, d.Fixing.Z)).FirstOrDefault()
+            ?? power.Drops.OrderBy(d => Away(d.Fixing.X, d.Fixing.Z)).FirstOrDefault();
+        if (drop != null)
+        {
+            PowerPole p = power.Poles[drop.Pole];
+            double dx = drop.Fixing.X - p.X, dz = drop.Fixing.Z - p.Z, l = Math.Max(1, Math.Sqrt(dx * dx + dz * dz));
+            double mx = (p.X + drop.Fixing.X) / 2, mz = (p.Z + drop.Fixing.Z) / 2;
+            GD.Print($"POWER: drop {drop.State} to a {drop.House.Family.Id} ({drop.House.State}), {l:F0} m");
+            Add("drop", mx + dz / l * 16 - dx / l * 4, mz - dx / l * 16 - dz / l * 4, G(mx, mz) + 2.5f, mx, mz, drop.Fixing.Y);
+            Add("drops-high", mx + dz / l * 45, mz - dx / l * 45, G(mx, mz) + 40f, mx, mz, G(mx, mz));
+        }
+        return shots;
     }
 
     static (Vector3, float, float) Look(World.PlanetWorld w, double x, double z, float y, double tx, double tz, float ty)

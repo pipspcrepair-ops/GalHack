@@ -22,7 +22,7 @@ GalHack is free and never sold. Every asset is credited in [CREDITS.md](CREDITS.
 
 The playable part is the slice (`prototypes/slice`): one player, on a fresh random world every game. This is what the latest test build has. It runs a little ahead of `main`. Anything marked *partial* is still being built.
 
-- **A real galaxy.** Every star in the night sky is a real star system on the galaxy map, and the map shows them all from the start. Each system has its own worlds, moons and rings, in the same places from the ground and from orbit. *Partial:* you can't travel between systems yet, as the warp drive and hyperdrive aren't fitted.
+- **A real galaxy.** Every star in the night sky is a real star system on the galaxy map, and the map shows them all from the start. Each system has its own worlds, moons and rings, in the same places from the ground and from orbit. *Partial:* you can't travel between systems yet, as the warp drive and fold drive aren't fitted.
 - **Worlds built from layers.** Each world rolls its type, its theme, how it fell and how advanced its people were, and the layers combine. Every world grows its own plants, and its creatures and people are built from generated parts. *Partial:* so far the layers mostly decide a world's places, cities and regions. Plants, wildlife and weather reading them comes next.
 - **Cities and ruins.** Some worlds have a city: districts of towers and terraces, civic buildings and a waterfront, fallen as far as the world did. Elsewhere there are ruined villages, farms, works, bunkers and fuel stations, and many places can be entered. Survivor towns have people in them. Nobody speaks: people talk with their bodies.
 - **The Husks.** The collapse's real face. Husks are people taken over by worm-like parasites that come out of every opening. They move like puppets and seize you by the head. Their dens are full of worm masses, deep inside the places they've taken.
@@ -76,7 +76,6 @@ Shared code lives in [`shared/`](shared/): modules that prototypes compile in ra
 | Folder | What's in it |
 | --- | --- |
 | `prototypes/` | Throwaway prototypes that prove one risky idea each |
-| `prototypes/walkable-ship/` | Walking around inside a ship while it flies, rolls and warps |
 | `prototypes/planet-generator/` | Seeded planets in five archetypes, divided into regions of 24 landforms, from a relief globe in orbit down to streamed terrain |
 | `prototypes/terrain-digging/` | Remove-only grid digging: smooth Surface Nets terrain, dig anywhere but bedrock, blocks set flush into the ground, atomic audited saves |
 | `prototypes/encounters/` | Encounter director: seeded, territory-aware spawns out of sight, fuzzy signal leads, nothing a player touched is ever cleaned up |

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Godot;
 using Planets.Gen;
@@ -23,7 +24,12 @@ namespace PlanetSurface.Skies;
 /// </summary>
 public sealed class BodySurfaces
 {
-    public const int Width = 256, Height = 128, Layers = 32;
+    /// <summary>
+    /// A moon's far look hands over to its own globe about 9 km off, where its disc is a couple of hundred
+    /// pixels across, and the start world seen from its moon is as big: half this width is the hemisphere
+    /// in view, so at those sizes it is about a texel to a pixel, never smeared (owner, 17 Nov).
+    /// </summary>
+    public const int Width = 512, Height = 256, Layers = 32;
 
     /// <summary>What the array holds, mipmaps and all: the same whatever the system.</summary>
     public const long MemoryBytes = Layers * (long)Width * Height * 4 * 4 / 3;
@@ -53,29 +59,49 @@ public sealed class BodySurfaces
         Texture = new Texture2DArray();
         Texture.CreateFromImages(images);
 
-        var order = new List<Sighting>();
+        var seen = new List<Sighting>();
         foreach (Orbiter b in model.Bodies)
-            if (b.Spec != null && b != model.Home || b.Kind == OrbiterKind.GasGiant) order.Add(model.See(b, 0.0, from));
-        order.Sort((x, y) => y.Angular.CompareTo(x.Angular));
-        if (order.Count > Layers) order.RemoveRange(Layers, order.Count - Layers);
+            if (b.Spec != null && b != model.Home || b.Kind == OrbiterKind.GasGiant) seen.Add(model.See(b, 0.0, from));
+        seen.Sort((x, y) => y.Angular.CompareTo(x.Angular));
+        var order = seen.Take(Layers - 1).Select(x => x.Body).ToList();
+        // The world itself last: its moons' skies see it, and they share these.
+        if (model.Home.Spec != null) order.Add(model.Home);
         Wanted = order.Count;
-        new Thread(() => Work(order)) { IsBackground = true, Name = "Body surfaces", Priority = ThreadPriority.BelowNormal }.Start();
+        System.Threading.Tasks.Task.Factory.StartNew(() => Work(order), CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.None, Painters);
     }
 
-    void Work(List<Sighting> order)
+    /// <summary>Lets go of the array now and stops its thread after the surface it is on (a system left for good).</summary>
+    public void Release()
     {
-        for (int i = 0; i < order.Count; i++)
+        _released = true;
+        while (_painted.TryDequeue(out _)) { }
+        Texture?.Dispose();
+    }
+
+    volatile bool _released;
+
+    /// <summary>
+    /// Where paint for far looks and globes is made: a quarter of the cores the game runs on (<see cref="Terrain.TerrainStreamer.Cores"/>; one at the least). The generator's loops run
+    /// in parallel on whatever scheduler they are started from, so on all of them otherwise, and on the minimum spec's four
+    /// cores that took the frame's own threads' time while the system's bodies were painted.
+    /// </summary>
+    public static readonly System.Threading.Tasks.TaskScheduler Painters =
+        new System.Threading.Tasks.ConcurrentExclusiveSchedulerPair(System.Threading.Tasks.TaskScheduler.Default, Math.Max(1, Terrain.TerrainStreamer.Cores / 4)).ConcurrentScheduler;
+
+    void Work(List<Orbiter> order)
+    {
+        for (int i = 0; i < order.Count && !_released; i++)
         {
             long started = Stopwatch.GetTimestamp();
-            Image image = Paint(order[i].Body);
-            _painted.Enqueue((order[i].Body, i, image, Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+            Image image = Paint(order[i]);
+            _painted.Enqueue((order[i], i, image, Stopwatch.GetElapsedTime(started).TotalMilliseconds));
         }
     }
 
     /// <summary>Uploads one finished surface: call it once a frame.</summary>
     public void Pump()
     {
-        if (!_painted.TryDequeue(out var p)) return;
+        if (_released || !_painted.TryDequeue(out var p)) return;
         Texture.UpdateLayer(p.Image, p.Layer);
         _ready[p.Body] = p.Layer;
         Done++;
@@ -98,12 +124,19 @@ public sealed class BodySurfaces
     /// <summary>A coarse run of the world's own generator: one map cell to a pixel, from the spec it will be visited with.</summary>
     public static WorldMap Coarse(PlanetSpec spec) => PlanetGenerator.Generate(spec, (float)(spec.WidthMeters / Width));
 
+    /// <summary>
+    /// The land in the colours its own globe and ground are painted in up close (its ground palette's far ground, a
+    /// world with no reading of its own taken as its globe takes it), so the far look and the globe that takes over
+    /// from it agree; clouds only over a world with air.
+    /// </summary>
     static byte[] World(PlanetSpec spec)
     {
         WorldMap map = Coarse(spec);
         ArchetypeLook look = ArchetypeLook.For(spec);
-        ColorMap colors = ColorMap.Build(map, look, Width);
-        byte[] clouds = CloudMap.Build(spec, look, Width, out _);
+        SkySystem sky = SkySystem.For(spec);
+        var palette = new Terrain.GroundPalette(map, sky.Palette, Terrain.PlanetFlora.For(map, sky));
+        ColorMap colors = ColorMap.Build(map, look, Width, (x, z) => palette.FarGround(x, z, 64f));
+        byte[] clouds = spec.Airless ? new byte[Width * Height * 4] : CloudMap.Build(spec, look, Width, out _);
         var pixels = new byte[Width * Height * 4];
         for (int k = 0; k < Width * Height; k++)
         {
@@ -148,14 +181,13 @@ public sealed class BodySurfaces
         return pixels;
     }
 
-    /// <summary>A giant: its colour and band, in bands that wander and shear, with one great storm.</summary>
+    /// <summary>A giant: its colour and band, in bands that wander and shear, with its great storm and the lesser ones (its <see cref="Geography"/>).</summary>
     static byte[] Giant(Orbiter b)
     {
         var drift = new Fractal(Hash.Of(b.Seed, 0x5752), 0.8, 4);
         var streaks = new Fractal(Hash.Of(b.Seed, 0x5354), 0.3, 4, 0.55f);
-        var rng = new Rng(Hash.Of(b.Seed, 0x4F56));
-        float phase = rng.NextFloat() * 6f, count = 15f + rng.NextFloat() * 10f;
-        double stormLat = (rng.NextFloat() - 0.5f) * 1.1, stormLon = rng.NextFloat() * Math.Tau, stormSize = 0.1 + 0.1 * rng.NextFloat();
+        Geography geo = b.Geography;
+        float phase = geo.BandPhase, count = geo.BandCount;
         var pixels = new byte[Width * Height * 4];
         System.Threading.Tasks.Parallel.For(0, Height, py =>
         {
@@ -170,9 +202,12 @@ public sealed class BodySurfaces
                 float fine = streaks.Fbm(new P3(p.X * 0.5, p.Y * 6.0 + w * 0.8, p.Z * 0.5), 1e-4);
                 float mix = Math.Clamp(bands * 0.72f + (fine - 0.5f) * 0.9f, 0f, 1f);
                 Rgb c = Rgb.Lerp(b.Color, b.Band, mix);
-                double dLon = Math.IEEERemainder(lon - stormLon, Math.Tau) * 0.55, dLat = lat - stormLat;
-                double storm = Math.Sqrt(dLon * dLon + dLat * dLat * 3.0) / stormSize;
-                if (storm < 1.0) c = Rgb.Lerp(c, Rgb.Lerp(b.Band, new Rgb(0.9f, 0.5f, 0.35f), 0.5f), (float)Math.Clamp((1.0 - storm) * 3.0, 0.0, 1.0) * (0.75f + 0.25f * (float)Math.Sin(storm * 12.0)));
+                foreach (Mark m in geo.Marks)
+                {
+                    double dLon = Math.IEEERemainder(lon - m.Longitude, Math.Tau) * 0.55, dLat = lat - m.Latitude;
+                    double storm = Math.Sqrt(dLon * dLon + dLat * dLat * 3.0) / m.Size;
+                    if (storm < 1.0) c = Rgb.Lerp(c, Rgb.Lerp(b.Band, new Rgb(0.9f, 0.5f, 0.35f), 0.5f), (float)Math.Clamp((1.0 - storm) * 3.0, 0.0, 1.0) * (0.75f + 0.25f * (float)Math.Sin(storm * 12.0)));
+                }
                 int o = (py * Width + px) * 4;
                 pixels[o] = Rgb.Byte(c.R);
                 pixels[o + 1] = Rgb.Byte(c.G);

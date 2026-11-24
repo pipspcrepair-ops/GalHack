@@ -9,12 +9,13 @@ The canonical structure model for GalHack (pillar: **build what you fly**). Ship
 
 ## What it proves
 
-- **One model for everything.** Large grid (2 m) for bases and capital ships, small grid (0.5 m) for small vessels. A large core switches between **base** and **capital** mode; every material, block and recipe works in both, and switching never touches a block (tested with every block type and shape).
+- **One model for everything.** Large grid (2 m) for bases and capital ships, small grid (0.5 m) for small vessels. A core switches between **base**, **hover** and **flight** mode; every material, block and recipe works in all three, and switching never touches a block (tested with every block type and shape).
 - **Building is intuitive.** Ghost preview, grid snapping, rotation on every axis, mirror symmetry on up to three axes, blocks attach through a shared face, and components that mount by one face (lights, ladders, seats, turrets) turn to the surface you click.
 - **Nothing a player builds disappears.** Removing or destroying a block that holds a section on splits that section off as an unowned wreck (a free rigid body) with its paint, damage and share of the cargo. Block counts are conserved, and the tool asks for a second click before it cuts anything loose.
 - **Data-driven.** Grids, materials, shapes and components are JSON in `data/`. A shape is just a list of points: volume, full faces (for attaching and sealing) and mirror symmetry are worked out from the geometry.
 - **Readable, hand-writable blueprints.** The example ship is 891 blocks in about 130 hand-written lines, and it loads on start.
 - **Fast enough.** 20,000 blocks mesh in about 55 ms; a single-block edit remeshes in about 6 ms.
+- **The one door.** A door is one large block (2 m), the same height as every person's door in the world's places (design 708). A blueprint saved while doors were briefly two cells still loads: the door's named top becomes the wall block it was, and an unnamed one lets the wall close over the door again.
 - **Sealed rooms, found automatically.** Leaks are reported as the fewest faces that would seal the room (a min cut), so a missing block reports its own face and an open door reports the doorway.
 
 ## Play it
@@ -30,7 +31,7 @@ From the repo root, in PowerShell:
 | Left click | Place (the ghost turns amber before a CPU tier is crossed) | Spray the face (hold to sweep, Shift for the whole block) |
 | Right click | Remove; materials go to the inventory (click again to cut a section loose) | Strip back to bare metal |
 | Middle click | Pick the block you're looking at | Pick its paint |
-| 1–9 | Block slot; press again for its variants (glass/concrete, thruster/generator/fuel tank…) | Colour (Shift: accent colour) |
+| 1–9 | Block slot; press again for its variants (glass/concrete, thruster/generator…) | Colour (Shift: accent colour) |
 | Wheel / Tab | Shape: cube, slope, corner, inverted corner, wedge, half block, thin plate, cylinder | Pattern: none, stripes, chevrons, checkerboard, hazard |
 | R / T / Y | Rotate about Y / X / Z (Shift: back) | R: texture (panel, smooth, plates, ribbed) |
 | [ / ] , - / = | | Stencil digit, grime level |
@@ -40,7 +41,7 @@ From the repo root, in PowerShell:
 | O | Air visor: sealed rooms in teal, leaking rooms in amber, leaking faces in red | |
 | K | Debug blaster: explosive damage, to test severing | |
 | G | Grid for new starter cores (large/small). Aiming at a structure always uses its grid. | |
-| B | Core mode: base / capital | |
+| B | Core mode: base / hover / flight | |
 | F5 / F9 | Save / load the structure you're looking at (`saves/quicksave.gbp`) | |
 | WASD, Shift, Space, Ctrl, N | Walk, sprint, jump, crouch (hold), fly toggle | |
 | F1, Esc | Hide the controls, free the mouse | |
@@ -58,7 +59,7 @@ schema galhack.blueprint
 version 1
 name "Lancer 07"
 grid large                       # large (2 m) or small (0.5 m)
-mode capital                     # base or capital
+mode flight                      # base, hover or flight (old capital and vessel read as flight)
 cargo 24000
 
 paint hull base=ece3c8 grime=1
@@ -73,7 +74,7 @@ block -4 0 -9..-4 steel slope rot=-y-x paint=hull  # rot = where up and forward 
 block -4 1 -3 door rot=+y-x open
 ```
 
-- `block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=…] [+x=…] [hp=<n>] [open] [off]`. The type is a material (`steel`, `hardened`, `combat`, `glass`, `concrete`) or a component (`core`, `cockpit`, `thruster`, `generator`, `fueltank`, `container`, `door`, `light`, `turret`, `cpuext`, `ladder`).
+- `block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=…] [+x=…] [hp=<n>] [open] [off]`. The type is a material (`steel`, `hardened`, `combat`, `glass`, `concrete`) or a component (`core`, `cockpit`, `thruster`, `generator`, `container`, `door`, `light`, `turret`, `cpuext`, `ladder`).
 - `paint=<name>` paints all six faces and `paint=a,b,c,d,e,f` paints them in the order +x -x +y -y +z -z (`-` is bare metal). `+x=<name>` and its siblings override one face (write them after `paint=`).
 - A paint has `base` and optional `accent` colours (rrggbb), `pattern` (stripes, chevrons, checker, hazard), `texture` (panel, smooth, plates, ribbed), `stencil` (a digit) and `grime` (0–3).
 - Saving writes the canonical form (paints in use, blocks sorted by y, z, x, runs along x merged, defaults left out), so save → load → save is byte-identical.
@@ -88,7 +89,7 @@ See [data/blueprints/lancer.gbp](data/blueprints/lancer.gbp) for the whole ship.
 .\tools\test.ps1 -Project prototypes/building -Scene res://tests/PlayTest.tscn
 ```
 
-`tests/BuildTest.tscn` (119 checks) covers placement rules (no overlaps, attach through a shared face, start from a core), mirror symmetry on three axes, removal returning materials, severing (a wreck, block count and cargo conserved, the core side keeps its owner, claiming with a core), mass, CPU sums and tiers, soft overshoot efficiency and extender tiers, shape volume scaling, upgrading in place, paint surviving save and load, sealed rooms (closed box, one missing block reported at its face, a ladder inside, closed and open doors, glass), shared storage and its caps, byte-for-byte blueprint round trips, every validator rejection, core modes (including every block type surviving base ↔ capital), cheap small-grid recipes from common materials, the nav export, and a meshing benchmark:
+`tests/BuildTest.tscn` (119 checks) covers placement rules (no overlaps, attach through a shared face, start from a core), mirror symmetry on three axes, removal returning materials, severing (a wreck, block count and cargo conserved, the core side keeps its owner, claiming with a core), mass, CPU sums and tiers, soft overshoot efficiency and extender tiers, shape volume scaling, upgrading in place, paint surviving save and load, sealed rooms (closed box, one missing block reported at its face, a ladder inside, closed and open doors, glass), shared storage and its caps, byte-for-byte blueprint round trips, every validator rejection, core modes (including every block type surviving base, hover and flight), cheap small-grid recipes from common materials, the nav export, and a meshing benchmark:
 
 ```
 20000 blocks in 16 chunks of 16³, 69,632 triangles, 3352 collider boxes, 2455 convex hulls
@@ -107,6 +108,14 @@ single-block edit: 6.21 ms average, 14.69 ms worst (1.3 chunks rebuilt per edit)
 - Read `StructureStats.Compute` for mass, CPU tier and efficiency, power, thrust and storage; `Rooms.Detect` for air (life support, the visor); `NavGrid.Build` for crew and boarders (walkable cells plus door and ladder links, with a small A*).
 - To draw one, `src/Presentation/StructureView` is a ready RigidBody3D (frozen while it has a core), or call `ChunkMesher.Build` per dirty chunk for your own nodes. The walkable ship's cabin world can take the same box and hull colliders.
 - `Structure.Version` and `Structure.DirtyChunks` tell a view what changed; nothing in the core calls back into the engine.
+
+## How blocks and devices look
+
+Armour draws its material in the shader, from what the vertex data already carries: steel has seams, a row of rivets and a faint brushed grain; hardened steel two heavy bevelled plates a block with armour bolts; combat steel half-height plates laid like bricks with deep bevels and big bolts; concrete a cast joint, pour lines, form-tie holes and speckle; glass a framed edge with corner bolts. The fine work (rivets, grain, speckle) fades out first as a block shrinks on screen and the seams and plates later, so walls stop looking blank close up and never shimmer far off. Grime and damage still go on top.
+
+Devices get their detail from one rule per function (`src/Structures/DeviceDetail.cs`): a core's armoured housing, beating heart, data ports and hazard trim (the Big Core heavier, with towers and a crown of fins); a constructor's framed bay, gantry and nozzles, status screen, vents and hopper; a generator's fins, exhaust and pulsing core light; and so on for every function. The rules read the type's own numbers (a heavier constructor gets a bigger hopper and more nozzles), so nothing is drawn per device by hand. The detail is a few boxes, discs and bands merged into the chunk mesh, looks only: never solid, never covering or sealing a face, and left out with the face it sits on when a neighbour covers it. A part can carry a finish (colour, fine hazard trim, a grille, a symbol on a screen or a stencil, a pulse or blink) in the data too.
+
+A device's own lights and screens show its state: they flicker while the block is damaged, scorches and cracks dim them, they go out when it is wrecked, and they dim without power (the `powered` instance uniform per chunk, so switching power redraws nothing).
 
 ## How damage looks
 

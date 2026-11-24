@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using DiegeticUi.Theme;
 using Godot;
 using Slice.Items;
@@ -10,11 +9,12 @@ using Palette = DiegeticUi.Theme.Palette;
 namespace Slice.Ui;
 
 /// <summary>
-/// Where each tech node stands: a tidy tree, columns by the level a node opens at and one row for
-/// every branch. A node's first child shares its row; the other children take the rows below, so a
-/// branch reads left to right and a wire only ever runs in the empty row between a node and its
-/// child (never behind a box). A child that opens at the same level as its parent steps one column
-/// right, so the parent is always to its left. Loose nodes with no parent are packed in a grid under the trees.
+/// A tab's nodes linked to their parents and children; on Structures, laid out in lanes, one per
+/// device family. In a lane a node's next tier (else its child with the longest line) shares its row
+/// one column right, so tiers read left to right; its other children start lower rows one column
+/// right of it, on the first row with room and an empty column either side, so a wire only runs
+/// down the gap beside its parent and no tile looks chained to a neighbour it isn't. A node whose
+/// parent is in another lane heads its own line; loose ones take the first free spots below the lane's first line.
 /// </summary>
 public sealed class TechLayout
 {
@@ -23,17 +23,34 @@ public sealed class TechLayout
         public TechNode Node;
         public Cell Parent;
         public readonly List<Cell> Kids = new();
-        /// <summary>The level it stands at (never below its parent's) and the step right within that level.</summary>
-        public int El, Sub, Col, Row;
+        /// <summary>Structures: its lane, and its column and row within the lane.</summary>
+        public string Lane;
+        public int Col, Row;
     }
+
+    /// <summary>
+    /// The Structures lanes, top to bottom, and the nodes heading each (an id, or a family of tiers
+    /// by its prefix): a node is in the lane of the nearest head up its line, so a new device lands
+    /// with its parent's family; the hull (the core, the base block and its plating) has the rest.
+    /// </summary>
+    public static readonly (string Name, string[] Heads)[] StructureLanes =
+    {
+        ("HULL", Array.Empty<string>()),
+        ("INTERIOR", new[] { "command-chair", "door", "light", "ladder" }),
+        ("POWER", new[] { "generator" }),
+        ("STORAGE", new[] { "container" }),
+        ("PRODUCTION", new[] { "portable-fabricator", "fabricator" }),
+        ("HOVER", new[] { "hover" }),
+        ("FLIGHT", new[] { "thruster" }),
+        ("WARP", new[] { "warp-drive" }),
+    };
 
     public readonly List<Cell> Cells = new();
     public readonly Dictionary<string, Cell> ById = new();
-    /// <summary>The columns, left to right: a level and a step within it.</summary>
-    public readonly List<(int Level, int Sub)> Columns = new();
-    public int Rows;
+    /// <summary>Structures: the lanes in order, each with its cells and rows.</summary>
+    public readonly List<(string Name, List<Cell> Cells, int Rows)> Lanes = new();
 
-    public TechLayout(IEnumerable<TechNode> nodes)
+    public TechLayout(IEnumerable<TechNode> nodes, bool lanes = false)
     {
         foreach (TechNode n in nodes)
         {
@@ -51,129 +68,132 @@ public sealed class TechLayout
             c.Parent = pc;
             pc.Kids.Add(c);
         }
-        var roots = Cells.Where(c => c.Parent == null).OrderBy(c => c.Node.Level).ThenBy(c => c.Node.Name, StringComparer.Ordinal).ToList();
-        foreach (Cell r in roots) Levels(r);
-        foreach (var col in Cells.Select(c => (c.El, c.Sub)).Distinct().OrderBy(x => x.El).ThenBy(x => x.Sub)) Columns.Add(col);
-        foreach (Cell c in Cells) c.Col = Columns.IndexOf((c.El, c.Sub));
-        int row = 0;
-        foreach (Cell r in roots.Where(r => r.Kids.Count > 0)) row = Place(r, row);
-        // Loose nodes: a grid in their level columns, below the trees.
-        var taken = new HashSet<(int, int)>();
-        foreach (Cell r in roots.Where(r => r.Kids.Count == 0))
-        {
-            int at = row;
-            while (taken.Contains((at, r.Col))) at++;
-            taken.Add((at, r.Col));
-            r.Row = at;
-        }
-        Rows = Cells.Count == 0 ? 0 : Cells.Max(c => c.Row) + 1;
+        if (lanes) LayLanes();
     }
 
-    void Levels(Cell c)
+    /// <summary>A tier's family: its id without the "-t2" ("generator-t2" is a generator).</summary>
+    static string Family(string id)
     {
-        c.El = c.Parent == null ? c.Node.Level : Math.Max(c.Node.Level, c.Parent.El);
-        c.Sub = c.Parent != null && c.El == c.Parent.El ? c.Parent.Sub + 1 : 0;
-        c.Kids.Sort((a, b) => a.Node.Level != b.Node.Level ? a.Node.Level.CompareTo(b.Node.Level) : string.CompareOrdinal(a.Node.Name, b.Node.Name));
-        foreach (Cell k in c.Kids) Levels(k);
+        int t = id.LastIndexOf("-t", StringComparison.Ordinal);
+        return t > 0 && t + 2 < id.Length && id[(t + 2)..].All(char.IsDigit) ? id[..t] : id;
     }
 
-    /// <summary>Gives the cell a row (its first child shares it) and returns the next row free below its branch.</summary>
-    int Place(Cell c, int row)
+    static int Line(Cell c) => c.Kids.Count == 0 ? 0 : 1 + c.Kids.Sum(Line);
+
+    public static string LaneOf(Cell c)
+    {
+        for (Cell x = c; x != null; x = x.Parent)
+            foreach (var (name, heads) in StructureLanes)
+                if (heads.Any(h => x.Node.Id == h || x.Node.Id.StartsWith(h + "-", StringComparison.Ordinal))) return name;
+        return StructureLanes[0].Name;
+    }
+
+    /// <summary>A cell's children in its own lane: its next tier first, then the longest line.</summary>
+    static IEnumerable<Cell> Next(Cell c) => c.Kids.Where(k => k.Lane == c.Lane)
+        .OrderBy(k => Family(k.Node.Id) == Family(c.Node.Id) ? 0 : 1).ThenByDescending(Line)
+        .ThenBy(k => k.Node.Level).ThenBy(k => k.Node.Name, StringComparer.Ordinal);
+
+    void LayLanes()
+    {
+        foreach (Cell c in Cells) c.Lane = LaneOf(c);
+        foreach (var (name, _) in StructureLanes)
+        {
+            var cells = Cells.Where(c => c.Lane == name).ToList();
+            if (cells.Count == 0) continue;
+            var taken = new HashSet<(int Row, int Col)>();
+            var heads = cells.Where(c => c.Parent?.Lane != name).OrderBy(c => c.Node.Level).ThenBy(c => c.Node.Name, StringComparer.Ordinal).ToList();
+            foreach (Cell h in heads.Where(h => Next(h).Any())) Place(h, 0, 0, taken);
+            // Loose heads pack into rows as wide as the lane's trees, or wide enough for all of them in one,
+            // below the lane's first line of tiers, so none reads as that line's next tier.
+            var loose = heads.Where(h => !Next(h).Any()).ToList();
+            int width = Math.Max(taken.Count == 0 ? 0 : taken.Max(t => t.Col) + 1, 2 * loose.Count - 1);
+            int first = taken.Count == 0 ? 0 : width;
+            foreach (Cell h in loose)
+            {
+                int spot = first;
+                while (!Free(taken, spot / width, spot % width, 1)) spot++;
+                Take(h, spot / width, spot % width, taken);
+            }
+            Lanes.Add((name, cells, cells.Max(c => c.Row) + 1));
+        }
+    }
+
+    /// <summary>Room for <paramref name="len"/> tiles from a column, with the columns either side empty.</summary>
+    static bool Free(HashSet<(int, int)> taken, int row, int col, int len) => !Enumerable.Range(col - 1, len + 2).Any(k => taken.Contains((row, k)));
+
+    static void Take(Cell c, int row, int col, HashSet<(int, int)> taken)
     {
         c.Row = row;
-        if (c.Kids.Count == 0) return row + 1;
-        int next = row;
-        foreach (Cell k in c.Kids) next = Place(k, next);
-        return next;
+        c.Col = col;
+        taken.Add((row, col));
     }
 
-    /// <summary>Everything a node needs first: itself and its parents, up to the root.</summary>
-    public HashSet<Cell> PathTo(Cell c)
+    /// <summary>A cell and its line of next tiers from a column, on the first row from <paramref name="row"/> with room; then each other child one column right of its parent, on a lower row.</summary>
+    static void Place(Cell c, int col, int row, HashSet<(int, int)> taken)
     {
-        var set = new HashSet<Cell>();
-        for (Cell x = c; x != null; x = x.Parent) set.Add(x);
-        return set;
-    }
-
-    /// <summary>Everything a node opens up: all its children and theirs.</summary>
-    public HashSet<Cell> Opens(Cell c)
-    {
-        var set = new HashSet<Cell>();
-        var todo = new Stack<Cell>(c.Kids);
-        while (todo.Count > 0)
-        {
-            Cell x = todo.Pop();
-            if (!set.Add(x)) continue;
-            foreach (Cell k in x.Kids) todo.Push(k);
-        }
-        return set;
+        var line = new List<Cell>();
+        for (Cell x = c; x != null; x = Next(x).FirstOrDefault()) line.Add(x);
+        while (!Free(taken, row, col, line.Count)) row++;
+        for (int i = 0; i < line.Count; i++) Take(line[i], row, col + i, taken);
+        foreach (Cell x in line)
+            foreach (Cell k in Next(x).Skip(1)) Place(k, x.Col + 1, x.Row + 1, taken);
     }
 }
 
 /// <summary>
-/// TECH: the tech tree, one tab per kind of thing (base and capital vessel, small and hover vessel,
-/// tools, weapons, deco, misc), built from the unlock on every item and block. See
-/// <see cref="TechLayout"/>: nodes stand in columns by the level they open at and every branch has
-/// its own row, joined to its parent by a right-angle wire. Pointing at a node lights its path back
-/// to the root and everything it opens, and dims the rest. A tree wider or taller than the window
-/// scrolls (the wheel, shift and the wheel, or the arrows). Unlocked nodes are lit; locked ones say
-/// what they need (a level, points, their parent); one you can afford unlocks on a click. The deco
-/// tab holds a family per theme set: pick a set, then its pieces show.
+/// TECH: the tech tree on one screen, one tab per kind of thing (structures, tools, weapons, deco,
+/// misc), built from the unlock on every item and block. Each tab is a compact grid: a column per
+/// level, a tile per node with its item's icon, name, cost and state. Structures is one tree from
+/// the core, shown as lanes per device family (<see cref="TechLayout"/>) with each family's tiers
+/// left to right and wires to what a node opens; hover and flight are lanes side by side. Deco
+/// shows one set at a time: pick a set, its pieces show. Pointing at
+/// a tile marks it and its tip says what it needs and what it opens; one you can afford unlocks on a
+/// click. Nothing scrolls: the tiles shrink to fit the screen.
 /// </summary>
 public sealed class TechSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
-    public string Tab = "base";
-    /// <summary>The deco set shown on a tab with groups.</summary>
+    public string Tab = "structures";
+    /// <summary>The deco set shown on the deco tab.</summary>
     public string Group;
-    /// <summary>How far the tree is scrolled, in columns and rows.</summary>
+    /// <summary>Kept for scripts that scrolled the old tree; nothing scrolls now.</summary>
     public int ColOff, RowOff;
 
-    const float BoxW = 204, BoxH = 48, ColW = 244, RowH = 58;
-    int _visCols = 6, _visRows = 10;
-    string _key, _layoutKey;
+    /// <summary>Tile sizes: the largest a tile grows to, the smallest it may shrink to, the gaps, and the lane label's width.</summary>
+    public const float MaxTileW = 230, MaxTileH = 46, MinTileH = 26, Gap = 4, LaneW = 100;
+
+    string _layoutKey;
     TechLayout _layout;
+
+    /// <summary>Every tile laid out in the last input pass, by node (tests measure them).</summary>
+    public readonly Dictionary<string, Rect2> Placed = new();
+    /// <summary>The grid's area in the last input pass (tests).</summary>
+    public Rect2 GridArea;
 
     public TechSection(Game.Game game) => _game = game;
     public Vector2 PreferredSize => new(1560, 790);
 
-    /// <summary>What the section's picture depends on besides the pointer, so scrolling redraws.</summary>
-    public string Signature => $"{Tab}|{Group}|{ColOff}|{RowOff}";
+    /// <summary>What the section's picture depends on besides the pointer.</summary>
+    public string Signature => $"{Tab}|{Group}";
 
-    static string KeyOf(string tab, string group) => group == null ? tab : tab + "/" + group;
-
-    TechLayout LayoutFor(string tab, string group)
+    TechLayout LayoutFor(string tab)
     {
-        string key = KeyOf(tab, group);
-        if (_layout == null || _layoutKey != key)
+        if (_layout == null || _layoutKey != tab)
         {
-            _layout = new TechLayout(_game.Progress.Nodes.Where(n => n.Tab == tab && (group == null || n.Group == group)));
-            _layoutKey = key;
+            _layout = new TechLayout(_game.Progress.Nodes.Where(n => n.Tab == tab), lanes: tab == "structures");
+            _layoutKey = tab;
         }
         return _layout;
     }
 
-    /// <summary>Scrolls to a node (switching to its tab and set), so a script can click it.</summary>
+    /// <summary>Shows a node's tab (and set), so a script can click it.</summary>
     public void Reveal(string id)
     {
         TechNode n = _game.Progress.Node(id);
         if (n == null) return;
         Tab = n.Tab;
         if (n.Group != null) Group = n.Group;
-        TechLayout l = LayoutFor(Tab, n.Group);
-        _key = KeyOf(Tab, n.Group);
-        ColOff = RowOff = 0;
-        if (!l.ById.TryGetValue(id, out TechLayout.Cell c)) return;
-        if (c.Col >= _visCols) ColOff = c.Col - _visCols + 1;
-        if (c.Row >= _visRows) RowOff = c.Row - _visRows + 1;
-    }
-
-    /// <summary>"Steel block (large)" to "Steel block" and its grid: L, S, or none.</summary>
-    static string Plain(TechNode n, out string tag)
-    {
-        tag = n.Small switch { true => "S", false => "L", _ => null };
-        return Regex.Replace(n.Name, @"\s*\((large|small)\)\s*$", "", RegexOptions.IgnoreCase);
     }
 
     /// <summary>Text shrunk (down to <paramref name="min"/>) and then cut with an ellipsis until it fits the width.</summary>
@@ -186,6 +206,105 @@ public sealed class TechSection : IMenuSection
         return (text.TrimEnd() + "…", s);
     }
 
+    /// <summary>A lane's colour bar and name down the left edge.</summary>
+    static void LaneLabel(Gui g, string name, float x, float y, float h, Color? holo = null)
+    {
+        Color tone = holo ?? name switch { "HOVER" or "DECO" => C.Holo, "FLIGHT" => C.Accent, _ => C.Accent2 };
+        g.Fill(new Rect2(x, y, 4, h), tone);
+        var (text, size) = Fit(name, 12, 8, LaneW - 12, UiTheme.Display);
+        g.TextIn(text, new Rect2(x + 8, y, LaneW - 12, Math.Min(h, 22)), tone, size, HorizontalAlignment.Left, UiTheme.Display);
+    }
+
+    /// <summary>Structures: a lane per device family, the tiers left to right, a wire from each node to what it opens in its lane.</summary>
+    void LaneGrid(Gui g, Progress p, TechLayout lay, Dictionary<TechLayout.Cell, Rect2> at)
+    {
+        const float ColGap = 16, LaneGap = 8;
+        int rows = lay.Lanes.Sum(l => l.Rows);
+        float tileH = Math.Min(MaxTileH, (GridArea.Size.Y - LaneGap * (lay.Lanes.Count - 1) + Gap) / rows - Gap);
+        // A lane beside the visor's alerts' row (bottom left, over every menu) starts right of it.
+        Rect2 alerts = HudLayout.Compute(new Vector2(Gui.Width, Gui.Height), 1f).MenuAlerts.Grow(4);
+        var bands = new List<(float Y, float H, float X, int Cols)>();
+        float y = GridArea.Position.Y;
+        foreach (var (_, cells, laneRows) in lay.Lanes)
+        {
+            float laneH = laneRows * (tileH + Gap) - Gap;
+            bool beside = new Rect2(GridArea.Position.X, y, GridArea.Size.X, laneH).Intersects(alerts);
+            bands.Add((y, laneH, beside ? alerts.End.X : GridArea.Position.X, cells.Max(c => c.Col) + 1));
+            y += laneH + LaneGap;
+        }
+        float tileW = Math.Min(MaxTileW, bands.Min(b => (GridArea.End.X - b.X - LaneW + ColGap) / b.Cols - ColGap));
+        for (int i = 0; i < lay.Lanes.Count; i++)
+        {
+            var (name, cells, _) = lay.Lanes[i];
+            var (top, h, x, _) = bands[i];
+            LaneLabel(g, name, x, top, h);
+            foreach (TechLayout.Cell c in cells)
+                at[c] = new Rect2(x + LaneW + c.Col * (tileW + ColGap), top + c.Row * (tileH + Gap), tileW, tileH);
+        }
+        if (!g.Drawing) return;
+        // Out of the parent's right edge, down the gap beside it, into the child's left edge.
+        foreach (var (c, r) in at)
+            if (c.Parent != null && c.Parent.Lane == c.Lane && at.TryGetValue(c.Parent, out Rect2 up))
+            {
+                float x = up.End.X + ColGap / 2, from = up.GetCenter().Y, to = r.GetCenter().Y;
+                g.Canvas.DrawPolyline(new[] { new Vector2(up.End.X, from), new Vector2(x, from), new Vector2(x, to), new Vector2(r.Position.X, to) },
+                    p.IsUnlocked(c.Node.Id) ? C.Good : C.Rule, 2f);
+            }
+    }
+
+    /// <summary>The other tabs: a column per level (a crowded level spreads over several), the tab's own nodes in one lane and the chosen deco set's in another.</summary>
+    void LevelGrid(Gui g, Progress p, TechLayout lay, string group, Dictionary<TechLayout.Cell, Rect2> at)
+    {
+        var lanes = new List<(string Name, List<TechLayout.Cell> Cells)>();
+        var own = lay.Cells.Where(c => c.Node.Group == null).ToList();
+        if (own.Count > 0) lanes.Add((Progress.TabName(Tab), own));
+        if (group != null) lanes.Add((group.ToUpperInvariant(), lay.Cells.Where(c => c.Node.Group == group).ToList()));
+        var shown = lanes.SelectMany(l => l.Cells).ToList();
+        // The split that gives the most readable tiles wins (tall enough for two lines, wide enough for a name).
+        var levels = shown.Select(c => c.Node.Level).Distinct().OrderBy(x => x).ToList();
+        int Count(int lane, int level) => lanes[lane].Cells.Count(c => c.Node.Level == level);
+        float headH = 22, laneGap = 10, top = GridArea.Position.Y, left = GridArea.Position.X;
+        float rowsH = GridArea.Size.Y - headH - laneGap * (lanes.Count - 1);
+        int most = Enumerable.Range(0, lanes.Count).SelectMany(li => levels.Select(l => Count(li, l))).Max();
+        Dictionary<int, int> span = null;
+        List<int> laneRows = null;
+        float tileW = 0, tileH = 0, best = -1;
+        for (int rows = 1; rows <= most; rows++)
+        {
+            var k = levels.ToDictionary(l => l, l => Enumerable.Range(0, lanes.Count).Max(li => (Count(li, l) + rows - 1) / rows));
+            var lr = Enumerable.Range(0, lanes.Count).Select(li => Math.Max(1, levels.Max(l => (Count(li, l) + k[l] - 1) / k[l]))).ToList();
+            float w = Math.Min(MaxTileW, (GridArea.Size.X - LaneW) / k.Values.Sum() - Gap), h = Math.Min(MaxTileH, rowsH / lr.Sum() - Gap);
+            float score = Math.Min(h / 44f, w / 150f);
+            if (score > best) { best = score; span = k; laneRows = lr; tileW = w; tileH = h; }
+        }
+        var colOf = new Dictionary<int, int>();
+        int next = 0;
+        foreach (int l in levels) { colOf[l] = next; next += span[l]; }
+        float ColX(int col) => left + LaneW + col * (tileW + Gap);
+
+        // The level headers, over each level's first column.
+        foreach (int level in levels)
+            g.TextIn($"LV {level}", new Rect2(ColX(colOf[level]), top, tileW, headH - 4), p.Level >= level ? C.Good : C.Dim, 13, HorizontalAlignment.Left, UiTheme.Mono);
+
+        float y = top + headH;
+        for (int li = 0; li < lanes.Count; li++)
+        {
+            var (name, cells) = lanes[li];
+            float laneH = laneRows[li] * (tileH + Gap) - Gap;
+            LaneLabel(g, name, left, y, laneH, li > 0 || own.Count == 0 ? C.Holo : null);
+            foreach (var byLevel in cells.GroupBy(c => c.Node.Level))
+            {
+                int k = 0, rowsHere = laneRows[li];
+                foreach (TechLayout.Cell c in byLevel.OrderBy(c => c.Node.Name, StringComparer.Ordinal))
+                {
+                    at[c] = new Rect2(ColX(colOf[c.Node.Level] + k / rowsHere), y + k % rowsHere * (tileH + Gap), tileW, tileH);
+                    k++;
+                }
+            }
+            y += laneH + laneGap;
+        }
+    }
+
     public void Build(Gui g, Rect2 area)
     {
         Progress p = _game.Progress;
@@ -196,163 +315,139 @@ public sealed class TechSection : IMenuSection
             string t = Progress.Tabs[i];
             if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * (tabW + 8), 0), new Vector2(tabW, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
         }
-        g.Text($"LEVEL {p.Level}   {p.Points} UNLOCK POINTS   {p.Xp} XP{(p.Creative ? "   (CREATIVE: everything unlocked)" : "")}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
-        var onTab = p.Nodes.Where(n => n.Tab == Tab).ToList();
-        if (onTab.Count == 0) return;
-        // Tabs with groups (deco): a row of sets, then one set's pieces. Up to 12 sets a row, two rows.
-        var groups = onTab.Select(n => n.Group).Where(x => x != null).Distinct().ToList();
-        float top = 0;
+        g.Text($"LEVEL {p.Level}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
+        g.Text($"{p.Points} PTS", o + new Vector2(170, 48), C.Accent2, 16, UiTheme.Mono);
+        g.Text($"{p.Xp} XP", o + new Vector2(290, 48), C.Text, 16, UiTheme.Mono);
+        if (p.Creative) g.Text("CREATIVE", o + new Vector2(440, 48), C.Holo, 16, UiTheme.Label);
+        Placed.Clear();
+        TechLayout lay = LayoutFor(Tab);
+        if (lay.Cells.Count == 0) return;
+
+        // Misc: its deco sets, a row of buttons; one set's pieces form the last lane.
+        float top = o.Y + 76;
+        var groups = lay.Cells.Select(c => c.Node.Group).Where(x => x != null).Distinct().ToList();
         string group = null;
         if (groups.Count > 0)
         {
             if (Group == null || !groups.Contains(Group)) Group = groups[0];
             group = Group;
-            float gw = (area.Size.X - 10) / 12;
+            const int PerRow = 12;
+            float gw = (area.Size.X - LaneW) / PerRow;
+            g.TextIn("DECO", new Rect2(o.X, top, LaneW - 8, 26), C.Holo, 13, HorizontalAlignment.Left, UiTheme.Display);
             for (int i = 0; i < groups.Count; i++)
             {
-                var r = new Rect2(o.X + i % 12 * gw, o.Y + 76 + i / 12 * 30, gw - 4, 26);
+                var r = new Rect2(o.X + LaneW + i % PerRow * gw, top + i / PerRow * 30, gw - 4, 26);
                 if (g.Button($"tech:group:{groups[i]}", r, groups[i].ToUpperInvariant(), C.Holo, lit: groups[i] == Group, size: 11)) { Group = groups[i]; group = Group; }
             }
-            top = (groups.Count + 11) / 12 * 30 + 4;
+            top += (groups.Count + PerRow - 1) / PerRow * 30 + 6;
         }
-        string key = KeyOf(Tab, group);
-        if (key != _key)
-        {
-            _key = key;
-            ColOff = RowOff = 0;
-        }
-        TechLayout lay = LayoutFor(Tab, group);
 
-        // The window on the tree: whole columns and rows only, so no box is ever cut.
-        float headY = o.Y + 80 + top, treeY = o.Y + 106 + top;
-        float viewH = area.End.Y - 24 - treeY;
-        _visCols = Math.Max(1, (int)((area.Size.X + (ColW - BoxW)) / ColW));
-        _visRows = Math.Max(1, (int)(viewH / RowH));
-        var view = new Rect2(o.X, treeY, area.Size.X, _visRows * RowH);
-        int maxCol = Math.Max(0, lay.Columns.Count - _visCols), maxRow = Math.Max(0, lay.Rows - _visRows);
-        if (!g.Drawing && g.Over(new Rect2(o.X, headY, area.Size.X, view.End.Y - headY)) && _game.Controls.Wheel != 0)
-        {
-            int step = Math.Sign(_game.Controls.Wheel);
-            if (g.Shift) ColOff += step; else RowOff += step * 2;
-        }
-        if (maxCol > 0 || maxRow > 0)
-        {
-            float bx = area.End.X - 4 * 44;
-            if (g.Button("tech:scroll:left", new Rect2(bx, o.Y + 42, 40, 28), "<", C.Accent2, enabled: ColOff > 0, size: 16)) ColOff--;
-            if (g.Button("tech:scroll:right", new Rect2(bx + 44, o.Y + 42, 40, 28), ">", C.Accent2, enabled: ColOff < maxCol, size: 16)) ColOff++;
-            if (g.Button("tech:scroll:up", new Rect2(bx + 88, o.Y + 42, 40, 28), "^", C.Accent2, enabled: RowOff > 0, size: 16)) RowOff = Math.Max(0, RowOff - 3);
-            if (g.Button("tech:scroll:down", new Rect2(bx + 132, o.Y + 42, 40, 28), "v", C.Accent2, enabled: RowOff < maxRow, size: 16)) RowOff = Math.Min(maxRow, RowOff + 3);
-            g.TextIn("wheel: up and down · shift + wheel: sideways", new Rect2(area.End.X - 460, area.End.Y - 20, 460, 18), C.Dim, 13, HorizontalAlignment.Right);
-        }
-        ColOff = Math.Clamp(ColOff, 0, maxCol);
-        RowOff = Math.Clamp(RowOff, 0, maxRow);
-
-        Vector2 Origin(TechLayout.Cell c) => new(o.X + (c.Col - ColOff) * ColW, treeY + (c.Row - RowOff) * RowH);
-        bool Shown(TechLayout.Cell c) => c.Col >= ColOff && c.Col < ColOff + _visCols && c.Row >= RowOff && c.Row < RowOff + _visRows;
-        Rect2 BoxOf(TechLayout.Cell c) => new(Origin(c), new Vector2(BoxW, BoxH));
-
-        // Which node the pointer is on; its path and what it opens stay lit.
+        GridArea = new Rect2(o.X, top, area.Size.X, area.End.Y - top);
+        var at = new Dictionary<TechLayout.Cell, Rect2>();
+        if (lay.Lanes.Count > 0) LaneGrid(g, p, lay, at);
+        else LevelGrid(g, p, lay, group, at);
         TechLayout.Cell hover = null;
-        foreach (TechLayout.Cell c in lay.Cells)
-            if (Shown(c) && g.Over(BoxOf(c))) hover = c;
-        HashSet<TechLayout.Cell> path = hover == null ? null : lay.PathTo(hover), opens = hover == null ? null : lay.Opens(hover);
-        bool Lit(TechLayout.Cell c) => hover == null || path.Contains(c) || opens.Contains(c);
-
-        // Level headers over the columns.
-        for (int ci = ColOff; ci < Math.Min(lay.Columns.Count, ColOff + _visCols); ci++)
+        foreach (var (c, r) in at)
         {
-            var (level, sub) = lay.Columns[ci];
-            if (sub == 0) g.TextIn($"LEVEL {level}", new Rect2(o.X + (ci - ColOff) * ColW, headY, BoxW, 20), p.Level >= level ? C.Good : C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono);
-            else g.TextIn($"LEVEL {level} ›", new Rect2(o.X + (ci - ColOff) * ColW, headY, BoxW, 20), C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono); // a step on, for what a node of this level opens
+            Placed[c.Node.Id] = r;
+            if (g.Over(r)) hover = c;
         }
-
-        // Wires: out of a parent's right side, along the gutter, then into the child along its own row.
-        if (g.Drawing)
-        {
-            void Seg(Vector2 a, Vector2 b, Color col, float w)
-            {
-                if (a.X == b.X) // vertical
-                {
-                    if (a.X < view.Position.X || a.X > view.End.X) return;
-                    float y0 = Math.Max(Math.Min(a.Y, b.Y), view.Position.Y), y1 = Math.Min(Math.Max(a.Y, b.Y), view.End.Y);
-                    if (y0 <= y1) g.Canvas.DrawLine(new Vector2(a.X, y0), new Vector2(a.X, y1), col, w);
-                }
-                else
-                {
-                    if (a.Y < view.Position.Y || a.Y > view.End.Y) return;
-                    float x0 = Math.Max(Math.Min(a.X, b.X), view.Position.X), x1 = Math.Min(Math.Max(a.X, b.X), view.End.X);
-                    if (x0 <= x1) g.Canvas.DrawLine(new Vector2(x0, a.Y), new Vector2(x1, a.Y), col, w);
-                }
-            }
-            void Wire(TechLayout.Cell parent, TechLayout.Cell kid, bool lit)
-            {
-                Vector2 pa = Origin(parent) + new Vector2(BoxW, BoxH / 2), ka = Origin(kid) + new Vector2(0, BoxH / 2);
-                float tx = pa.X + (ColW - BoxW) / 2;
-                bool done = p.IsUnlocked(kid.Node.Id);
-                bool on = hover != null && lit;
-                Color col = on ? C.Accent : done ? C.Good : C.Rule;
-                if (hover != null && !on) col = new Color(col, 0.2f);
-                float w = on ? 3.5f : 2f;
-                Seg(pa, new Vector2(tx, pa.Y), col, w);
-                Seg(new Vector2(tx, pa.Y), new Vector2(tx, ka.Y), col, w);
-                Seg(new Vector2(tx, ka.Y), ka, col, w);
-                if (Shown(kid) && ka.X - 8 >= view.Position.X)
-                    g.Canvas.DrawColoredPolygon(new[] { ka, ka + new Vector2(-8, -5), ka + new Vector2(-8, 5) }, col);
-            }
-            // The lit wires last, so they run over the rest.
-            bool EdgeLit(TechLayout.Cell c) => hover != null && (path.Contains(c) && path.Contains(c.Parent) || opens.Contains(c) && (opens.Contains(c.Parent) || c.Parent == hover));
-            foreach (TechLayout.Cell c in lay.Cells)
-                if (c.Parent != null && !EdgeLit(c)) Wire(c.Parent, c, false);
-            foreach (TechLayout.Cell c in lay.Cells)
-                if (c.Parent != null && EdgeLit(c)) Wire(c.Parent, c, true);
-        }
-
-        foreach (TechLayout.Cell c in lay.Cells)
-        {
-            if (!Shown(c)) continue;
-            TechNode n = c.Node;
-            Rect2 r = BoxOf(c);
-            UnlockState state = p.StateOf(n);
-            Color tone = state switch { UnlockState.Unlocked => C.Good, UnlockState.Affordable => C.Accent, _ => C.Dim };
-            if (g.Button($"tech:{n.Id}", r, "", tone, enabled: state == UnlockState.Affordable, lit: false))
-            {
-                if (p.Unlock(n.Id)) g.Sound = "unlock";
-            }
-            if (!g.Drawing) continue;
-            float fade = Lit(c) ? 1f : 0.3f;
-            Color F(Color col) => new Color(col, col.A * fade);
-            string name = Plain(n, out string tag);
-            float tagW = tag == null ? 0 : 22;
-            g.Fill(r, F(new Color(state == UnlockState.Unlocked ? C.Panel : C.Glass, 0.95f)));
-            g.Fill(new Rect2(r.Position, new Vector2(6, r.Size.Y)), F(tone));
-            g.Outline(r, F(c == hover ? C.Accent : tone), c == hover ? 3.5f : state == UnlockState.Affordable ? 3f : 1.5f);
-            var (nt, ns) = Fit(name, 14, 11, BoxW - 18 - tagW, UiTheme.Label);
-            g.Text(nt, r.Position + new Vector2(12, 4 + (14 - ns) / 2f), F(state == UnlockState.Unlocked ? C.Text : C.Dim), ns);
-            string status = state == UnlockState.Unlocked ? $"UNLOCKED · {n.Cost} PT" : Regex.Replace(p.Needs(n), @"\s*\((large|small)\)", "", RegexOptions.IgnoreCase);
-            var (st, ss) = Fit(status, 12, 9, BoxW - 18, UiTheme.Label);
-            g.Text(st, r.Position + new Vector2(12, 27 + (12 - ss) / 2f), F(state == UnlockState.Affordable ? C.Accent : state == UnlockState.Unlocked ? C.Good : C.Warn), ss);
-            if (tag != null)
-            {
-                var badge = new Rect2(r.End.X - 22, r.Position.Y + 3, 18, 18);
-                g.Fill(badge, F(tag == "L" ? C.Accent2 : C.Holo));
-                g.TextIn(tag, badge, F(C.Glass), 13, HorizontalAlignment.Center, UiTheme.Display);
-            }
-        }
+        // Every tile stays lit; the one pointed at is marked and its tip says what it needs and opens.
+        foreach (var (c, r) in at) Tile(g, p, c, r, true, c == hover);
 
         if (hover != null)
         {
             TechNode n = hover.Node;
             UnlockState state = p.StateOf(n);
-            string plain = Plain(n, out string tg);
             var lines = new List<(string, Color)>
             {
-                (plain + (tg == "L" ? "  (large grid)" : tg == "S" ? "  (small grid)" : ""), C.Accent),
-                ($"Opens at level {n.Level} · {n.Cost} unlock point{(n.Cost == 1 ? "" : "s")}", C.Text),
-                (state == UnlockState.Unlocked ? "Unlocked" : p.Needs(n), state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Warn),
+                (n.Name, C.Accent),
+                ($"LEVEL {n.Level} · {n.Cost} PT", C.Text),
+                (state == UnlockState.Unlocked ? "UNLOCKED" : p.Needs(n), state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Warn),
             };
-            if (hover.Parent != null) lines.Add(($"Needs: {Plain(hover.Parent.Node, out _)}", C.Dim));
-            if (hover.Kids.Count > 0) lines.Add(($"Opens {lay.Opens(hover).Count} more: {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
-            g.SetTip(BoxOf(hover), () => lines);
+            if (hover.Parent != null) lines.Add(($"NEEDS · {hover.Parent.Node.Name}", C.Dim));
+            if (hover.Kids.Count > 0) lines.Add(($"OPENS · {string.Join(", ", hover.Kids.Take(4).Select(k => k.Node.Name))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
+            g.SetTip(at[hover], () => lines);
         }
     }
-}
+
+    /// <summary>A name on up to two lines: the largest size (down to <paramref name="min"/>) at which it fits, the second line cut if it still doesn't.</summary>
+    static (string One, string Two, int Size) Wrap(string text, int size, int min, float width, Font font)
+    {
+        string[] words = text.Split(' ');
+        for (int s = size; s >= min; s--)
+        {
+            string one = words[0];
+            int k = 1;
+            while (k < words.Length && Paint.TextWidth(font, s, one + " " + words[k]) <= width) one += " " + words[k++];
+            string two = string.Join(" ", words.Skip(k));
+            if (Paint.TextWidth(font, s, one) <= width && Paint.TextWidth(font, s, two) <= width) return (one, two, s);
+            if (s == min) return (Fit(one, s, s, width, font).Text, Fit(two, s, s, width, font).Text, s);
+        }
+        return (text, "", min);
+    }
+
+    /// <summary>One tile: the state's colour down its edge, the item's icon, its name (two lines when it is tall enough), and its cost or what it waits for.</summary>
+    void Tile(Gui g, Progress p, TechLayout.Cell c, Rect2 r, bool lit, bool hot)
+    {
+        TechNode n = c.Node;
+        UnlockState state = p.StateOf(n);
+        Color tone = state switch { UnlockState.Unlocked => C.Good, UnlockState.Affordable => C.Accent, UnlockState.NeedsPoints => C.Accent2, _ => C.Dim };
+        if (g.Button($"tech:{n.Id}", r, "", tone, enabled: state == UnlockState.Affordable, lit: false) && p.Unlock(n.Id)) g.Sound = "unlock";
+        string name = n.Name;
+        bool tall = r.Size.Y >= 42;
+        float icon = Math.Min(r.Size.Y - 6, 40);
+        float textX = r.Position.X + 9 + icon + 5, textW = r.End.X - 4 - textX;
+        const float BadgeW = 24, BadgeH = 14;
+        string status = state switch
+        {
+            UnlockState.Unlocked => "",
+            UnlockState.Affordable => "UNLOCK",
+            UnlockState.NeedsLevel => $"LV {n.Level}",
+            UnlockState.NeedsParent => "NEEDS " + (c.Parent != null ? c.Parent.Node.Name.ToUpperInvariant() : "PARENT"),
+            _ => "POINTS",
+        };
+        string cost = state == UnlockState.Unlocked ? "" : $"{n.Cost}";
+        // Tall: the name on two lines, the status and the cost under it. Short: the name on one line, the level it waits for and the cost beside it.
+        string waits = !tall && state == UnlockState.NeedsLevel ? $"LV {n.Level}" : "";
+        float waitsW = waits == "" ? 0 : Paint.TextWidth(UiTheme.Mono, 10, waits) + 6, nameW = textW - BadgeW - 4 - waitsW;
+        var (one, two, ns) = tall ? Wrap(name, 12, 9, textW, UiTheme.Label) : (Fit(name, 12, 9, nameW, UiTheme.Label).Text, "", Fit(name, 12, 9, nameW, UiTheme.Label).Size);
+        var badge = tall ? new Rect2(r.End.X - BadgeW - 3, r.End.Y - BadgeH - 3, BadgeW, BadgeH) : new Rect2(r.End.X - BadgeW - 3, r.Position.Y + (r.Size.Y - BadgeH) / 2f, BadgeW, BadgeH);
+        var line1 = new Rect2(textX, r.Position.Y + 2, tall ? textW : nameW, tall ? 14 : r.Size.Y - 4);
+        var waitsAt = new Rect2(badge.Position.X - 4 - waitsW, r.Position.Y, waitsW, r.Size.Y);
+        var line2 = new Rect2(textX, r.Position.Y + 15, textW, 14);
+        var line3 = new Rect2(textX, r.End.Y - BadgeH - 3, badge.Position.X - 4 - textX, BadgeH);
+        var (st, ss) = Fit(status, 10, 8, line3.Size.X, UiTheme.Label);
+        if (!g.Drawing)
+        {
+            // Laid out in the input pass too, so the tests can measure it.
+            g.TextIn(one, line1, C.Text, ns);
+            if (tall && two != "") g.TextIn(two, line2, C.Text, ns);
+            if (tall && st != "") g.TextIn(st, line3, C.Dim, ss);
+            if (waits != "") g.TextIn(waits, waitsAt, C.Dim, 10, HorizontalAlignment.Right, UiTheme.Mono);
+            if (cost != "") g.TextIn(cost, badge, C.Text, 11, HorizontalAlignment.Center, UiTheme.Mono);
+            return;
+        }
+        float fade = lit ? 1f : 0.28f;
+        Color F(Color col) => new(col, col.A * fade);
+        g.Fill(r, F(g.Back(new Color(state == UnlockState.Unlocked ? C.Panel : C.Glass, 0.9f))));
+        g.Fill(new Rect2(r.Position, new Vector2(5, r.Size.Y)), F(tone));
+        if (hot || state == UnlockState.Affordable) g.Outline(r, F(hot ? C.Text : tone), hot ? 3f : 2f);
+        Texture2D tex = ItemIcons.Shared?.Get(n.ItemId);
+        var iconBox = new Rect2(r.Position.X + 9, r.Position.Y + (r.Size.Y - icon) / 2f, icon, icon);
+        if (tex != null) g.Canvas.DrawTextureRect(tex, iconBox, false, new Color(1, 1, 1, (state == UnlockState.Unlocked || state == UnlockState.Affordable ? 1f : 0.45f) * fade));
+        else g.Fill(iconBox, F(new Color(tone, 0.25f)));
+        Color ink = F(state is UnlockState.Unlocked or UnlockState.Affordable ? C.Text : C.Dim);
+        g.TextIn(one, line1, ink, ns);
+        if (tall && two != "") g.TextIn(two, line2, ink, ns);
+        if (tall && st != "") g.TextIn(st, line3, F(state == UnlockState.Affordable ? C.Accent : C.Warn), ss);
+        if (waits != "") g.TextIn(waits, waitsAt, F(C.Warn), 10, HorizontalAlignment.Right, UiTheme.Mono);
+        // The cost on its badge, or a tick once unlocked.
+        g.Fill(badge, F(new Color(state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Rule, 0.85f)));
+        if (cost != "") g.TextIn(cost, badge, F(C.Glass), 11, HorizontalAlignment.Center, UiTheme.Mono);
+        else
+        {
+            Vector2 m = badge.GetCenter();
+            g.Canvas.DrawPolyline(new[] { m + new Vector2(-5, 0), m + new Vector2(-2, 3), m + new Vector2(5, -4) }, F(C.Glass), 2f);
+        }
+    }}

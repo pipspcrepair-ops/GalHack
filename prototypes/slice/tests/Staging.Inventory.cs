@@ -24,16 +24,16 @@ public sealed partial class Staging
         ItemCatalogue items = _game.Zone.Data.Items;
         var stock = new (string id, int n)[]
         {
-            (Play.BlockItem("hardened", false), 340), (Play.BlockItem("steel", false), 120), (Play.BlockItem("glass", false), 48),
+            (Play.BlockItem("hardened"), 340), (Play.BlockItem("steel"), 120), (Play.BlockItem("glass"), 48),
             ("medkit", 6), ("pistol-rounds", 12), ("iron-bar", 80),
         };
         foreach (var (id, n) in stock) b0.Storage.Add(id, n);
         b0.StorageGrid.Reconcile();
         var far = new SharedStorage(items, "Outpost", 500);
-        far.Add(Play.BlockItem("concrete", false), 60);
+        far.Add(Play.BlockItem("concrete"), 60);
         var pack = _game.Pack;
         for (int i = 0; i < 5; i++) pack.SetRemote(i, b0.Storage, b0.Name, stock[i].id);
-        pack.SetRemote(5, far, "Outpost", Play.BlockItem("concrete", false));
+        pack.SetRemote(5, far, "Outpost", Play.BlockItem("concrete"));
         pack.Bar = BarSource.Remote;
         pack.Selected = 0;
         foreach (int x in _drive.WalkTo(b0.ToWorld(new N.Vector3(0, 0, -9f)), 1f, 20f)) yield return x;

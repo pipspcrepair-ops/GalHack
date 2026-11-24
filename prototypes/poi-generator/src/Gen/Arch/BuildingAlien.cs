@@ -252,14 +252,9 @@ public sealed partial class Building
                 Int3 mid = Middle();
                 Int3 at = new(mid.X + (int)(Math.Cos(ang) * (HalfSpan() + r + 3)), 0, mid.Z + (int)(Math.Sin(ang) * (HalfSpan() + r + 3)));
                 if (NearDoor(at)) continue;
-                for (int y = 0; y <= r; y++)
-                    for (int dz = -r; dz <= r; dz++)
-                        for (int dx = -r; dx <= r; dx++)
-                        {
-                            float d = MathF.Sqrt(dx * dx + dz * dz + y * y * 1.3f);
-                            if (d > r) continue;   // solid mounds: every cell rests on the one below
-                            Put(at + new Int3(dx, y, dz), new Block(BlockType.Cube, Material.Chitin, shell.Scale(0.8f + 0.05f * ((dx + dz + y) & 3)), Role.Wall));
-                        }
+                // Solid mounds, round at every course: every cell rests on the one below; nothing laid where something stands.
+                Round.Lay(C, at.X + 0.5, at.Z + 0.5, at.Y, at.Y + r, y => (Math.Sqrt(Math.Max(0, r * r - 1.3 * (y - at.Y) * (y - at.Y))), 0),
+                    y => new Block(BlockType.Cube, Material.Chitin, shell.Scale(0.8f + 0.05f * ((y - at.Y) & 3)), Role.Wall), hollow: q => !Free(q));
             }
         }
 

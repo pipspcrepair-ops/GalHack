@@ -70,7 +70,7 @@ public sealed class VesselRoles
 public sealed partial class Vessel
 {
     /// <summary>The one player of the slice, by name in the roles (co-op brings the rest).</summary>
-    public const string Player = "castaway";
+    public const string Player = "sleeper";
 
     /// <summary>Who sits where, and who flies.</summary>
     public readonly VesselRoles Roles = new();
@@ -80,14 +80,15 @@ public sealed partial class Vessel
 
     public static bool IsChair(BlockType type) => type.IsCommandChair;
 
-    /// <summary>The chair nearest a world point, and how far it is (a structure with none: infinitely far).</summary>
+    /// <summary>The chair nearest a world point, and how far it is to its seat (a structure with none: infinitely far).</summary>
     public float NearestChair(Vector3 world, out Int3 chair)
     {
         float best = float.PositiveInfinity;
         chair = default;
         foreach (Int3 c in Chairs)
         {
-            float d = ToWorld(StructureBridge.CellCenter(Structure, c)).DistanceTo(world);
+            // To its seat: a chair spans several cells, and its anchor is at one end of them.
+            float d = ToWorld(StructureBridge.SeatPoint(Structure, c, Structure.Get(c))).DistanceTo(world);
             if (d < best)
             {
                 best = d;
@@ -101,7 +102,7 @@ public sealed partial class Vessel
     public void TakeChair(Int3 chair)
     {
         _chair = chair;
-        Seat = StructureBridge.CellCenter(Structure, chair);
+        if (Structure.TryGetBlock(chair, out Int3 anchor, out Block b)) SitAt(anchor, b);
     }
 
     Int3? _chair;
@@ -111,6 +112,9 @@ public sealed partial class Vessel
 
     /// <summary>The way the chair in use faces in the hull, for the view from it.</summary>
     public Basis ChairBasis => _chair is Int3 c && Structure.Has(c) ? VesselRoles.BasisOf(Structure, c) : Basis.Identity;
+
+    /// <summary>The pilot's frame in the hull: its forward is the way the ship flies (the pilot seat's facing; the hull's own with none).</summary>
+    public Basis PilotBasis => Flight?.State.Seat ?? Basis.Identity;
 
     /// <summary>The control frame follows the pilot's seat at once: the ship doesn't turn, only what counts as forward.</summary>
     void FollowPilot()

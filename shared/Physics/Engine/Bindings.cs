@@ -53,7 +53,7 @@ public sealed class HullBinding : BodyBinding
 {
     public readonly CharacterBody3D Hull;
     readonly List<Contact> _contacts = new();
-    readonly HashSet<ulong> _seen = new();
+    readonly HashSet<(ulong, int)> _seen = new();
 
     public HullBinding(CharacterBody3D hull)
     {
@@ -67,11 +67,36 @@ public sealed class HullBinding : BodyBinding
     public override Node3D Node => Hull;
     public override CollisionObject3D Collider => Hull;
 
+    /// <summary>Its rotation after the last tick's move.</summary>
+    N.Quaternion _turned;
+    int _turns;
+
+    /// <summary>How far along gravity a still hull feels for what it rests on, m.</summary>
+    const float RestProbe = 0.03f;
+    KinematicCollision3D _rest;
+
+    /// <summary>The transform last checked for overlap while asleep.</summary>
+    Transform3D _cleared;
+
+    /// <summary>How deep an overlap is left alone, m (resting contact).</summary>
+    public const float Slop = 0.005f;
+
     public override void Move(PhysicsHost host, float dt)
     {
         Body b = Body;
-        Hull.GlobalTransform = GodotMath.TransformOf(b); // turning, gear lifts and settling happened in the rules
-        if (b.Asleep) return;
+        // Turning, gear lifts and settling happened in the rules. Where it already stands it isn't set again: every shape and
+        // mesh a hull holds is told of a move, and a still wreck of two thousand of them was told every tick.
+        Transform3D at = GodotMath.TransformOf(b);
+        if (Hull.GlobalTransform != at) Hull.GlobalTransform = at;
+        if (b.Asleep)
+        {
+            // At rest it isn't swept, but what set it where it stands (settling onto its legs, a placement, a toss
+            // lying as it landed) turned or put it there without a sweep: it is pushed clear, still asleep, and the
+            // trees it was put into break (lifted onto them instead, it would hang there and drop when woken).
+            if (Hull.GlobalTransform != _cleared && Clear(host.World.Flora)) b.Position = Hull.GlobalPosition.ToNumerics();
+            _cleared = Hull.GlobalTransform;
+            return;
+        }
 
         Vector3 before = b.Velocity.ToGodot(), velocity = before;
         Vector3 motion = before * dt;
@@ -83,29 +108,291 @@ public sealed class HullBinding : BodyBinding
         // if turning swung it into a rock.
         for (int i = 0; i < 4; i++)
         {
+            Vector3 from = Hull.GlobalPosition;
             KinematicCollision3D hit = Hull.MoveAndCollide(motion, false, Hull.SafeMargin);
-            if (hit == null) break;
-            Vector3 n = hit.GetNormal();
-            GodotObject collider = hit.GetCollider();
-            if (_seen.Add(collider.GetInstanceId()))
+            if (hit == null)
             {
-                Body other = host.BodyOf(collider);
-                _contacts.Add(new Contact(hit.GetPosition().ToNumerics(), n.ToNumerics(), other,
-                    other != null ? Surface.Body : GodotQuery.SurfaceOf(collider)));
+                // Pushed back out of the safe margin and moved on, with nothing reported: pressing on something slower than
+                // the margin a tick. Trees it presses on are met all the same (the rules may break them), never hung on unseen.
+                if ((Hull.GlobalPosition - from - motion).LengthSquared() > 1e-8f && Hull.MoveAndCollide(Vector3.Zero, true, Hull.SafeMargin, true, 4) is { } rest)
+                    for (int k = 0; k < rest.GetCollisionCount(); k++)
+                        if (rest.GetCollider(k) == null && rest.GetColliderId(k) == 0) Add(host, rest, k);
+                break;
             }
+            Vector3 n = hit.GetNormal();
+            // A node gone: what it hit was freed this very tick (a streamed chunk), nothing to push against.
+            if (hit.GetCollider() == null && hit.GetColliderId() != 0) break;
+            Add(host, hit, 0);
             if (velocity.Dot(n) < 0f) velocity = velocity.Slide(n);
             motion = hit.GetRemainder().Slide(n);
             if (motion.LengthSquared() < 1e-10f) break;
         }
+        // At rest on something the sweep (of no motion) never meets it: feel a hair along gravity for what holds it, so a
+        // hull lying still after a crash knows it is down and comes to rest.
+        if (_contacts.Count == 0 && before.LengthSquared() * dt * dt < 1e-4f)
+        {
+            N.Vector3 g = host.World.GravityAt(b);
+            if (g.LengthSquared() > 1e-6f)
+            {
+                _rest ??= new KinematicCollision3D();
+                if (Hull.TestMove(Hull.GlobalTransform, N.Vector3.Normalize(g).ToGodot() * RestProbe, _rest, Hull.SafeMargin) && _rest.GetCollider() is GodotObject under)
+                {
+                    Body other = host.BodyOf(under);
+                    _contacts.Add(new Contact(_rest.GetPosition().ToNumerics(), _rest.GetNormal().ToNumerics(), other,
+                        other != null ? Surface.Body : GodotQuery.SurfaceOf(under)));
+                }
+            }
+        }
+        // The sweep stops it at what it meets, but turning (the flight model's, the hover's tilt to the ground, a
+        // bump's kick) happened before it, unswept, and can swing a corner into the ground: nothing is left inside.
+        if (_contacts.Count > 0 || b.Rotation != _turned) Clear();
+        _turned = b.Rotation;
 
         b.Position = Hull.GlobalPosition.ToNumerics();
         b.Velocity = host.World.ResolveContacts(b, _contacts, before.ToNumerics(), velocity.ToNumerics());
+    }
+
+    /// <summary>One contact per thing met: per node, or per shape of a body made on the physics server alone (the flora's: each a tree's part).</summary>
+    void Add(PhysicsHost host, KinematicCollision3D hit, int k)
+    {
+        GodotObject collider = hit.GetCollider(k);
+        if (!_seen.Add(collider != null ? (collider.GetInstanceId(), -1) : (hit.GetColliderRid(k).Id, hit.GetColliderShapeIndex(k)))) return;
+        Body other = host.BodyOf(collider);
+        Surface surface = other != null ? Surface.Body : collider != null ? GodotQuery.SurfaceOf(collider) : GodotQuery.SurfaceOf(hit.GetColliderRid(k));
+        _contacts.Add(new Contact(hit.GetPosition(k).ToNumerics(), hit.GetNormal(k).ToNumerics(), other, surface,
+            collider == null ? GodotQuery.PartOf(surface, hit.GetColliderRid(k), hit.GetColliderShapeIndex(k)) : null));
     }
 
     public override void Teleport()
     {
         Hull.GlobalTransform = GodotMath.TransformOf(Body);
         Hull.ResetPhysicsInterpolation();
+    }
+
+    /// <summary>
+    /// Pushes the hull out of anything solid it overlaps (the ground's collision, a place's blocks, another hull)
+    /// along the deepest contact, a pass at a time, until nothing is deeper than <see cref="Slop"/>. A contact whose
+    /// normal points down (a hull sunk past a face of the ground, which the engine would push deeper still) lifts it
+    /// instead. True if it moved. <paramref name="flora"/>: at rest, the trees it was put into break first.
+    /// </summary>
+    bool Clear(IFloraField flora = null)
+    {
+        PhysicsDirectSpaceState3D space = Hull.GetWorld3D()?.DirectSpaceState;
+        if (space == null) return false;
+        // Nothing near at all (in the air): one query of its bounds, and done.
+        if (Hull.GetChildCount() != _childCount)
+        {
+            // Its shapes, and their bounds in its frame, gathered again only when they change (an edit swaps chunks).
+            _childCount = Hull.GetChildCount();
+            _shapes.Clear();
+            bool first = true;
+            foreach (Node n in Hull.GetChildren())
+                if (n is CollisionShape3D cs && cs.Shape != null)
+                {
+                    _shapes.Add(cs);
+                    Aabb box = cs.Transform * BoundsOf(cs.Shape);
+                    _local = first ? box : _local.Merge(box);
+                    first = false;
+                }
+        }
+        if (_shapes.Count == 0) return false;
+        Aabb bounds = _local;
+        _near ??= new PhysicsShapeQueryParameters3D { Shape = new BoxShape3D(), CollisionMask = Hull.CollisionMask, Margin = 0f };
+        ((BoxShape3D)_near.Shape).Size = bounds.Size + Vector3.One * 0.02f;
+        _near.Transform = Hull.GlobalTransform * new Transform3D(Basis.Identity, bounds.GetCenter());
+        _near.Exclude = _self ??= new Godot.Collections.Array<Rid> { Hull.GetRid() };
+        if (space.IntersectShape(_near, 1).Count == 0) return false;
+        // Trees it was put into break (their colliders go at the end of the tick): pushed out of the rest, or of rock among them.
+        _shape ??= new PhysicsShapeQueryParameters3D { Margin = 0f };
+        _shape.CollisionMask = flora != null && !BreakTrees(space, flora) ? Hull.CollisionMask & ~Layers.Flora : Hull.CollisionMask;
+
+        bool moved = false, clear = false;
+        for (int pass = 0; pass < 32; pass++) // (floors first can take several short steps up)
+        {
+            // The deepest overlap of any of its shapes: the way out of it is from the point on the hull to the point on what it overlaps.
+            Vector3 push = Vector3.Zero, up = Vector3.Zero;
+            float deepest = Slop, deepestUp = Slop;
+            foreach (CollisionShape3D cs in _shapes)
+            {
+                if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull)
+                {
+                    _childCount = -1; // swapped by an edit: gathered again next time
+                    continue;
+                }
+                if (cs.Disabled || cs.Shape == null) continue;
+                _shape.Shape = cs.Shape;
+                _shape.Transform = cs.GlobalTransform;
+                _shape.Exclude = _self;
+                Godot.Collections.Array<Vector3> points = space.CollideShape(_shape, 8);
+                for (int i = 0; i + 1 < points.Count; i += 2)
+                {
+                    Vector3 way = points[i + 1] - points[i];
+                    float depth = way.Length();
+                    if (way.Y > 0.7f * depth && depth > deepestUp) { deepestUp = depth; up = way; }
+                    if (depth <= deepest) continue;
+                    deepest = depth;
+                    push = way;
+                }
+            }
+            // Out the top first: sunk into a floor or the ground it comes up onto it, not out through the side of a
+            // block (a mesh of blocks offers a short way out sideways at every seam); a wall it then still meets, next pass.
+            if (up != Vector3.Zero) push = up;
+            if (push == Vector3.Zero) { clear = true; break; }
+            // Pointing down while it is the hull's underside that is in (sunk past a face of the ground, where the
+            // shortest way out is through it): out the top instead.
+            if (push.Y < -0.2f * push.Length()) push = Vector3.Up * System.MathF.Min(push.Length(), 0.5f);
+            Hull.GlobalPosition += push * 1.02f;
+            LastPush = push;
+            Pushes++;
+            moved = true;
+        }
+        // Sunk in the ground below its surface: a shape wholly under the ground's faces touches none of them, so the
+        // contacts above miss it. Up by the depth of the ground over its underside, measured on the ground's own faces.
+        // Only when it is well in: a hull resting on uneven ground (the ground a little higher under a shape's middle than
+        // under the edge it rests on) is not sunk, and lifting it every tick would leave it never at rest.
+        float sunk = SunkBy(space);
+        if (sunk > SunkDeep)
+        {
+            Hull.GlobalPosition += Vector3.Up * (sunk + Slop);
+            moved = true;
+            clear = false;
+        }
+        // Still in after every pass (sunk deep in the ground, where its faces offer only short ways out): straight up
+        // to the first height it is clear at, a quarter metre at a time.
+        if (!clear && Overlaps(space))
+        {
+            Vector3 from = Hull.GlobalPosition;
+            for (float lift = 0.25f; lift <= 4f; lift += 0.25f)
+            {
+                Hull.GlobalPosition = from + Vector3.Up * lift;
+                if (!Overlaps(space)) break;
+            }
+            moved = true;
+        }
+        return moved;
+    }
+
+    /// <summary>
+    /// Breaks the trees a hull at rest was put into (set down landed, settled or turned without a sweep): a structure
+    /// coming down into a tree breaks it, as the shared rules break one it is swept onto, so it is never lifted onto a crown
+    /// it was never lowered onto, left there to drop when woken. True if rock (which never gives way) is among what it is in.
+    /// </summary>
+    bool BreakTrees(PhysicsDirectSpaceState3D space, IFloraField flora)
+    {
+        _flora ??= new PhysicsShapeQueryParameters3D { CollisionMask = Layers.Flora, Margin = 0f };
+        _flora.Exclude = _self;
+        bool rock = false;
+        Vector3 middle = Hull.GlobalTransform * _local.GetCenter();
+        foreach (CollisionShape3D cs in _shapes)
+        {
+            if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull || cs.Disabled || cs.Shape == null) continue;
+            _flora.Shape = cs.Shape;
+            _flora.Transform = cs.GlobalTransform;
+            foreach (Godot.Collections.Dictionary hit in space.IntersectShape(_flora, 32))
+            {
+                Rid body = (Rid)hit["rid"];
+                int shape = (int)hit["shape"];
+                if (!flora.TreeAt(GodotQuery.PartOf(Surface.Flora, body, shape), out long tree, out _))
+                {
+                    rock = true;
+                    continue;
+                }
+                Vector3 at = PhysicsServer3D.BodyGetShapeTransform(body, shape).Origin;
+                flora.Fell(tree, at.ToNumerics(), (at - middle).ToNumerics());
+            }
+        }
+        return rock;
+    }
+
+    PhysicsRayQueryParameters3D _down;
+
+    /// <summary>
+    /// How far the ground's surface stands above the hull's underside, m: for each of its lowest boxes a ray from the
+    /// point on its top straight above its middle to the point on its underside straight below, against the world layer;
+    /// a surface met on the way is ground over that shape's underside. Only through the hull's own shapes, so a hull
+    /// resting on a slope, tilted or on its legs is never lifted. 0 when clear.
+    /// </summary>
+    float SunkBy(PhysicsDirectSpaceState3D space)
+    {
+        _down ??= new PhysicsRayQueryParameters3D { CollisionMask = Layers.World, HitBackFaces = false };
+        _down.Exclude = _self;
+        _lowest.Clear();
+        foreach (CollisionShape3D cs in _shapes)
+            if (GodotObject.IsInstanceValid(cs) && !cs.Disabled && cs.Shape is BoxShape3D) _lowest.Add(cs); // a box's underside is its bounds' (a slope's is not)
+        _lowest.Sort((p, q) => p.GlobalPosition.Y.CompareTo(q.GlobalPosition.Y));
+        float most = 0f;
+        for (int i = 0; i < _lowest.Count && i < SunkProbes; i++)
+        {
+            Transform3D t = _lowest[i].GlobalTransform;
+            Aabb box = BoundsOf(_lowest[i].Shape);
+            _down.From = t * Through(box, t.Basis.Inverse() * Vector3.Up);
+            _down.To = t * Through(box, t.Basis.Inverse() * Vector3.Down);
+            Godot.Collections.Dictionary hit = space.IntersectRay(_down);
+            if (hit.Count > 0) most = Mathf.Max(most, hit["position"].AsVector3().Y - _down.To.Y);
+        }
+        return most;
+    }
+
+    /// <summary>Where a line from a box's middle along a direction leaves it (the box's own frame).</summary>
+    static Vector3 Through(Aabb box, Vector3 dir)
+    {
+        Vector3 c = box.GetCenter(), h = box.Size * 0.5f;
+        float t = float.MaxValue;
+        for (int i = 0; i < 3; i++)
+            if (Mathf.Abs(dir[i]) > 1e-6f) t = Mathf.Min(t, h[i] / Mathf.Abs(dir[i]));
+        return c + dir * t;
+    }
+
+    const int SunkProbes = 16;
+
+    /// <summary>Ground deeper than this over a box's underside, m, is a hull sunk in it (less is resting on rough ground).</summary>
+    const float SunkDeep = 0.05f;
+    readonly List<CollisionShape3D> _lowest = new();
+
+    /// <summary>Does any of its shapes overlap anything solid by more than <see cref="Slop"/>?</summary>
+    bool Overlaps(PhysicsDirectSpaceState3D space)
+    {
+        foreach (CollisionShape3D cs in _shapes)
+        {
+            if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull || cs.Disabled || cs.Shape == null) continue;
+            _shape.Shape = cs.Shape;
+            _shape.Transform = cs.GlobalTransform;
+            _shape.Exclude = _self;
+            Godot.Collections.Array<Vector3> points = space.CollideShape(_shape, 8);
+            for (int i = 0; i + 1 < points.Count; i += 2)
+                if (points[i].DistanceTo(points[i + 1]) > Slop) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The last push out of an overlap, and how many there have been (for tests).</summary>
+    public Vector3 LastPush;
+    public int Pushes;
+
+    /// <summary>What it touched in its last move (for tests): a hull at rest still has what holds it.</summary>
+    public int Contacts => _contacts.Count;
+
+    PhysicsShapeQueryParameters3D _near, _shape, _flora;
+    readonly List<CollisionShape3D> _shapes = new();
+    int _childCount = -1;
+    Aabb _local;
+    Godot.Collections.Array<Rid> _self;
+    readonly Dictionary<Shape3D, Aabb> _bounds = new();
+
+    /// <summary>A hull shape's own bounds (boxes and convex hulls: what a structure's colliders are).</summary>
+    Aabb BoundsOf(Shape3D shape)
+    {
+        if (_bounds.TryGetValue(shape, out Aabb a)) return a;
+        if (shape is BoxShape3D box) a = new Aabb(-box.Size * 0.5f, box.Size);
+        else if (shape is ConvexPolygonShape3D hull && hull.Points.Length > 0)
+        {
+            a = new Aabb(hull.Points[0], Vector3.Zero);
+            foreach (Vector3 p in hull.Points) a = a.Expand(p);
+        }
+        else a = shape.GetDebugMesh().GetAabb();
+        if (_bounds.Count > 4096) _bounds.Clear(); // shapes swapped by edits: never grows without end
+        _bounds[shape] = a;
+        return a;
     }
 }
 
@@ -147,6 +434,14 @@ public sealed class FreeBinding : BodyBinding
     Vector3 _expected;
     bool _hasExpected;
     readonly List<Contact> _contacts = new();
+    int _still;
+
+    /// <summary>The friction against the ground a free body is given: the weather and everything else judge "can this push move it" by it.</summary>
+    public const float Friction = 0.8f;
+
+    /// <summary>Slower than this (m/s and rad/s) for <see cref="SleepAfter"/> ticks on end, a free body is at rest: it sleeps.</summary>
+    public const float RestSpeed = 0.05f;
+    public const int SleepAfter = 30;
 
     public FreeBinding(RigidBody3D rigid, Body body)
     {
@@ -167,7 +462,7 @@ public sealed class FreeBinding : BodyBinding
         rigid.CenterOfMassMode = RigidBody3D.CenterOfMassModeEnum.Custom;
         rigid.CenterOfMass = body.CenterOfMass.ToGodot();
         // Free bodies don't bounce, so a velocity change along the normal is the full closing speed.
-        rigid.PhysicsMaterialOverride ??= new PhysicsMaterial { Bounce = 0f, Friction = 0.8f };
+        rigid.PhysicsMaterialOverride ??= new PhysicsMaterial { Bounce = 0f, Friction = Friction };
     }
 
     public override Node3D Node => Rigid;
@@ -187,6 +482,22 @@ public sealed class FreeBinding : BodyBinding
         b.Velocity = vcom.ToNumerics() - N.Vector3.Cross(b.AngularVelocity, b.CenterOfMassPosition - b.Position);
         b.Asleep = Rigid.Sleeping;
         b.OnFloor = false;
+
+        // Gravity reaches a free body as a force every tick, and a force keeps the engine's body awake for ever: a prop lying
+        // still would be solved against the ground sixty times a second, creeping and hopping. One that has been still for half
+        // a second is put to sleep instead; anything that really pushes it (a strong enough gust, a hit, ground dug away) wakes it.
+        if (!b.Asleep && Rigid.LinearVelocity.Length() < RestSpeed && Rigid.AngularVelocity.Length() < RestSpeed && !b.Water.InWater)
+        {
+            if (++_still >= SleepAfter)
+            {
+                Rigid.LinearVelocity = Vector3.Zero;
+                Rigid.AngularVelocity = Vector3.Zero;
+                Rigid.Sleeping = true;
+                b.Asleep = true;
+                _still = 0;
+            }
+        }
+        else _still = 0;
 
         if (!_hasExpected) return;
         _hasExpected = false;

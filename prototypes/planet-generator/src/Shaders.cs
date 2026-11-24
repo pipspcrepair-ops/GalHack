@@ -385,18 +385,24 @@ static class Shaders
         }
         """;
 
-    /// <summary>Deep space: the galaxy from its catalogue (see <see cref="GalaxyShader"/>), and the sun's glare.</summary>
+    /// <summary>
+    /// Deep space: the galaxy from its catalogue (see <see cref="GalaxyShader"/>), and the sun as
+    /// every sky draws it from beyond the air (its <c>sun_in_space</c>: the disc at its real size).
+    /// A view that gives it no size (no <c>sun_radius</c>) gets a plain glare.
+    /// </summary>
     const string SpaceSource = $$"""
         shader_type sky;
         render_mode use_debanding;
         uniform mat3 star_turn = mat3(1.0);   // the sky's directions into the catalogue's
-        uniform float sun_radius = 0.0;
         {{GalaxyShader.Code}}
         void sky() {
             vec3 d = EYEDIR;
             vec3 col = vec3(0.003, 0.003, 0.006) + galaxy_sky(star_turn * d, !AT_CUBEMAP_PASS);
-            float s = max(dot(d, LIGHT0_DIRECTION), 0.0);
-            col += vec3(1.0, 0.92, 0.8) * (pow(s, 40.0) * 0.25 + (sun_radius > 0.0 ? smoothstep(cos(sun_radius * 1.15), cos(sun_radius), s) * 30.0 : pow(s, 900.0) * 30.0));
+            if (sun_radius > 0.0) col += sun_in_space(d, LIGHT0_DIRECTION);
+            else {
+                float s = max(dot(d, LIGHT0_DIRECTION), 0.0);
+                col += vec3(1.0, 0.92, 0.8) * (pow(s, 40.0) * 0.25 + pow(s, 900.0) * 30.0);
+            }
             COLOR = col;
         }
         """;

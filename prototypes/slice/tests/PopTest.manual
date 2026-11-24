@@ -1,0 +1,1 @@
+Needs a window (it measures drawn frames); run it with the editor binary: & $GodotEditor --path prototypes/slice res://tests/PopTest.tscn

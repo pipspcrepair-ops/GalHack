@@ -1,17 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
 using PhysicsSandbox.Bridges;
-using Slice.Places;
 using Slice.Surface;
+using N = System.Numerics;
 
 namespace Slice.Vessels;
 
-/// <summary>A door that stands open, as anything that must know reads it (a force field across it, later).</summary>
-public readonly record struct OpenDoor(Vector3 Centre, Vector3 Normal, Vector2 Size, float Open);
 
 /// <summary>
 /// One door system with the places' doors: door blocks on bases and vessels open and shut with E,
@@ -19,7 +18,7 @@ public readonly record struct OpenDoor(Vector3 Centre, Vector3 Normal, Vector2 S
 /// as you come up and shut behind you ("doors open for the player faction on their own"). The
 /// block's own Open flag (building's) stays the truth for rooms, pathing and collision: opening
 /// flips it at once so the way is clear while the leaves draw back; shutting flips it as the
-/// leaves meet, so nobody is shut inside one. Locks and keycards are the places' (<see cref="Place.Door"/>).
+/// leaves meet, so nobody is shut inside one.
 /// </summary>
 public partial class BlockDoors : Node3D
 {
@@ -48,6 +47,24 @@ public partial class BlockDoors : Node3D
     readonly Dictionary<Vessel, Known> _known = new();
     /// <summary>Doors you shut by hand while beside them: they stay shut until you have stepped away.</summary>
     readonly HashSet<(Vessel, Int3)> _heldShut = new();
+
+    /// <summary>Whether you are in a door's doorway or its leaves' way.</summary>
+    static bool InWay(Vessel v, Int3 cell, Vector3 feet) =>
+        v.ToWorld(Centre(v, cell)).DistanceTo(feet + Vector3.Up * 0.9f) < Reach(v, cell) + Slice.Player.Survivor.Radius + 0.1f;
+
+    /// <summary>A door's middle, structure metres: all of it, when it spans several cells.</summary>
+    static N.Vector3 Centre(Vessel v, Int3 cell) =>
+        v.Structure.TryGetBlock(cell, out Int3 anchor, out Block b) ? StructureBridge.BlockCenter(v.Structure, anchor, b) : StructureBridge.CellCenter(v.Structure, cell);
+
+    /// <summary>A door's size in cells, in its own frame (one cell for most).</summary>
+    static Int3 SizeOf(Vessel v, Int3 cell) => v.Structure.TryGet(cell, out Block b) ? v.Structure.TypeOf(b).Size : GalHack.Structures.Footprint.One;
+
+    /// <summary>Half a door's widest side, m.</summary>
+    static float Reach(Vessel v, Int3 cell)
+    {
+        Int3 n = SizeOf(v, cell);
+        return v.Structure.Grid.CellSize * 0.5f * Math.Max(n.X, Math.Max(n.Y, n.Z));
+    }
     int _tick;
     static StandardMaterial3D _body, _band;
 
@@ -60,7 +77,7 @@ public partial class BlockDoors : Node3D
     /// <summary>E on a door block: open or shut it. True if it was a door.</summary>
     public bool Use(Vessel v, Int3 cell)
     {
-        if (!v.Structure.TryGet(cell, out Block b) || !v.Structure.TypeOf(b).IsDoor) return false;
+        if (!v.Structure.TryGetBlock(cell, out cell, out Block b) || !v.Structure.TypeOf(b).IsDoor) return false;
         bool open = _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : b.Open;
         Set(v, cell, !open);
         if (open) _heldShut.Add((v, cell));
@@ -75,13 +92,12 @@ public partial class BlockDoors : Node3D
         float nearest = reach;
         foreach (var (v, k) in _known)
         {
-            if (v.IsWreck) continue;
-            float size = v.Structure.Grid.CellSize;
+            if (v.Body.Kind == BodyKind.Wreck) continue; // (a hulk lying on a planet keeps its doors working)
             foreach (Int3 cell in k.Doors)
             {
-                Vector3 c = v.ToWorld(StructureBridge.CellCenter(v.Structure, cell));
+                Vector3 c = v.ToWorld(Centre(v, cell));
                 float along = (c - eye).Dot(dir);
-                if (along < 0f || along > nearest || (eye + dir * along - c).Length() > size * 0.5f) continue;
+                if (along < 0f || along > nearest || (eye + dir * along - c).Length() > Reach(v, cell)) continue;
                 nearest = along;
                 best = (v, cell, _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : IsOpen(v, cell));
             }
@@ -98,7 +114,7 @@ public partial class BlockDoors : Node3D
         }
         s.Target = open ? 1f : 0f;
         if (open && !IsOpen(v, cell)) Flip(v, cell); // the way is clear at once
-        Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)), 1.1f, -14f);
+        Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(Centre(v, cell)), 1.1f, -14f);
         if (open) Opened++;
         else Shut++;
     }
@@ -118,11 +134,13 @@ public partial class BlockDoors : Node3D
         _band ??= new StandardMaterial3D { AlbedoColor = new Color("2b2d42"), Roughness = 0.7f };
         Mat3 m = Orientations.Matrix(b.Rot);
         var basis = new Basis(m.X.ToVector3().ToGodot(), m.Y.ToVector3().ToGodot(), m.Z.ToVector3().ToGodot());
-        var root = new Node3D { Name = "Door leaves", Transform = new Transform3D(basis, StructureBridge.CellCenter(v.Structure, cell).ToGodot()) };
+        var root = new Node3D { Name = "Door leaves", Transform = new Transform3D(basis, Centre(v, cell).ToGodot()) };
         v.Node.AddChild(root);
-        float half = 0.44f * size;
-        // The block's leaf: x -0.44..0.44, y -0.5..0.46, z -0.1..0.1 of a cell.
-        var leaf = new BoxMesh { Size = new Vector3(half, 0.96f * size, 0.2f * size) };
+        // A door spanning several cells has leaves as wide and tall as all of them.
+        Int3 n = SizeOf(v, cell);
+        float half = 0.44f * size * n.X;
+        // The block's leaf: x -0.44..0.44, y -0.5..0.46, z -0.1..0.1 of a cell (of the whole door).
+        var leaf = new BoxMesh { Size = new Vector3(half, 0.96f * size * n.Y, 0.2f * size * n.Z) };
         var a = new MeshInstance3D { Mesh = leaf, MaterialOverride = _body };
         var c = new MeshInstance3D { Mesh = leaf, MaterialOverride = _body };
         root.AddChild(a);
@@ -147,8 +165,11 @@ public partial class BlockDoors : Node3D
     {
         if (Zone?.Planet == null || Feet == null) return;
         float dt = (float)delta;
+        Vector3 you = Feet();
         foreach (var (key, s) in _slides.ToList())
         {
+            // Shutting on you: it opens again (a door never shuts on anyone).
+            if (s.Target < 0.5f && InWay(s.Vessel, s.Cell, you)) s.Target = 1f;
             if (!GodotObject.IsInstanceValid(s.Root) || !s.Vessel.Structure.TryGet(s.Cell, out _))
             {
                 if (GodotObject.IsInstanceValid(s.Root)) s.Root.QueueFree();
@@ -166,7 +187,7 @@ public partial class BlockDoors : Node3D
         Vector3 feet = Feet();
         foreach (Vessel v in Zone.Vessels)
         {
-            if (v.IsWreck || v.IsRuin || v.Structure.Count == 0) continue; // your own bases and vessels
+            if (v.Body.Kind == BodyKind.Wreck || v.IsRuin || v.Structure.Count == 0) continue; // your own bases and vessels, and hulks on the ground
             var (min, max) = v.Structure.Bounds();
             float reach = (max - min).ToVector3().Length() * v.Structure.Grid.CellSize * 0.6f + ShutRange + 2f;
             if (v.Body.WorldPosition.ToGodot().DistanceTo(feet) > reach) continue;
@@ -180,7 +201,7 @@ public partial class BlockDoors : Node3D
             }
             foreach (Int3 cell in k.Doors)
             {
-                float d = v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)).DistanceTo(feet + Vector3.Up * 0.9f);
+                float d = v.ToWorld(Centre(v, cell)).DistanceTo(feet + Vector3.Up * 0.9f);
                 bool open = _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : IsOpen(v, cell);
                 if (d > ShutRange) _heldShut.Remove((v, cell));
                 if (d < OpenRange && !open && !_heldShut.Contains((v, cell))) Set(v, cell, true);
@@ -189,25 +210,12 @@ public partial class BlockDoors : Node3D
         }
     }
 
-    /// <summary>Every door standing open or opening, on structures and in the places near (a force field across an open door reads this).</summary>
-    public IEnumerable<OpenDoor> OpenDoors(PoiPlaces places)
+    /// <summary>Is any door on a structure near you standing open? Only then are its outer doors' force fields worked out (the rooms' <see cref="RoomReport.FieldDoors"/>).</summary>
+    public bool AnyOpen(Vessel v)
     {
-        foreach (Vessel v in Zone.Vessels)
-        {
-            if (v.IsWreck || !_known.TryGetValue(v, out Known k)) continue;
-            float size = v.Structure.Grid.CellSize;
-            foreach (Int3 cell in k.Doors)
-            {
-                if (!IsOpen(v, cell) || !v.Structure.TryGet(cell, out Block b)) continue;
-                Vector3 z = Orientations.Matrix(b.Rot).Z.ToVector3().ToGodot();
-                float open = _slides.TryGetValue((v, cell), out Slide s) ? s.Open : 1f;
-                yield return new OpenDoor(v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)), z, new Vector2(size, size), open);
-            }
-        }
-        if (places == null) yield break;
-        foreach (Place p in places.Standing)
-            foreach (Place.Door d in p.Doors)
-                if (d.Open > 0.02f)
-                    yield return new OpenDoor(p.ToWorld(d.Centre), d.Along.Cross(Vector3.Up).Normalized(), new Vector2(d.Width, d.Cells.Max(c => c.Y) - d.Cells.Min(c => c.Y) + 1), d.Open);
+        if (!_known.TryGetValue(v, out Known k)) return false;
+        foreach (Int3 cell in k.Doors)
+            if (IsOpen(v, cell)) return true;
+        return false;
     }
 }

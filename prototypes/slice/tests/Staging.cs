@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -30,12 +30,14 @@ public sealed partial class Staging
         _game = game;
         _drive = new Driver(game);
         _args = args;
+        // The start world's sky ship is rolled as the world arrives, before any view runs.
+        if (args.TryGetValue("role", out string r) && Enum.TryParse(r, true, out GalHack.Structures.CraftRole role)) Slice.Places.SkyTraffic.ForceRole = role;
     }
 
     public IEnumerable<int> Run(string view)
     {
         foreach (int x in _drive.UntilPlaying()) yield return x;
-        _game.Zone.Weather.Bridge.Calm = true;
+        if (_game.Zone.Weather.Bridge is { } weather) weather.Calm = true; // (an airless world has no weather)
         _game.Zone.Wildlife.Frozen = view != "dig";
         foreach (int x in Play.MakeTool()) yield return x;
         // Every view but the bunker's own starts out on the surface: up the stairs first, on foot.
@@ -47,19 +49,33 @@ public sealed partial class Staging
             "skysweep" => SkySweep(),
             "climb" => Climb(),
             "dig" => Dig(),
+            "shotdamage" => ShotDamage(),
             "build" => Build(half: true),
             "liftoff" => Liftoff(),
             "flying" => Flying(),
             "cockpit" => Cockpit(),
+            "assist" => AssistView(),
             "menu" => Menu(),
             "settings" => SettingsView(),
+            "escmenu" => EscapeMenuShots(),
+            "escnewgame" => EscapeNewGameShots(),
+            "blueprints" => BlueprintShots(),
+            "stock" => StockShots(),
+            "uiround" => UiRoundShots(),
+            "notices" => NoticesShots(),
+            "markers" => MarkersShot(),
+            "placescan" => PlaceScanShot(),
+            "corescan" => CoreScanShot(),
+            "fabicons" => FabIconShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),
             "bunkershot" => BunkerShot(),
             "torch" => Torch(),
             "base" => BaseView(),
+            "fields" => FieldViews(),
             "blockbase" => BaseView(survival: true),
             "constructor" => ConstructorBlocks(),
+            "machinescreen" => MachineScreenView(),
             "hand" => HandView(),
             "storage" => StorageFilter(),
             "vessel" => VesselTakeoff(),
@@ -72,27 +88,127 @@ public sealed partial class Staging
             "ruin" => RuinView(),
             "place" => PlaceApproach(),
             "interior" => PlaceInterior(),
+            "furnished" => FurnishedView(),
             "tell" => PlaceTell(),
             "cache" => PlaceCache(),
             "town" => TownView(),
             "facades" => FacadeView(),
             "salvage" => Salvage(),
             "hoverbike" => HoverBikeView(),
+            "vehground" => VehGroundView(),
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
+            "shipbar" => ShipBarView(),
+            "shield" => ShieldView(),
             "decogallery" => DecoGalleryView(),
             "faces" => FacesView(),
             "cores" => CoresView(),
+            "lightpanel" => LightPanelView(),
             "natural" => Natural(),
+            "barren" => BarrenView(),
+            "flora" => FloraProof(),
+            "flora-trees" => FloraTrees(),
+            "florareach" => FloraReachView(),
+            "shadows" => ShadowView(),
+            "plantshadows" => PlantShadows(),
+            "plantshadows-ab" => PlantShadowsAb(),
             "crouch" => CrouchView(),
+            "seated" => SeatedView(),
+            "sleeper" => SleeperView(),
+            "sleeperface" => SleeperFaceView(),
+            "folk" => FolkView(),
+            "crowd" => CrowdView(),
+            "flee" => FleeView(),
+            "peoples" => PeoplesView(),
+            "outfits" => OutfitsView(),
+            "townnight" => TownNightView(),
+            "checkpoint" => CheckpointView(),
+            "wheel" => WheelView(),
+            "answer" => AnswerView(),
+            "farfolk" => FarFolkView(),
+            "fauna" => FaunaView(),
+            "peopleperf" => PeoplePerf(),
             "dark" => Dark(),
-            _ => OrbitViews(view),
+            "monsoon" => MonsoonCost(),
+            "funnel" => FunnelShot(),
+            "cirruslog" => CirrusLog(),
+            "storm" => StormShot(),
+            "front" => FrontShot(),
+            "lightning" => LightningShot(),
+            "spout" => SpoutShot(),
+            "regionfront" => RegionFront(),
+            "plainstornado" => PlainsTornado(),
+            "windbodies" => WindBodies(),
+            "treepath" => TreePath(),
+            "tornadowarning" => TornadoWarning(),
+            "frontgrowth" => FrontGrowth(),
+            "cloudgrain" => CloudGrain(),
+            "nightclouds" => NightClouds(),
+            "skylevel" => SkyLevel(),
+            "sunset" => Sunset(),
+            "underwater" => UnderwaterShot(),
+            "rain" => RainShot(),
+            "dust" => DustShot(),
+            "puff" => PuffShot(),
+            "stormcell" => StormCellShot(),
+            "clouds" => CloudTypes(),
+            "farland" => FarLandView(),
+            "farground" => FarGroundShots(),
+            "groundcost" => FarGroundCost(),
+            "shadecheck" => FarShadeCheck(),
+            "cliffshots" => CliffShots(),
+            "city" => CityView(),
+            "incidental" => IncidentalView(),
+            "strike" => StrikeView(),
+            "craters" => CraterViews(),
+            "horizon" => HorizonView(),
+            "loadrun" => LoadRun(),
+            "approach" => ApproachView(),
+            "popin" => PopInView(),
+            "husk-grab" => HuskGrab(),
+            "stomp" => StompView(),
+            "newgame" => NewGameShots(),
+            "galaxy-depth" => GalaxyDepth(),
+            "husk-den" => HuskDen(),
+            "own" => OwnView(),
+            "own-inside" => OwnInside(),
+            "wanderers" => WanderersView(),
+            "clash" => ClashView(),
+            "fieldfight" => FieldFightView(),
+            "husk-worms" => HuskWorms(),
+            "husk-carrier" => HuskCarrier(),
+            "layers-land" => LayersLand(),
+            "layers-mark" => LayersMark(),
+            "icons-bag" => IconBagView(),
+            "icons-sheet" => IconSheetView(),
+            "icons-hands" => IconHandsView(),
+            "blockdetail" => BlockDetailView(),
+            "placesurf" => PlaceSurfView(),
+            "decorooms" => DecoRooms(),
+            "dress" => DressView(),
+            "hulk" => HulkView(),
+            "skyship" => SkyshipView(),
+            "derelict-hull" => DerelictHullView(),
+            "visor" => VisorView(),
+            "feet" => FeetView(),
+            "zfight" => ZFightView(),
+            "tiershots" => TierShots(),
+            "nightlights" => NightLightsView(),
+            _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";
     }
 
-    /// <summary>Inside the bunker: the castaway out of the one working cryopod, the dead sleepers in theirs.</summary>
+    /// <summary>The visor's glass at night, frosted and pulsing red at once (cold and hurt): the edge effects blended.</summary>
+    IEnumerable<int> VisorView()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.9);
+        _game.Visor.PinnedGlass = ((float)Num("frost", 0.7), (float)Num("harm", 1.0));
+        foreach (int x in _drive.Wait(60)) yield return x;
+    }
+
+    /// <summary>Inside the bunker: the sleeper out of the one working cryopod, the dead sleepers in theirs.</summary>
     IEnumerable<int> BunkerView()
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.3);
@@ -162,6 +278,7 @@ public sealed partial class Staging
         if (v == null) throw new InvalidOperationException("the blueprint would not go down anywhere near the start: see the lines above");
         int stop = half ? _game.StarterPlan.Count * 11 / 20 : int.MaxValue;
         foreach (int x in _drive.HoldPrimary(v.Body.Position.ToGodot(), 3000, () => _game.Builder.Underway == null || v.Structure.Count >= stop)) yield return x;
+        Playthrough.Fuel(v); // staging shortcut: its generator's fuel, as with its parts
         foreach (int x in _drive.UntilSettled()) yield return x;
         // Step round to a three-quarter view of it.
         Vector3 side = v.Body.ToParent(new N.Vector3(4.5f, 0f, -4.5f)).ToGodot();
@@ -227,6 +344,30 @@ public sealed partial class Staging
         foreach (int x in _drive.Board(v)) yield return x;
         _game.Survivor.Pitch = -0.32f;
         foreach (int x in _drive.Wait(40)) yield return x;
+    }
+
+    /// <summary>In a Skiff's chair, climbed clear of the ground, with flight assist just switched off (I): the active thrusters icon.</summary>
+    IEnumerable<int> AssistView()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Zone.Wildlife.Frozen = true;
+        Vector3 site = Play.FlatSpot(_game.Start, 40f, 0.6f, 0.4f, span: 14f);
+        Playthrough.Clearing(_game.Zone, site, 30f);
+        _game.Survivor.PlaceOutside((site + new Vector3(0f, 1f, 7f)).ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+        Vessel v = Vessel.Spawn(_game.Zone, CoreCraft.Skiff(_game.Zone.Data), (site + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        v.Settle();
+        foreach (int x in _drive.Wait(10)) yield return x;
+        foreach (int x in _drive.Board(v)) yield return x;
+        _game.Controls.Hold(Key.Space);
+        foreach (int x in _drive.Wait(240)) yield return x;
+        _game.Controls.Hold(Key.Space, false);
+        foreach (int x in _drive.Wait(60)) yield return x;
+        _game.Survivor.Pitch = -0.25f;
+        _game.Press(Key.I);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        GD.Print($"(assist off: {v.Flight.State.AssistOff}, {v.AboveGround:F0} m up)");
     }
 
     Vector3 FlatSpot(Vector3 near, float distance) => Play.FlatSpot(near, distance, span: 10f);

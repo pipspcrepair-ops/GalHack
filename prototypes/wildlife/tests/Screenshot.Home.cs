@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -136,7 +136,7 @@ public partial class Screenshot
         {
             int cell = _homeMap.CellAt(Planets.Gen.Mathx.WrapX(_homeX + dx * 40, _homeMap.WidthMeters), Planets.Gen.Mathx.Wrap(_homeZ + dz * 40, _homeMap.HeightMeters));
             if (_homeMap.Has(cell, Planets.Gen.CellFlags.Water)) continue;
-            Planets.Look.Rgb c = Planets.Look.BiomeLook.Color((Planets.Gen.Biome)_homeMap.Biome[cell]);
+            Planets.Look.Rgb c = Planets.Look.WorldPalette.Of(_homeMap.Spec).Land((Planets.Gen.Biome)_homeMap.Biome[cell], _homeMap.Temperature[cell], _homeMap.Humidity[cell]);
             sum += new Color(c.R, c.G, c.B);
             n++;
         }

@@ -19,16 +19,34 @@ public sealed class GlobePaint
     public Image Glow { get; private init; }
     public Image Clouds { get; private init; }
 
+    /// <summary>The night side's lights: each lived-in place a warm speck, a town's glow a smudge (FarLights' clusters, the ground's own).</summary>
+    public Image Lights { get; private init; }
+
     /// <summary>The ground's height over the sea, m, on the map's own grid: the sheet's relief.</summary>
     public Image Relief { get; private init; }
 
+    /// <summary>Paints the ground of a square of the map from a corner (m) finer than <see cref="Albedo"/> (<see cref="Near"/>), on any thread.</summary>
+    public Func<double, double, Image> NearAt { get; private init; }
+
     const float SeamBlend = 0.08f;
 
+    /// <summary>
+    /// The colour map's width for a world's map: as many texels as give <see cref="OrbitRules.GlobeRules.TexelMetres"/>
+    /// each round its equator, a power of two from 1,024 up to <see cref="OrbitRules.GlobeRules.TextureWidth"/>, so a
+    /// small moon isn't painted finer than it can be seen and a big world as fine as memory allows.
+    /// </summary>
+    public static int WidthFor(double mapWidth, OrbitRules.GlobeRules rules) =>
+        Math.Clamp((int)System.Numerics.BitOperations.RoundUpToPowerOf2((uint)Math.Ceiling(mapWidth / rules.TexelMetres)), 1024, rules.TextureWidth);
+
     /// <param name="coverage">The sky's own clouds over a map point (u, v, 0 to 1), so these are the clouds you fly through; null: the generator's.</param>
-    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null)
+    /// <param name="land">The ground's colour at a map point, m, so the far land is the colour of the land it joins; null: the biomes'.</param>
+    /// <param name="sites">The world's places, for its night lights (null: none).</param>
+    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null, Func<double, double, Rgb> land = null,
+        IReadOnlyList<PlanetSurface.Poi.PoiSite> sites = null)
     {
         ArchetypeLook look = ArchetypeLook.For(spec);
-        ColorMap colors = ColorMap.Build(map, look, rules.TextureWidth);
+        int width = WidthFor(map.WidthMeters, rules);
+        ColorMap colors = ColorMap.Build(map, look, width, land);
         byte[] clouds = CloudMap.Build(spec, look, rules.CloudWidth, out int cloudHeight);
         for (int i = 3; i < clouds.Length; i += 4)
         {
@@ -45,14 +63,78 @@ public sealed class GlobePaint
             }
             clouds[i] = (byte)(alpha * 255f);
         }
+        Image glow = Image.CreateFromData(colors.Width, colors.Height, false, Image.Format.Rgb8, colors.Glow);
+        glow.Resize(colors.Width / 2, colors.Height / 2, Image.Interpolation.Bilinear); // a soft light: half the albedo's grain is plenty, at a quarter of its memory
+        glow.GenerateMipmaps();
         return new GlobePaint
         {
             Look = look,
+            NearAt = new NearPainter(map, look, land, rules.NearMetres, rules.NearTexels).Paint,
             Albedo = Mipmapped(colors.Width, colors.Height, Image.Format.Rgba8, colors.Albedo),
-            Glow = Mipmapped(colors.Width, colors.Height, Image.Format.Rgb8, colors.Glow),
+            Glow = glow,
             Clouds = Mipmapped(rules.CloudWidth, cloudHeight, Image.Format.Rgba8, clouds),
             Relief = ReliefOf(map),
+            Lights = LightsOf(sites, map.WidthMeters, map.HeightMeters),
         };
+    }
+
+    /// <summary>
+    /// The ground of a square of the map from a corner (x0, z0), m, painted finer: the colour map's own paint, a texel
+    /// <c>metres</c> across, one square at a time on any thread. The map's per-cell paint is worked out once and the square's
+    /// buffers are kept, so painting it again as you fly leaves the collector nothing (it was 30 MB a square).
+    /// </summary>
+    sealed class NearPainter(WorldMap map, ArchetypeLook look, Func<double, double, Rgb> land, double metres, int size)
+    {
+        ColorMap.Cells _cells;
+        readonly byte[] _albedo = new byte[size * size * 4];
+        readonly float[] _rivers = new float[size * size];
+
+        public Image Paint(double x0, double z0)
+        {
+            _cells ??= new ColorMap.Cells(map, look);
+            ColorMap.Paint(_cells, map, look, x0, z0, metres, size, size, land, _albedo, null, _rivers);
+            return Mipmapped(size, size, Image.Format.Rgba8, _albedo);
+        }
+    }
+
+    /// <summary>The night lights map: a soft splat for each lived-in place by its lamps, and a wider one for each town's glow.</summary>
+    static Image LightsOf(IReadOnlyList<PlanetSurface.Poi.PoiSite> sites, double width, double height)
+    {
+        const int w = 1024;
+        int h = Math.Max(1, (int)(w * height / width));
+        var sum = new float[w * h];
+        double perPixel = width / w;
+        void Splat(double x, double z, double radius, float amount)
+        {
+            double r = Math.Max(radius / perPixel, 0.8);
+            int cx = (int)(x / perPixel), cz = (int)(z / perPixel), reach = (int)Math.Ceiling(r * 2.5);
+            for (int dz = -reach; dz <= reach; dz++)
+            for (int dx = -reach; dx <= reach; dx++)
+            {
+                float f = (float)Math.Exp(-(dx * dx + dz * dz) / (r * r));
+                if (f < 0.01f) continue;
+                int px = ((cx + dx) % w + w) % w, pz = ((cz + dz) % h + h) % h; // the map wraps both ways
+                sum[pz * w + px] += amount * f;
+            }
+        }
+        if (sites != null)
+        {
+            foreach (PlanetSurface.Poi.PoiSite s in sites)
+            {
+                float lamps = PlanetSurface.Poi.FarLights.Lamps(s);
+                if (lamps > 0f) Splat((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5, 40.0, 0.08f * MathF.Sqrt(lamps));
+            }
+            foreach (PlanetSurface.Poi.FarLights.Glow g in PlanetSurface.Poi.FarLights.Clusters(sites, width, height)) Splat(g.X, g.Z, g.Radius * 0.8, 0.6f * g.Strength);
+        }
+        var bytes = new byte[w * h * 3];
+        for (int i = 0; i < sum.Length; i++)
+        {
+            float v = Math.Min(sum[i], 1f);
+            bytes[i * 3] = (byte)(255f * v);
+            bytes[i * 3 + 1] = (byte)(255f * v * 0.7f);
+            bytes[i * 3 + 2] = (byte)(255f * v * 0.42f);
+        }
+        return Mipmapped(w, h, Image.Format.Rgb8, bytes);
     }
 
     static Image ReliefOf(WorldMap map)
@@ -78,6 +160,11 @@ public readonly record struct WorldView
 {
     /// <summary>The drawing frame at the point under you, in the world.</summary>
     public Vector3 Up { get; init; }
+
+    /// <summary>What can shadow the globe now (SkyRig.Umbrae): each body's place from its centre and radius, in its radii; how many; the sun's angular radius.</summary>
+    public Vector4[] Umbra { get; init; }
+    public int UmbraCount { get; init; }
+    public float UmbraSun { get; init; }
     public Vector3 East { get; init; }
     public Vector3 South { get; init; }
     /// <summary>The same place's frame on the globe, for the map lookup.</summary>
@@ -90,6 +177,8 @@ public readonly record struct WorldView
     public float Height { get; init; }
     /// <summary>The sheet's curvature, 1 / m.</summary>
     public float Bend { get; init; }
+    /// <summary>How far out from under you the sheet stays flat before it curves, m: the land's own round_sink under the cap.</summary>
+    public float FlatFrom { get; init; }
     /// <summary>1: the map laid out flat, as the surface has it. 0: wrapped on the sphere.</summary>
     public float Flat { get; init; }
     /// <summary>1: past <see cref="Local"/> m from under you the map is the sphere's whatever <see cref="Flat"/> is (a pole has no flat map round it). 0: flat out to the rim of the sheet.</summary>
@@ -99,10 +188,10 @@ public readonly record struct WorldView
     public float Relief { get; init; }
     /// <summary>The height of the cloud layer, m.</summary>
     public float CloudLift { get; init; }
+    /// <summary>The sky's cloud deck's curvature, 1 / m: flat until the climb bends the ground, then the same. The sheet's own clouds curve with its ground, as the sky's far clouds do.</summary>
+    public float CloudBend { get; init; }
     /// <summary>The sheet over the land that's still drawn (0 to 1).</summary>
     public float OverLand { get; init; }
-    /// <summary>The whole sheet (0 to 1).</summary>
-    public float Whole { get; init; }
     /// <summary>The nearest and farthest the sheet is drawn along each eye ray, m; 0: where it really is.</summary>
     public float Near { get; init; }
     public float Far { get; init; }
@@ -116,6 +205,12 @@ public readonly record struct WorldView
     /// <summary>The radius of the sphere the world's ring stands round, m (<see cref="Globe.RingSphere"/>), and how much of it shows (0 to 1).</summary>
     public float RingRadius { get; init; }
     public float RingShown { get; init; }
+
+    /// <summary>In space: each pixel's depth is where its ray meets the true globe, round <see cref="TrueCentre"/> (what stands behind the world is hidden by it).</summary>
+    public bool TrueDepth { get; init; }
+
+    /// <summary>The true globe's centre in the world.</summary>
+    public Vector3 TrueCentre { get; init; }
 }
 
 /// <summary>
@@ -139,9 +234,6 @@ public readonly record struct WorldView
 /// (<see cref="WorldView.Near"/>): behind the surface's land while it is the far field, in front
 /// of it for the swap, and between the wrecks and the moons in space. So its fog is its own too,
 /// from the distance it stands for.
-///
-/// The shroud (<see cref="Shroud"/>) is the air itself thickening round the eye, in the world's
-/// own sky colours: the swap happens behind it, at the crossing.
 /// </summary>
 public partial class Globe : Node3D
 {
@@ -158,6 +250,7 @@ public partial class Globe : Node3D
         uniform float radius = 2546.0;
         uniform float height = 1000.0;
         uniform float bend = 0.0;
+        uniform float flat_from = 0.0;
         uniform float flat_map = 1.0;
         uniform float taper = 0.0;
         uniform float local = 3000.0;
@@ -166,7 +259,6 @@ public partial class Globe : Node3D
         uniform float far_at = 0.0;
         uniform float fog_density = 0.0;
         uniform vec3 fog_color : source_color = vec3(0.5);
-        uniform float whole = 1.0;
         uniform float over_land = 1.0;
         uniform float sphere_out = 100000.0;
         varying vec2 offset;
@@ -218,11 +310,13 @@ public partial class Globe : Node3D
         // Metres of the map a grid point stands from the point under you.
         float arc(float t) { return reach * (exp(6.0 * t) - 1.0) / 402.43; }
 
-        // A point at arc s on bearing t, lifted, as seen from the eye; the sheet's own normal is n.
+        // A point at arc s on bearing t, lifted, as seen from the eye; the sheet's own normal is n. It
+        // is flat out to flat_from, as the land is, and curves away past it (round_sink on the surface).
         vec3 sheet_point(float s, vec3 t, float lift, out vec3 n) {
-            float x = s * bend;
-            float along = x > 0.0001 ? sin(x) / bend : s;
-            float drop = x > 0.0001 ? (1.0 - cos(x)) / bend : s * x * 0.5;
+            float f = min(s, flat_from), r = s - f;
+            float x = r * bend;
+            float along = f + (x > 0.0001 ? sin(x) / bend : r);
+            float drop = x > 0.0001 ? (1.0 - cos(x)) / bend : r * x * 0.5;
             n = t * sin(x) + eye_up * cos(x);
             return t * along - eye_up * (height + drop) + n * lift;
         }
@@ -231,6 +325,30 @@ public partial class Globe : Node3D
         float stand(float d) {
             if (far_at <= 0.0) return d;
             return near_at + (far_at - near_at) * d / (d + height);
+        }
+        """;
+
+    /// <summary>
+    /// What stands in front of what, in space. The sheet and its clouds, rim and ring are drawn along
+    /// their eye rays wherever suits the climb, but each pixel's depth is where its ray meets the
+    /// true globe (or its cloud shell, its air, its ring): so a wreck or a moon behind the world is
+    /// hidden by it, and one in front of it stands in front. Where a ray misses the true globe the
+    /// pixel keeps the depth it is drawn at.
+    /// </summary>
+    const string TrueDepthCode = """
+        uniform float true_depth = 0.0;
+        uniform vec3 globe_centre = vec3(0.0);
+        float depth_of(vec3 world, mat4 view, mat4 projection) {
+            vec4 c = projection * view * vec4(world, 1.0);
+            return c.z / c.w;
+        }
+        // Where a ray from o along d first meets a sphere round the globe's centre, or -1.
+        float sphere_hit(vec3 o, vec3 d, float r) {
+            vec3 oc = o - globe_centre;
+            float b = dot(oc, d), h = b * b - dot(oc, oc) + r * r;
+            if (h < 0.0) return -1.0;
+            float t = -b - sqrt(h);
+            return t > 0.0 ? t : -1.0;
         }
         """;
 
@@ -248,18 +366,57 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>
+    /// A moon's shadow on the globe: at each point the share of the sun the bodies in front of it
+    /// hide there (two discs' overlap, StarSystem.Covered's sum), so a dark umbra with a soft
+    /// penumbra round it, moving as they move.
+    /// </summary>
+    internal const string UmbraCode = """
+        uniform vec4 umbra[4];
+        uniform int umbra_count = 0;
+        uniform float umbra_sun = 0.0;
+        float sun_hidden(float a, float b, float c) {
+            if (a <= 0.0 || b <= 0.0 || c >= a + b) return 0.0;
+            if (c <= abs(b - a)) return b >= a ? 1.0 : b * b / (a * a);
+            float a2 = a * a, b2 = b * b, c2 = c * c;
+            float lens = a2 * acos(clamp((c2 + a2 - b2) / (2.0 * c * a), -1.0, 1.0)) + b2 * acos(clamp((c2 + b2 - a2) / (2.0 * c * b), -1.0, 1.0))
+                       - 0.5 * sqrt(max(0.0, (-c + a + b) * (c + a - b) * (c - a + b) * (c + a + b)));
+            return clamp(lens / (3.14159265 * a2), 0.0, 1.0);
+        }
+        // The sunlight reaching a point of the globe (in its radii from its centre), 0 to 1.
+        float sunlight_at(vec3 g, vec3 to_sun) {
+            float open = 1.0;
+            for (int i = 0; i < umbra_count; i++) {
+                vec3 v = umbra[i].xyz - g;
+                float dist = length(v);
+                if (dot(v, to_sun) <= 0.0) continue;
+                float size = asin(min(umbra[i].w / dist, 1.0));
+                float apart = atan(length(cross(v, to_sun)), dot(v, to_sun));
+                open *= 1.0 - sun_hidden(umbra_sun, size, apart);
+            }
+            return open;
+        }
+        """;
+
     const string GroundSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+        uniform sampler2D lights_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+        uniform float lights_gain = 3.0;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
+        uniform sampler2D near_map : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+        uniform vec2 near_origin = vec2(0.0);
+        uniform vec2 near_size = vec2(0.0);
         uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
         uniform float day_glow = 0.6;
         uniform float night_glow = 1.6;
         uniform float relief = 1.0;
         {{SheetCode}}
         {{Paint}}
+        {{UmbraCode}}
+        {{TrueDepthCode}}
         varying vec3 round_normal;
 
         float ground_at(vec2 o, float lod) {
@@ -270,6 +427,40 @@ public partial class Globe : Node3D
             return e * relief;
         }
 
+        // The ground's height at one mip level, read as a cubic B-spline from four bilinear taps: its slope is smooth
+        // across the 32 m cells, where straight bilinear would light the land as facets, a cell a facet.
+        float relief_level(vec2 uv, float level) {
+            vec2 size = vec2(textureSize(relief_map, int(level)));
+            vec2 t = uv * size - 0.5, f = fract(t);
+            t -= f;
+            vec2 f2 = f * f, f3 = f2 * f;
+            vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0, w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+            vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0, w3 = f3 / 6.0;
+            vec2 s0 = w0 + w1, s1 = w2 + w3;
+            vec2 c0 = (t - 0.5 + w1 / s0) / size, c1 = (t + 1.5 + w3 / s1) / size;
+            return (textureLod(relief_map, c0, level).r * s0.x + textureLod(relief_map, vec2(c1.x, c0.y), level).r * s1.x) * s0.y
+                + (textureLod(relief_map, vec2(c0.x, c1.y), level).r * s0.x + textureLod(relief_map, c1, level).r * s1.x) * s1.y;
+        }
+
+        // The same at the level the pixel's own footprint wants, the two levels either side blended so no line shows where it steps.
+        float relief_px(vec2 uv, vec2 dx, vec2 dy) {
+            vec2 size = vec2(textureSize(relief_map, 0));
+            // The level under the last one is read too, so this stops one short of it (past it the grid has no size).
+            float lod = clamp(0.5 * log2(max(dot(dx * size, dx * size), dot(dy * size, dy * size))), 0.0, float(textureQueryLevels(relief_map) - 2));
+            float l = floor(lod);
+            return mix(relief_level(uv, l), relief_level(uv, l + 1.0), lod - l);
+        }
+
+        float relief_seen(MapPoint m) {
+            vec2 dx = dFdx(m.uv), dy = dFdy(m.uv);
+            dx -= round(dx);
+            dy -= round(dy);
+            float e = m.tile < 1.0 ? relief_px(m.uv, dx, dy) : 0.0;
+            if (m.cap > 0.0) e = mix(e, relief_px(m.cap_uv, dFdx(m.cap_uv), dFdy(m.cap_uv)), m.cap);
+            if (m.tile > 0.0) e = mix(e, relief_px(m.tile_uv, dFdx(m.tile_uv), dFdy(m.tile_uv)), m.tile);
+            return e;
+        }
+
         void vertex() {
             float s = arc(VERTEX.y);
             vec3 t = eye_east * VERTEX.x + eye_south * VERTEX.z;
@@ -277,64 +468,285 @@ public partial class Globe : Node3D
             // The relief at the grid's own spacing there, or it stands up as spikes.
             float step_m = max(32.0, s * 0.0375);
             float lod = log2(step_m / 32.0);
-            float e = ground_at(offset, lod);
+            // Past the horizon the relief lies down: there the grid's few bearings would stand hills
+            // up over the horizon as a fence of posts, a bearing apart.
+            float beyond = 1.0 - smoothstep(0.0, 2000.0, s - flat_from - sqrt(2.0 * height / max(bend, 1e-9)));
+            float e = ground_at(offset, lod) * beyond;
             vec3 n;
             vec3 p = sheet_point(s, t, e, n);
-            // The ground's slope, from the same map.
-            float ex = ground_at(offset + vec2(step_m, 0.0), lod);
-            float ez = ground_at(offset + vec2(0.0, step_m), lod);
-            vec3 slope = (eye_east * (ex - e) + eye_south * (ez - e)) / step_m;
             // Lit as the sheet lies low down, as the sphere it stands for high up: the night side comes in with the curve.
             float a = round_angle(s);
             round_normal = t * sin(a) + eye_up * cos(a);
             distance = length(p);
             VERTEX = CAMERA_POSITION_WORLD + p / distance * stand(distance);
-            NORMAL = normalize(mix(round_normal, n, flat_map) - slope);
+            NORMAL = normalize(mix(round_normal, n, flat_map)); // the slopes are the fragment's, a pixel at a time
         }
         void fragment() {
             MapPoint m = map_point(offset);
+            // The land's own slopes, a pixel at a time and at their true height whatever share of it the mesh stands
+            // up (it lies low from space): far off the grid's points are hundreds of metres apart, and lit by them
+            // alone the relief from space was a smear. Worked from the height's change across the pixel as drawn.
+            // Low sun stands a slope's shade on end: toward the terminator the relief eases off, or every mesa and crater
+            // there is a black hole in a lit disc, and past it a lit blob on the night side.
+            float sun_up = dot(normalize(round_normal), sun_dir);
+            float h = relief_seen(m) * stand(distance) / max(distance, 1.0) * smoothstep(0.0, 0.45, sun_up);
+            // Each pixel's own differences, not its quad's: by quads the shading stepped in blocks two pixels wide.
+            vec3 dpx = dFdxFine(VERTEX), dpy = dFdyFine(VERTEX);
+            vec3 r1 = cross(dpy, NORMAL), r2 = cross(NORMAL, dpx);
+            float det = dot(dpx, r1);
+            vec3 grad = sign(det) * (dFdxFine(h) * r1 + dFdyFine(h) * r2);
+            // A cliff a map cell wide is a facet standing on end, black against the sun from any way but one: the slope a
+            // pixel shows is held under about 20 degrees, so a mesa or a crater's wall reads as relief and not as a hole.
+            grad *= min(1.0, 0.36 * abs(det) / max(length(grad), 1e-12));
+            NORMAL = normalize(abs(det) * NORMAL - grad);
             vec4 a = paint(albedo_map, m);
-            ALBEDO = a.rgb;
+            // The ground near you from its finer paint, eased in from that paint's edge.
+            vec2 q = fract(m.uv - near_origin) / max(near_size, vec2(1e-6));
+            if (near_size.x > 0.0 && m.tile < 1.0 && m.cap < 1.0 && q.x < 1.0 && q.y < 1.0) {
+                vec2 dx = dFdx(m.uv), dy = dFdy(m.uv);
+                dx -= round(dx);
+                dy -= round(dy);
+                float edge = min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y));
+                a = mix(a, textureGrad(near_map, q, dx / near_size, dy / near_size), smoothstep(0.0, 0.1, edge) * (1.0 - m.cap) * (1.0 - m.tile));
+            }
+            ALBEDO = a.rgb * sunlight_at(normalize(round_normal), sun_dir);
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
             EMISSION = paint(glow_map, m).rgb * (day_glow + night * night_glow);
-            ALPHA = whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            // The places' lights, only after dark: the same towns' glow seen from the ground.
+            EMISSION += paint(lights_map, m).rgb * smoothstep(0.05, -0.2, dot(normalize(round_normal), sun_dir)) * lights_gain;
+            ALPHA = mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
+            float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, normalize(mat3(INV_VIEW_MATRIX) * VERTEX), radius) : -1.0;
+            DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + normalize(mat3(INV_VIEW_MATRIX) * VERTEX) * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
         }
         """;
 
+    /// <summary>
+    /// The clouds: the sky's own cloud noise, drifted as the sky drifts it, under the live weather
+    /// (<see cref="GlobeWeather"/>), worked out with the sky's sums laid flat (sky.gdshader's
+    /// cloud_density), so a place's clouds from orbit are the ones over it on the ground: its region's
+    /// cover, a front's deck behind its edge and the open air ahead with its anvils' sheet up high,
+    /// the storm cells' towers and anvils standing up bright, dust, blowing snow and fog low under
+    /// them, and lightning flickering in the storms and flashing where strikes come down, which shows
+    /// on the night side. Until the weather is bound it is the paint's own cloud map.
+    /// </summary>
     const string CloudSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, blend_mix, depth_draw_never, cull_back, diffuse_lambert_wrap, specular_disabled, shadows_disabled;
         uniform sampler2D cloud_map : source_color, filter_linear_mipmap, repeat_enable;
         uniform float cloud_lift = 30.0;
+        uniform float live = 0.0;
+        {{TrueDepthCode}}
+        uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
+        uniform vec2 cloud_scale = vec2(8000.0);
+        uniform vec2 cloud_drift = vec2(0.0);
+        uniform sampler2D weather_was : filter_linear, repeat_enable;
+        uniform sampler2D weather_now : filter_linear, repeat_enable;
+        uniform sampler2D haze_was : filter_linear, repeat_enable;
+        uniform sampler2D haze_now : filter_linear, repeat_enable;
+        uniform float weather_blend = 1.0;
+        uniform vec3 cloud_color : source_color = vec3(1.0);
+        uniform vec3 dust_color : source_color = vec3(0.61, 0.49, 0.35);
+        uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+        uniform float clock = 0.0;
+        uniform vec4 strikes[4];
+        uniform float tower_lift = 16.0;
         {{SheetCode}}
         {{Paint}}
+        {{UmbraCode}}
+        varying vec3 round_normal;
+
+        struct Cloud { vec3 color; float alpha; float top; float storm; float lightning; float billow; };
+
+        // The weather layer is coarse: read it smoothly (a cubic B-spline from four bilinear taps), so
+        // neither its texels nor the light on its towers show.
+        vec4 smooth_tap(sampler2D map, vec2 uv) {
+            vec2 size = vec2(textureSize(map, 0));
+            vec2 t = uv * size - 0.5, f = fract(t);
+            t -= f;
+            vec2 f2 = f * f, f3 = f2 * f;
+            vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0, w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+            vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0, w3 = f3 / 6.0;
+            vec2 s0 = w0 + w1, s1 = w2 + w3;
+            vec2 c0 = (t - 0.5 + w1 / s0) / size, c1 = (t + 1.5 + w3 / s1) / size;
+            return (textureLod(map, vec2(c0.x, c0.y), 0.0) * s0.x + textureLod(map, vec2(c1.x, c0.y), 0.0) * s1.x) * s0.y
+                + (textureLod(map, vec2(c0.x, c1.y), 0.0) * s0.x + textureLod(map, vec2(c1.x, c1.y), 0.0) * s1.x) * s1.y;
+        }
+
+        float noise_at(vec2 uv, vec2 dx, vec2 dy) { return textureGrad(cloud_noise, uv, dx, dy).r; }
+
+        Cloud cloud_at(vec2 uv, vec2 dx, vec2 dy) {
+            vec2 k = map_size / cloud_scale;
+            vec2 q = (uv * map_size + cloud_drift) / cloud_scale, qx = dx * k, qy = dy * k;
+            // The weather is read a little off where it is, by the clouds' own noise, so nothing it holds
+            // has a clean edge: a front's edge, a storm's rim, one region's weather against the next, all
+            // feather out into broken cloud a few hundred metres either way.
+            // Every noise here is read at a whole number of its tiles to the map's, so it repeats exactly
+            // round the globe and from pole to pole: the map's edge (u = ±0.5 in the lookup) never shows.
+            vec2 warp = vec2(noise_at(q * 3.0 + 0.13, qx * 3.0, qy * 3.0), noise_at(q * 3.0 + 0.61, qx * 3.0, qy * 3.0)) - 0.5;
+            warp += (vec2(noise_at(q * 9.0 + 0.37, qx * 9.0, qy * 9.0), noise_at(q * 9.0 + 0.83, qx * 9.0, qy * 9.0)) - 0.5) * 0.6;
+            vec2 wuv = uv + warp * 900.0 / map_size;
+            vec4 w = mix(smooth_tap(weather_was, wuv), smooth_tap(weather_now, wuv), weather_blend);
+            vec4 hz = mix(smooth_tap(haze_was, wuv), smooth_tap(haze_now, wuv), weather_blend);
+            // The sky's coverage (cloud_density laid flat): its noise, its cover, what the front and the cells add.
+            float n = noise_at(q, qx, qy) * 0.65 + noise_at(q * 2.0 + 0.31, qx * 2.0, qy * 2.0) * 0.35;
+            float extra = w.g * 2.0 - 1.0;
+            float coverage = n - (1.0 - mix(0.12, 1.05, w.r)) + extra;
+            // Its erosion into billows and rags (the sky's detail noise, at a kilometre and a third of one).
+            float detail = noise_at(q * 8.0 + 0.11, qx * 8.0, qy * 8.0) * 0.65 + noise_at(q * 24.0 + 0.47, qx * 24.0, qy * 24.0) * 0.35;
+            float sheet = w.a * 2.0 - 1.0, trail = max(-sheet, 0.0);
+            coverage -= (detail - 0.45) * (0.7 + 0.5 * trail) * (1.0 - w.r * 0.4);
+            // A storm's tower in cauliflower lobes, at its own scale (storm_at's lump).
+            float lump = noise_at(q * 4.0, qx * 4.0, qy * 4.0) * 0.6 + noise_at(q * 8.0 + 0.2, qx * 8.0, qy * 8.0) * 0.4;
+            float tower = w.b * smoothstep(0.0, 0.3, w.b + (lump - 0.55) * 0.8);
+            // How thick the cloud is: thin cloud lets the ground through, thick cloud doesn't; a front's deck
+            // trailing far behind its edge is a thinner grey sheet.
+            float thick = max(coverage, 0.0) * (1.0 - 0.6 * trail) + tower * (0.6 + 0.8 * lump);
+            float a = (1.0 - exp(-3.0 * thick)) * 0.96;
+            // The anvils' thin sheet spread ahead of a front, up high: soft, combed out, never solid.
+            float comb = noise_at(q * vec2(1.0, 3.0) + 0.21, qx * 3.0, qy * 3.0) * 0.6 + noise_at(q + 0.57, qx, qy) * 0.4;
+            float veil = max(sheet, 0.0) * 0.3 * smoothstep(0.3, 0.7, comb);
+            a = a + veil * (1.0 - a);
+            vec3 col = cloud_color * mix(0.74, 1.0, smoothstep(0.0, 0.9, thick)) * (1.0 - 0.22 * trail) * (1.0 + 0.18 * tower);
+            // Low under the clouds: dust lifted off dry ground, blowing snow on cold ground, fog in damp low ground.
+            float rag = smoothstep(0.2, 0.75, detail * 0.6 + n * 0.4);
+            float dust = hz.r * 0.75 * (0.55 + 0.45 * rag), snow = hz.g * 0.55 * (0.5 + 0.5 * rag), fog = hz.b * 0.7 * smoothstep(0.25, 0.7, detail);
+            float low = max(dust, max(snow, fog));
+            // Dust a shade darker and redder than the dry ground it lifts from, so it shows over it.
+            vec3 low_col = (dust_color * vec3(0.82, 0.7, 0.58) * (0.8 + 0.3 * rag) * dust + vec3(0.92, 0.94, 0.98) * snow + vec3(0.74, 0.76, 0.78) * fog) / max(dust + snow + fog, 1e-3);
+            float alpha = a + low * (1.0 - a);
+            Cloud c;
+            c.color = (col * a + low_col * low * (1.0 - a)) / max(alpha, 1e-4);
+            c.alpha = alpha;
+            // The tops: thick cloud stands higher, lumpy with its own billows; the towers well over the deck.
+            c.top = min(thick, 1.6) * (0.5 + 0.3 * n + 0.2 * lump) * (1.0 - 0.4 * trail) + tower * (1.2 + 1.8 * lump) + (dust + snow) * (0.2 + 0.4 * rag) * (1.0 - a);
+            c.storm = max(tower, smoothstep(0.9, 1.6, thick) * step(0.15, w.r));
+            c.lightning = hz.a * 12.0;
+            c.billow = detail;
+            return c;
+        }
+
+        Cloud blend(Cloud a, Cloud b, float t) {
+            Cloud c;
+            c.alpha = mix(a.alpha, b.alpha, t);
+            c.color = (a.color * a.alpha * (1.0 - t) + b.color * b.alpha * t) / max(c.alpha, 1e-4);
+            c.top = mix(a.top, b.top, t);
+            c.storm = mix(a.storm, b.storm, t);
+            c.lightning = mix(a.lightning, b.lightning, t);
+            c.billow = mix(a.billow, b.billow, t);
+            return c;
+        }
+
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+        // Lightning inside the storms: patches of cloud lit from within for a moment, as often as the
+        // weather there strikes, and a bright flash where a strike has just come down.
+        float flashes(vec2 xz, float rate, float storm, float billow) {
+            float g = 0.0;
+            if (rate * storm > 0.02) {
+                // Patches a whole number of them to the map, so they too repeat round the globe.
+                vec2 cells = max(floor(map_size / 320.0 + 0.5), vec2(1.0));
+                vec2 size = map_size / cells;
+                vec2 base = floor(xz / size);
+                for (int j = -1; j <= 1; j++) {
+                    for (int i = -1; i <= 1; i++) {
+                        vec2 c = base + vec2(float(i), float(j)), k = mod(c, cells);
+                        float t = clock * 3.0 + hash(k) * 17.0;
+                        float tick = floor(t);
+                        float on = step(hash(k + tick * vec2(1.73, 9.21)), rate / 60.0 / 3.0 * 0.6);
+                        vec2 centre = (c + 0.2 + 0.6 * vec2(hash(k + 3.1), hash(k + 7.7))) * size;
+                        // Ragged, not round: the glow reaches further through the thicker billows.
+                        float spread = size.x * (0.45 + 0.9 * billow);
+                        g += on * exp(-fract(t) * 7.0) * smoothstep(spread, 0.0, length(xz - centre));
+                    }
+                }
+                g *= smoothstep(0.05, 0.4, storm);
+            }
+            for (int i = 0; i < 4; i++) {
+                float age = clock - strikes[i].z;
+                if (strikes[i].w <= 0.0 || age < 0.0 || age > 1.2) continue;
+                vec2 d = xz - strikes[i].xy;
+                d -= map_size * round(d / map_size);
+                g += 1.2 * strikes[i].w * exp(-age * 7.0) * smoothstep(250.0 + 400.0 * billow, 0.0, length(d));
+            }
+            // Lit from within: the billows, not a disc.
+            return g * (0.15 + 0.85 * smoothstep(0.35, 0.8, billow));
+        }
+
         void vertex() {
             float s = arc(VERTEX.y);
             offset = VERTEX.xz * s;
+            float turned = round_angle(s);
+            round_normal = (eye_east * VERTEX.x + eye_south * VERTEX.z) * sin(turned) + eye_up * cos(turned);
             vec3 n;
-            vec3 p = sheet_point(s, eye_east * VERTEX.x + eye_south * VERTEX.z, cloud_lift, n);
+            vec3 t = eye_east * VERTEX.x + eye_south * VERTEX.z;
+            vec3 p = sheet_point(s, t, cloud_lift, n);
+            float a = round_angle(s);
+            round_normal = t * sin(a) + eye_up * cos(a);
             distance = length(p);
             // Just nearer along the ray than the ground, whose hills would otherwise poke through it.
             VERTEX = CAMERA_POSITION_WORLD + p / distance * stand(distance) * 0.92;
             NORMAL = n;
         }
         void fragment() {
-            vec4 c = paint(cloud_map, map_point(offset));
-            ALBEDO = c.rgb;
-            ALPHA = c.a * whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            MapPoint m = map_point(offset);
+            vec4 base = vec4(0.0);
+            Cloud c;
+            if (live < 0.5) {
+                base = paint(cloud_map, m);
+                c.color = base.rgb; c.alpha = base.a; c.top = 0.0; c.storm = 0.0; c.lightning = 0.0; c.billow = 0.0;
+            } else {
+                vec2 dx = dFdx(m.uv), dy = dFdy(m.uv);
+                dx -= round(dx);
+                dy -= round(dy);
+                vec2 cx = dFdx(m.cap_uv), cy = dFdy(m.cap_uv), tx = dFdx(m.tile_uv), ty = dFdy(m.tile_uv);
+                c.color = vec3(1.0); c.alpha = 0.0; c.top = 0.0; c.storm = 0.0; c.lightning = 0.0; c.billow = 0.0;
+                if (m.tile < 1.0) c = cloud_at(m.uv, dx, dy);
+                if (m.cap > 0.0) c = blend(c, cloud_at(m.cap_uv, cx, cy), m.cap);
+                if (m.tile > 0.0) c = blend(c, cloud_at(m.tile_uv, tx, ty), m.tile);
+            }
+            ALBEDO = c.color;
+            // The storms stand up out of the deck: their tops lit on the sun's side, shaded on the other.
+            float drawn = stand(distance) * 0.92 / max(distance, 1.0);
+            // Seen edge on, near the limb, relief from screen-space slopes only streaks: it lies down there.
+            float facing = abs(dot(normalize(NORMAL), normalize(VERTEX)));
+            float h = c.top * tower_lift * drawn * smoothstep(0.15, 0.45, facing);
+            vec3 dpx = dFdx(VERTEX), dpy = dFdy(VERTEX);
+            vec3 r1 = cross(dpy, NORMAL), r2 = cross(NORMAL, dpx);
+            float det = dot(dpx, r1);
+            vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+            NORMAL = normalize(abs(det) * NORMAL - grad);
+            float night = smoothstep(0.1, -0.2, dot(normalize(round_normal), sun_dir));
+            vec2 xz = (m.tile > 0.5 ? m.tile_uv : m.uv) * map_size;
+            float flash = live > 0.5 ? flashes(xz, c.lightning, c.storm, c.billow) : 0.0;
+            EMISSION = vec3(0.72, 0.78, 1.0) * flash * 1.6 * night * c.alpha;
+            // Lit softly round the terminator, and dark past it: the night side's clouds are seen by their lightning.
+            ALBEDO *= 1.0 - 0.7 * night;
+            // An eclipse: a moon's shadow on the globe dims what lies under it.
+            ALBEDO *= sunlight_at(normalize(round_normal), sun_dir);
+            ROUGHNESS = 0.4;
+            // Under the layer (or level with it) the sky draws the clouds: a flat sheet seen edge-on
+            // stands along the horizon as a fence of slivers. It shows once the eye is over it.
+            float over_layer = max(over_land, smoothstep(cloud_lift, cloud_lift + 200.0, height));
+            ALPHA = c.alpha * over_layer * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
+            vec3 ray_w = normalize(mat3(INV_VIEW_MATRIX) * VERTEX);
+            float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, ray_w, radius + cloud_lift) : -1.0;
+            DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + ray_w * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
         }
         """;
+
+    /// <summary>The clouds' shader code (tests read its noise scales).</summary>
+    public static string CloudShader => CloudSource;
 
     /// <summary>
     /// The air seen from outside, worked out from each eye ray against the sheet's own sphere, so
     /// it fits whatever the curve is: over the limb the glow thins away with the height of the
     /// ray's lowest point, over the disc it thins toward the middle, meeting at the ground's edge.
     /// </summary>
-    const string AirSource = """
+    const string AirSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, unshaded, blend_add, depth_draw_never, cull_front, fog_disabled, shadows_disabled;
         uniform vec3 color : source_color;
@@ -345,51 +757,31 @@ public partial class Globe : Node3D
         uniform float thickness = 0.1;
         uniform float eye_height = 1.0;
         uniform float shell = 15000.0;
+        uniform float air_radius = 1.0;
         varying vec3 ray;
+        {{TrueDepthCode}}
         void vertex() {
             ray = VERTEX;
             VERTEX = CAMERA_POSITION_WORLD + VERTEX * shell;
         }
         void fragment() {
             vec3 r = normalize(ray);
+            float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, r, air_radius) : -1.0;
+            DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + r * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
             vec3 eye = eye_up * (ground + eye_height);
-            vec3 low = eye + r * max(-dot(eye, r), 0.0);
+            float along = max(-dot(eye, r), 0.0);
+            vec3 low = eye + r * along;
             float lowest = length(low);
             float h = (lowest - ground) / thickness;
             // Past the limb it thins away with height; over the ground, with how steeply the ray goes down through the air.
             float x = lowest / ground;
             float graze = sqrt(2.0 * thickness / ground) / max(sqrt(max(1.0 - x * x, 0.0)), 0.0001);
             float thick = h >= 0.0 ? exp(-4.5 * h) * clamp(1.0 - h, 0.0, 1.0) : min(graze * graze, 1.0) * x * x;
-            float day = smoothstep(-0.3, 0.35, dot(low / lowest, sun_dir));
+            // Lit as the ground is where the ray meets it (the point it passes lowest is inside the world, and its light
+            // there would end at a straight line across the disc); past the limb, where it passes lowest.
+            vec3 lit = h >= 0.0 ? low : eye + r * (along - sqrt(max(ground * ground - lowest * lowest, 0.0)));
+            float day = smoothstep(-0.3, 0.35, dot(normalize(lit), sun_dir));
             ALBEDO = color * thick * day * strength;
-        }
-        """;
-
-    /// <summary>
-    /// The shroud: the world's own sky round the eye, thicker the more air the eye looks through.
-    /// It stands just off the vessel, over the land and the sheet alike, so what happens behind it
-    /// is hidden the same for both; it never quite closes, and it keeps the sky's gradient.
-    /// </summary>
-    const string ShroudSource = """
-        shader_type spatial;
-        render_mode world_vertex_coords, unshaded, blend_mix, depth_draw_never, cull_front, fog_disabled, shadows_disabled;
-        uniform vec3 low : source_color;
-        uniform vec3 high : source_color;
-        uniform vec3 glow : source_color;
-        uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
-        uniform float amount = 0.0;
-        uniform float shell = 40.0;
-        varying vec3 ray;
-        void vertex() {
-            ray = VERTEX;
-            VERTEX = CAMERA_POSITION_WORLD + VERTEX * shell;
-        }
-        void fragment() {
-            vec3 r = normalize(ray);
-            float rise = smoothstep(-0.05, 0.75, r.y);
-            float toward = max(dot(r, sun_dir), 0.0);
-            ALBEDO = mix(low, high, rise) + glow * pow(toward, 6.0) * 0.5;
-            ALPHA = amount * mix(1.0, 0.72, rise);
         }
         """;
 
@@ -402,7 +794,7 @@ public partial class Globe : Node3D
     /// it, behind what you fly near. It writes no depth, or everything behind it would be cut out at
     /// its rim, gaps and all.
     /// </summary>
-    const string RingSource = """
+    const string RingSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
@@ -415,6 +807,7 @@ public partial class Globe : Node3D
         uniform float sheet_radius = 2546.0;
         uniform float stand_at = 0.0;
         uniform float fade = 1.0;
+        {{TrueDepthCode}}
         void vertex() {
             if (stand_at > 0.0) {
                 vec3 to = VERTEX - CAMERA_POSITION_WORLD;
@@ -436,6 +829,7 @@ public partial class Globe : Node3D
             float gap = smoothstep(0.0, 0.02, abs(r - 0.62)) * smoothstep(0.0, 0.05, r) * smoothstep(1.0, 0.94, r);
             ALBEDO = color * (0.45 + 0.55 * clamp(bands, 0.0, 1.0)) * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs(dot(axis, to_sun)) * 1.5, 0.0, 1.0));
             ALPHA = gap * mix(0.95, 1.0, clamp(bands, 0.0, 1.0)) * fade;
+            DEPTH = true_depth > 0.5 ? depth_of(ro + rd * t, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
         }
         """;
 
@@ -460,13 +854,12 @@ public partial class Globe : Node3D
     public (float Off, float Inner) RingFit { get; private set; }
 
     const float AirStrength = 1.1f;
-    const float ShroudShell = 40f;
 
     /// <summary>Where the rim of air's shell stands off the eye, m: in front of the sheet in space, behind what you fly near.</summary>
     const float AirShell = 15000f;
 
-    ShaderMaterial _ground, _clouds, _air, _shroud, _ringMaterial;
-    MeshInstance3D _airMesh, _shroudMesh, _ring;
+    ShaderMaterial _ground, _clouds, _air, _ringMaterial;
+    MeshInstance3D _airMesh, _ring;
     bool _hasRing;
     float _airThickness, _sphereReach;
     Basis _ringBasis = Basis.Identity;
@@ -476,8 +869,24 @@ public partial class Globe : Node3D
 
     public float Radius { get; private set; }
 
+    /// <summary>What it was last drawn with (tests: no low-detail skin, no dark disc, no high shell): its colour map's width, the way to the sun, its clouds' height over its ground, m, and whether its air shows.</summary>
+    public int Detail { get; private set; }
+    public Vector3 LitFrom { get; private set; }
+    public float CloudLift { get; private set; }
+    public bool AirShown => _airMesh?.Visible == true;
+
+    /// <summary>How deep its rim of air stands over its ground, m.</summary>
+    public float AirThickness => _airThickness;
+
+    /// <summary>The live weather the clouds are drawn from.</summary>
+    public GlobeWeather Weather { get; private set; }
+
     /// <summary>How far along the map the sheet reaches this frame, m.</summary>
     public float Reach { get; private set; }
+
+    /// <summary>The angular radius of the sphere the sheet was last drawn on, and the eye it was drawn for (tests: its true size).</summary>
+    public float Angular { get; private set; }
+    public Vector3 DrawnFrom { get; private set; }
 
     /// <summary>Sets the sheet up a piece at a time, each upload on its own frame, so none of them shows as a hitch.</summary>
     public IEnumerable<int> Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules, Vector2 mapSize)
@@ -488,40 +897,82 @@ public partial class Globe : Node3D
         ArchetypeLook look = paint.Look;
         ArrayMesh grid = PolarGrid(rules.Rings, rules.Segments);
         _ground = new ShaderMaterial { Shader = new Shader { Code = GroundSource } };
-        _ground.SetShaderParameter("albedo_map", ImageTexture.CreateFromImage(paint.Albedo));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("albedo_map"), ImageTexture.CreateFromImage(paint.Albedo));
+        Detail = paint.Albedo.GetWidth();
         yield return 0;
-        _ground.SetShaderParameter("glow_map", ImageTexture.CreateFromImage(paint.Glow));
-        _ground.SetShaderParameter("relief_map", ImageTexture.CreateFromImage(paint.Relief));
-        _ground.SetShaderParameter("day_glow", look.LiquidGlow > 0 ? 0.9f : 0.5f);
-        _ground.SetShaderParameter("night_glow", look.GlowingNights ? 2.5f : 1.4f);
-        _ground.SetShaderParameter("radius", radius);
-        _ground.SetShaderParameter("map_size", mapSize);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_map"), ImageTexture.CreateFromImage(paint.Glow));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("lights_map"), ImageTexture.CreateFromImage(paint.Lights));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("day_glow"), look.LiquidGlow > 0 ? 0.9f : 0.5f);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_glow"), look.GlowingNights ? 2.5f : 1.4f);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), radius);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_size"), mapSize);
+        (_paintNear, _nearSpan, _mapSize) = (paint.NearAt, (float)(rules.NearMetres * rules.NearTexels), mapSize);
         AddChild(Instance("Ground", grid, _ground));
         yield return 0;
         _clouds = new ShaderMaterial { Shader = new Shader { Code = CloudSource } };
-        _clouds.SetShaderParameter("cloud_map", ImageTexture.CreateFromImage(paint.Clouds));
-        _clouds.SetShaderParameter("radius", radius);
-        _clouds.SetShaderParameter("map_size", mapSize);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_map"), ImageTexture.CreateFromImage(paint.Clouds));
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), radius);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_size"), mapSize);
+        Weather = new GlobeWeather(mapSize);
+        Weather.Bind(_clouds, C(look.CloudColor));
         AddChild(Instance("Clouds", grid, _clouds));
         yield return 0;
-        var shell = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
-        _air = new ShaderMaterial { Shader = new Shader { Code = AirSource } };
-        _air.SetShaderParameter("color", C(look.Atmosphere));
-        _air.SetShaderParameter("shell", AirShell);
-        _airMesh = Instance("Atmosphere", shell, _air);
+        (_airMesh, _air) = AirMesh(C(look.Atmosphere));
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), AirShell);
         AddChild(_airMesh);
-        _shroud = new ShaderMaterial { Shader = new Shader { Code = ShroudSource }, RenderPriority = 100 };
-        _shroud.SetShaderParameter("shell", ShroudShell);
-        _shroudMesh = Instance("Shroud", shell, _shroud);
-        _shroudMesh.Visible = false;
-        AddChild(_shroudMesh);
         _ringMaterial = new ShaderMaterial { Shader = new Shader { Code = RingSource }, RenderPriority = 5 }; // nearer than anything else up there
-        _ringMaterial.SetShaderParameter("color", C(look.RingColor));
+        _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(look.RingColor));
         _hasRing = look.Ring;
         // The mesh only covers the ring: a shade wider than it, so its straight sides never cut the round edge.
-        _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * (RingInner - 0.02f), radius * (RingOuter + 0.03f), 160), MaterialOverride = _ringMaterial, Visible = false, CustomAabb = Everywhere };
+        // Cast no shadow, as nothing up here does: its shader stands it round the eye, and in the sun's shadow pass that eye is the light's.
+        _ring = Instance("Ring", RingMesh(radius * (RingInner - 0.02f), radius * (RingOuter + 0.03f), 160), _ringMaterial);
+        (_ring.Visible, _ring.CustomAabb) = (false, Everywhere);
         AddChild(_ring);
         Visible = false;
+    }
+
+    Func<double, double, Image> _paintNear;
+    System.Threading.Tasks.Task<Image> _nearPainting;
+    ImageTexture _near;
+    Vector2 _nearCorner, _mapSize;
+    float _nearSpan;
+    bool _nearAny;
+
+    /// <summary>
+    /// Keeps the ground under you (map point x, z, m) painted finer than the whole globe's paint: low over it a texel of
+    /// that is metres across on the screen, blocky round every coast. A square round you is painted on worker threads,
+    /// again once you have come a quarter of its width from the last one's middle, and uploaded on a frame of its own
+    /// into the one texture, so it costs no memory past the first.
+    /// </summary>
+    public void Near(double x, double z)
+    {
+        if (_nearPainting != null)
+        {
+            if (!_nearPainting.IsCompleted) return;
+            Image image = _nearPainting.Result;
+            _nearPainting = null;
+            if (_near == null)
+            {
+                _near = ImageTexture.CreateFromImage(image);
+                _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_map"), _near);
+            }
+            else _near.Update(image);
+            image.Dispose(); // its copy is on the card: the memory back now, not when a collection finds it
+            _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_origin"), _nearCorner / _mapSize);
+            _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_size"), new Vector2(_nearSpan, _nearSpan) / _mapSize);
+            return;
+        }
+        // On a small moon the square would be a good part of the globe, its edge an arc across it; and its whole paint is as fine.
+        if (_paintNear == null || _nearSpan > _mapSize.X * 0.25f) return;
+        Vector2 middle = _nearCorner + new Vector2(_nearSpan, _nearSpan) * 0.5f;
+        double dx = Mathx.WrapDelta(x - middle.X, _mapSize.X), dz = Mathx.WrapDelta(z - middle.Y, _mapSize.Y);
+        if (_nearAny && Math.Max(Math.Abs(dx), Math.Abs(dz)) < _nearSpan * 0.25f) return;
+        _nearAny = true;
+        _nearCorner = new Vector2((float)Mathx.WrapX(x - _nearSpan * 0.5, _mapSize.X), (float)Mathx.Wrap(z - _nearSpan * 0.5, _mapSize.Y));
+        Vector2 corner = _nearCorner;
+        Func<double, double, Image> paint = _paintNear;
+        _nearPainting = System.Threading.Tasks.Task.Factory.StartNew(() => paint(corner.X, corner.Y), System.Threading.CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.None, PlanetSurface.Skies.BodySurfaces.Painters);
     }
 
     /// <summary>How far along the sheet its rim stands, m: out to the limb and a little past it, for the back of the sphere is never in view.</summary>
@@ -542,79 +993,106 @@ public partial class Globe : Node3D
     public void Draw(in WorldView v)
     {
         if (_ground == null) return;
-        Visible = v.Whole > 0.002f && !Hidden;
+        Visible = !Hidden;
         if (!Visible) return;
         float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
-        Reach = RimOf(rho, v.Height);
+        Reach = v.FlatFrom + RimOf(rho, v.Height);
+        (Angular, DrawnFrom) = (MathF.Asin(rho / (rho + v.Height)), v.Eye);
         float sphereOut = ArcAt(_sphereReach, rho, Radius);
         foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {
-            m.SetShaderParameter("eye_up", v.Up);
-            m.SetShaderParameter("eye_east", v.East);
-            m.SetShaderParameter("eye_south", v.South);
-            m.SetShaderParameter("map_up", v.MapUp);
-            m.SetShaderParameter("map_east", v.MapEast);
-            m.SetShaderParameter("map_south", v.MapSouth);
-            m.SetShaderParameter("nadir", v.Nadir);
-            m.SetShaderParameter("height", v.Height);
-            m.SetShaderParameter("bend", v.Bend);
-            m.SetShaderParameter("flat_map", v.Flat);
-            m.SetShaderParameter("taper", v.Taper);
-            m.SetShaderParameter("local", v.Local);
-            m.SetShaderParameter("reach", Reach);
-            m.SetShaderParameter("sphere_out", sphereOut);
-            m.SetShaderParameter("near_at", v.Near);
-            m.SetShaderParameter("far_at", v.Far);
-            m.SetShaderParameter("fog_density", v.FogDensity);
-            m.SetShaderParameter("fog_color", v.FogColor);
-            m.SetShaderParameter("whole", v.Whole);
-            m.SetShaderParameter("over_land", v.OverLand);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), v.Up);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_east"), v.East);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_south"), v.South);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_up"), v.MapUp);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_east"), v.MapEast);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_south"), v.MapSouth);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("nadir"), v.Nadir);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("height"), v.Height);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("bend"), v.Bend);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("flat_from"), v.FlatFrom);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("flat_map"), v.Flat);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("taper"), v.Taper);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("local"), v.Local);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), Reach);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("sphere_out"), sphereOut);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_at"), v.Near);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("far_at"), v.Far);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("fog_density"), v.FogDensity);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("fog_color"), v.FogColor);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("over_land"), v.OverLand);
         }
         // Over the cloud deck for the swap, under it as the far field.
         _ground.RenderPriority = v.OverLand > 0f && v.OverLand < 1f ? 1 : -2;
         _clouds.RenderPriority = _ground.RenderPriority + 1;
-        _ground.SetShaderParameter("relief", v.Relief);
-        _ground.SetShaderParameter("sun_dir", v.ToSun);
-        _clouds.SetShaderParameter("cloud_lift", v.CloudLift);
-        _air.SetShaderParameter("sun_dir", v.ToSun);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief"), v.Relief);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
+        foreach (ShaderMaterial m in new[] { _ground, _clouds })
+        {
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("umbra_count"), v.Umbra == null ? 0 : v.UmbraCount);
+            if (v.Umbra != null) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("umbra"), v.Umbra);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("umbra_sun"), v.UmbraSun);
+        }
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lift"), v.CloudLift);
+        (LitFrom, CloudLift) = (v.ToSun, v.CloudLift);
         _ring.Visible = _hasRing && v.RingShown > 0.002f;
         if (_ring.Visible)
         {
             // One centre and one scale for the ring, its shader and the sheet: nothing of it is placed apart.
             Vector3 centre = v.Eye - v.Up * (v.Height + v.RingRadius);
             _ring.GlobalTransform = new Transform3D(_ringBasis.Scaled(Vector3.One * (v.RingRadius / Radius)), centre);
-            _ringMaterial.SetShaderParameter("to_sun", v.ToSun);
-            _ringMaterial.SetShaderParameter("axis", _ringBasis.Y.Normalized());
-            _ringMaterial.SetShaderParameter("centre", centre);
-            _ringMaterial.SetShaderParameter("ring_radius", v.RingRadius);
-            _ringMaterial.SetShaderParameter("eye_up", v.Up);
-            _ringMaterial.SetShaderParameter("height", v.Height);
-            _ringMaterial.SetShaderParameter("sheet_radius", rho);
-            _ringMaterial.SetShaderParameter("stand_at", v.Near * 0.9f);
-            _ringMaterial.SetShaderParameter("fade", v.RingShown);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_sun"), v.ToSun);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), _ringBasis.Y.Normalized());
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("centre"), centre);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_radius"), v.RingRadius);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), v.Up);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("height"), v.Height);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("sheet_radius"), rho);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("stand_at"), v.Near * 0.9f);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("fade"), v.RingShown);
             Vector3 sheetCentre = v.Eye - v.Up * (v.Height + rho);
             RingFit = (_ring.GlobalPosition.DistanceTo(sheetCentre), RingInner * v.RingRadius / rho);
         }
-        _air.SetShaderParameter("eye_up", v.Up);
-        _air.SetShaderParameter("ground", rho);
-        _air.SetShaderParameter("thickness", _airThickness);
-        _air.SetShaderParameter("eye_height", v.Height);
-        _air.SetShaderParameter("strength", AirStrength * v.Rim);
-        _airMesh.Visible = v.Rim > 0.002f;
+        foreach (ShaderMaterial m in new[] { _ground, _clouds, _air, _ringMaterial })
+        {
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("true_depth"), v.TrueDepth ? 1f : 0f);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("globe_centre"), v.TrueCentre);
+        }
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("air_radius"), Radius + _airThickness);
+        _airMesh.Visible = Air(_air, v.Up, rho, _airThickness, v.Height, v.Rim, v.ToSun);
     }
 
-    /// <summary>The shroud over everything past the vessel: how thick (0 to 1), the air's colour low in the view and overhead, and its glow toward the sun.</summary>
-    public void Shroud(float amount, Color low, Color high, Color glow, Vector3 toSun)
+    static readonly SphereMesh Shell = new() { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
+    static Shader _airShader;
+
+    /// <summary>A world's air seen from outside, over its disc and round its limb, in its colour: a shell round the eye, drawn by every look of a world with air (its globe and space's far look of it).</summary>
+    public static (MeshInstance3D Mesh, ShaderMaterial Material) AirMesh(Color color)
     {
-        if (_shroud == null) return;
-        _shroudMesh.Visible = amount > 0.002f;
-        if (!_shroudMesh.Visible) return;
-        _shroud.SetShaderParameter("amount", amount);
-        _shroud.SetShaderParameter("low", low);
-        _shroud.SetShaderParameter("high", high);
-        _shroud.SetShaderParameter("glow", glow);
-        _shroud.SetShaderParameter("sun_dir", toSun);
+        var m = new ShaderMaterial { Shader = _airShader ??= new Shader { Code = AirSource } };
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), color);
+        return (Instance("Atmosphere", Shell, m), m);
     }
+
+    /// <summary>
+    /// Lays an air shell out for this frame: the world's centre down <paramref name="up"/> from the eye, its ground's radius and its air's
+    /// thickness (any one unit), the eye's height over the ground, how much of it shows (<paramref name="rim"/>), the way to the sun.
+    /// Whether it draws at all.
+    /// </summary>
+    public static bool Air(ShaderMaterial m, Vector3 up, float ground, float thickness, float height, float rim, Vector3 toSun)
+    {
+        if (rim <= 0.002f) return false;
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), up);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground"), ground);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("thickness"), thickness);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_height"), height);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), AirStrength * rim);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), toSun);
+        return true;
+    }
+
+    /// <summary>How much of a world's air shows from outside, 0 to 1, by its sky's density: thin air hardly at all, a world with none (vacuum at its feet) none.</summary>
+    public static float AirShare(float density) => density < Slice.Surface.SurfaceWeather.NoAir ? 0f : 1f - MathF.Exp(-2.5f * density);
 
     static MeshInstance3D Instance(string name, Mesh mesh, Material material) => new()
     {

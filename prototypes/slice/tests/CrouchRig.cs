@@ -54,6 +54,22 @@ public sealed class CrouchRig
             game.Zone.AddChild(body);
         }
 
+        // The pad is a test prop set down on the land: clear what stands on its footprint (plants,
+        // and whoever of the world's own is stood there, held still with the wildlife frozen), so
+        // only the bulkhead decides the walk.
+        var streamer = game.Zone.Streamer;
+        var felled = new System.Collections.Generic.HashSet<long>();
+        for (float dx = -8f; dx <= 8f; dx += 2f)
+        for (float dz = -24f; dz <= 8f; dz += 2f)
+            foreach (var plant in streamer.FloraNear(new Vector3(ground.X + dx, top, ground.Z + dz), 2.5f)) felled.Add(plant.Id);
+        foreach (long id in felled)
+            if (game.Zone.Planet.Felled.Add(id)) streamer.Fell(id);
+        if (game.Zone.Wildlife?.Sim is { } sim)
+            foreach (var c in sim.Creatures)
+            {
+                Vector3 w = game.Zone.Wildlife.WorldOf(c);
+                if (MathF.Abs(w.X - ground.X) < 9f && w.Z > ground.Z - 25f && w.Z < ground.Z + 9f) sim.Remove(c);
+            }
         float x = ground.X, z = (rig.Near + rig.Far) / 2f, half = Width / 2f;
         // The pad, then the bulkhead: a block either side of the passage and the lintel over it.
         Block("CrouchPad", new Vector3(x, top - 1f, ground.Z - 6f), new Vector3(14f, 2f, 28f), dark);

@@ -29,6 +29,30 @@ public partial class SurfaceZone : Node3D
     public GameData Data;
     public PlanetSpec Spec;
 
+    /// <summary>What the new game forced onto this world's roll (depth, theme, fall, mid-collapse, eras), or null for nothing.</summary>
+    public PoiGenerator.Gen.WorldForce Force;
+
+    /// <summary>
+    /// Another body of a world's system (its moon), made from <see cref="Body"/>'s own spec: it shares
+    /// that world's galaxy, star and system (its sky is the system seen from here), and its places
+    /// come later. Null: the start world, which owns the system.
+    /// </summary>
+    public SystemShare ShareFrom;
+
+    /// <summary>Another body's: the far looks its sky shares, the start world's sky's (painted once for every sky of the system), or null.</summary>
+    public PlanetSurface.Skies.BodySurfaces SkySurfaces;
+
+    public Orbiter Body;
+
+    /// <summary>Another body's world is made once <see cref="Make"/> is called (as you come near it), not as it enters the scene.</summary>
+    public bool MakeLater;
+
+    /// <summary>A moon or another body of the start world's system, not the start world itself.</summary>
+    public bool IsOtherBody => ShareFrom != null;
+
+    /// <summary>Its world is being made, or is made.</summary>
+    public bool Making => _building != null || Planet != null;
+
     /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
     public Func<Vector3> Focus = () => Vector3.Zero;
 
@@ -37,6 +61,10 @@ public partial class SurfaceZone : Node3D
 
     public PlanetWorld Planet { get; private set; }
     public TerrainStreamer Streamer { get; private set; }
+
+    /// <summary>The ground's trees and rocks by chunk, without streaming them in (<see cref="ScatterSolids"/>).</summary>
+    public ScatterSolids Scatter => _scatter ??= new ScatterSolids(this);
+    ScatterSolids _scatter;
     public SkyRig Sky { get; private set; }
     public SurfaceWeather Weather { get; protected set; }
     public WildlifePatch Wildlife { get; protected set; }
@@ -50,6 +78,29 @@ public partial class SurfaceZone : Node3D
     public SkyLight Light { get; private set; }
     public MeshInstance3D Sea { get; private set; }
 
+    /// <summary>The seas and rivers as a volume: what bodies swim in, and what the view sinks into.</summary>
+    public PlanetWater Water { get; private set; }
+
+    /// <summary>The dust and flying debris (set by the game once it has them): puffs from digging, landing and thrusters.</summary>
+    public PlanetSurface.Fx.Debris Dust;
+
+    /// <summary>What the camera sees under the surface.</summary>
+    public UnderwaterView Underwater { get; protected set; }
+
+    ShaderMaterial _seaMaterial, _riverMaterial;
+    Vector3 _seaRim = PlanetSurface.Terrain.TerrainStreamer.NoRim;
+
+    /// <summary>Where the sea plane ends: at the land's own rim while the far field stands behind it (<see cref="PlanetSurface.Terrain.TerrainStreamer.HorizonRim"/>).</summary>
+    public Vector3 SeaRim
+    {
+        get => _seaRim;
+        set
+        {
+            _seaRim = value;
+            (Sea.MaterialOverride as ShaderMaterial)?.SetShaderParameter(PlanetSurface.Fx.Names.Of("rim"), value);
+        }
+    }
+
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
     public PlanetSurface.Fx.Sfx Sfx { get; protected set; }
 
@@ -62,7 +113,7 @@ public partial class SurfaceZone : Node3D
     /// <summary>The world's one game-mode setting (shared/Items): placement, every constructor and the tech tree read it.</summary>
     public readonly GalHack.Items.WorldRules WorldRules = new();
 
-    /// <summary>Containers on the ground: creature bodies, backpacks, things set down.</summary>
+    /// <summary>Containers on the ground: creature bodies and bags.</summary>
     public Slice.Items.Lootables Loot { get; protected set; }
 
     public bool IsBuilt => Planet != null;
@@ -79,9 +130,26 @@ public partial class SurfaceZone : Node3D
     double _valleyTimer;
     float _valleyFloor;
 
+    /// <summary>
+    /// The zone itself never moves, so it isn't interpolated: a zone parked or woken (a pause) then resets nothing under it,
+    /// where the reset walked every node of the zone (20-30 ms for the orbit's). What hangs from it is, as it was by inheriting.
+    /// </summary>
+    protected void StandStill()
+    {
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        foreach (Node c in GetChildren()) Interpolated(c);
+        ChildEnteredTree += Interpolated;
+    }
+
+    static void Interpolated(Node c)
+    {
+        if (c.PhysicsInterpolationMode == PhysicsInterpolationModeEnum.Inherit) c.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.On;
+    }
+
     public override void _Ready()
     {
         ProcessPhysicsPriority = 50; // after the physics host (-10) and game logic (0): frame shifts see where things ended up
+        StandStill();
         Data ??= GameData.Shared;
         SliceRules.PlanetRules p = Data.Rules.Planet;
         // A zone made without a world (a tool, a probe): the world the slice's tests are tuned on.
@@ -96,23 +164,25 @@ public partial class SurfaceZone : Node3D
         Light = new SkyLight { Name = "SkyLight", Zone = this };
         AddChild(Light);
         Streamer = new TerrainStreamer { Name = "Terrain" };
+        Streamer.SunToward = () => Sky?.Sun is { } sun && sun.IsInsideTree() ? sun.GlobalBasis.Z.Normalized() : Vector3.Up;
         AddChild(Streamer);
         Sea = new MeshInstance3D
         {
-            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) },
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            // Subdivided so its far side can sink over the horizon with the land (round_sink in the water shader).
+            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 95, SubdivideDepth = 95 },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, ExtraCullMargin = PlanetSurface.Terrain.TerrainStreamer.RoundSink(17000f),
         };
         AddChild(Sea);
         Sfx = new PlanetSurface.Fx.Sfx { Name = "Sfx" };
         AddChild(Sfx);
 
         Physics = new PhysicsWorld(Data.Physics);
-        Physics.Zone.Strength = p.Gravity;
+        Physics.Zone.Strength = p.Gravity * Spec.GravityScale; // the start world's 1 g, scaled by this world's size (PlanetSpec.Gravities)
         Physics.Zone.Ceiling = p.Ceiling;
         Host = new PhysicsHost(Physics);
         AddChild(Host);
         Physics.MotionChanged += body => VesselOf(body)?.BecomeWreck();
-        Physics.Unregistered += body => _vesselOf.Remove(body);
+        Physics.Unregistered += body => { _vesselOf.Remove(body); Held.Remove(body); };
 
         Weather = new SurfaceWeather { Name = "Weather", Zone = this };
         AddChild(Weather);
@@ -120,21 +190,50 @@ public partial class SurfaceZone : Node3D
         AddChild(Wildlife);
         Blood = new BloodFx { Name = "Blood" };
         AddChild(Blood);
-        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
+        Underwater = new UnderwaterView { Name = "Underwater", Zone = this };
+        AddChild(Underwater);
+        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder, DrawnOf = DrawnOf };
         AddChild(Loot);
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
         PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
-        PlanetSurface.Infra.InfraLayer.OreTellsCollide = true; // ore rocks are solid; the survival tool breaks them down for a little ore
-        Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
+        PlanetSurface.Poi.PoiLayer.Tiered = true; // places are drawn by distance; a near one stands as a structure (Places/PoiPlaces)
+        PlanetSurface.Infra.InfraLayer.OreTellsCollide = true; // ore rocks are solid; the Sleeper tool breaks them down for a little ore
+        Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois", Sky = Sky };
         AddChild(Pois);
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
         AddChild(Infra);
         PlanetSpec spec = Spec;
+        if (ShareFrom != null)
+        {
+            if (!MakeLater) Make();
+            return;
+        }
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
         // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
         PlanetSurface.Poi.PoiSiting.StartWorld = true;
+        // And what the new game forced onto its roll (its depth, theme, fall, mid-collapse and eras), or nothing.
+        PoiGenerator.Gen.WorldForce.Current = Force ?? new PoiGenerator.Gen.WorldForce();
         _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
+    }
+
+    /// <summary>
+    /// Starts making another body's world off the main thread, if it isn't already: no places yet (they come with
+    /// the vacuum worlds' own families), its sky the system's.
+    /// </summary>
+    public void Make()
+    {
+        if (Making || ShareFrom == null) return;
+        SystemShare of = ShareFrom;
+        Orbiter body = Body;
+        PlanetSpec spec = Spec;
+        _building = Task.Run(() =>
+        {
+            PlanetWorld w = PlanetWorld.Build(spec, null);
+            w.ShareSystem(of, body);
+            PlanetSurface.Terrain.RockLook.Of(w); // its cliffs' look made here, not on the frame its ground is set up
+            return w;
+        });
     }
 
     // ---- Arriving --------------------------------------------------------------------------
@@ -149,27 +248,99 @@ public partial class SurfaceZone : Node3D
 
     void Arrive()
     {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        foreach (string _ in Arriving()) { }
+        ArriveMs = watch.Elapsed.TotalMilliseconds;
+        Built?.Invoke();
+    }
+
+    /// <summary>Setting the world up on the main thread, a piece at a time (each piece's name as it is done).</summary>
+    IEnumerable<string> Arriving()
+    {
         if (_building.IsFaulted) throw new InvalidOperationException("the planet failed to build", _building.Exception);
         Planet = _building.Result;
         _building = null;
-        RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
+        if (!IsOtherBody) Use(); // another body's is set when you get there: the world you are on keeps its own till then
 
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
+        Edits.Edited += edit => DugDry(edit.Removed);
+        Edits.Edited += edit => Wildlife?.Dug(edit.Removed); // what stood over it falls in
         Edits.Edited += _ => Light.Touch();
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
-
+        Water = new PlanetWater(Planet);
+        Physics.Water = Water;
+        Physics.Flora = this;
+        _ = Trees; // made with the world, not in the frame the first tree falls (several ms)
+        yield return "ground";
         Pois.Build(Planet);
+        yield return "places";
         Infra.Build(Planet);
+        yield return "infrastructure";
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
-        Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));
-        Sea.MaterialOverride = WaterMaterial(sea: true);
-        Sky.SetWorld(Planet);
+        foreach (string part in Streamer.Setting(Planet, landing, _riverMaterial = WaterMaterial(sea: false))) yield return part;
+        Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
+        yield return "sea";
+        Sky.SetWorld(Planet, SkySurfaces);
+        yield return "sky";
+        Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
+        yield return "weather";
         Wildlife.SetWorld(Planet, landing);
+        yield return "wildlife";
+    }
+
+    IEnumerator<string> _arriving;
+
+    /// <summary>Set up, ready to be the zone you are in.</summary>
+    public bool Arrived => Planet != null && _arriving == null;
+
+    /// <summary>
+    /// For a body made while you are elsewhere: once its world is made, one piece of setting it up
+    /// on the main thread per call, so none of it shows as a hitch. True once it has all arrived.
+    /// </summary>
+    public bool TryArrive()
+    {
+        if (Arrived) return true;
+        if (_arriving == null)
+        {
+            if (_building == null || !_building.IsCompleted) return false;
+            _arriving = Arriving().GetEnumerator();
+        }
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool more = _arriving.MoveNext();
+        double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        ArriveMs = Math.Max(ArriveMs, ms);
+        if (more) ArriveSteps += $"{_arriving.Current} {ms:F0} ms, ";
+        if (more) return false;
+        _arriving = null;
         Built?.Invoke();
+        return true;
+    }
+
+    /// <summary>What each piece of a stepped arrival took (tests print it).</summary>
+    public string ArriveSteps { get; private set; } = "";
+
+    /// <summary>The world, once made, whether or not it has arrived in the scene yet (any thread may read its maps).</summary>
+    public PlanetWorld Made => Planet ?? (_building is { IsCompletedSuccessfully: true } b ? b.Result : null);
+
+    /// <summary>How long arriving took on the main thread, ms: all of it at once, or the longest piece of a stepped arrival (tests read it: it must not show as a hitch).</summary>
+    public double ArriveMs { get; private set; }
+
+    /// <summary>
+    /// This is the world you are on now: the shaders' world-wide settings are its own (its map's
+    /// size, and on a body with no air, no weather on the ground).
+    /// </summary>
+    public void Use()
+    {
+        if (Planet == null) return;
+        RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
+        if (Weather?.Sim != null) return;
+        RenderingServer.GlobalShaderParameterSet("weather_wind", Vector4.Zero);
+        RenderingServer.GlobalShaderParameterSet("weather_ground", Vector4.Zero);
+        RenderingServer.GlobalShaderParameterSet("weather_flash", Vector4.Zero);
     }
 
     /// <summary>
@@ -193,23 +364,150 @@ public partial class SurfaceZone : Node3D
     /// <summary>The generator's landing site, on the ground.</summary>
     public Vector3 LandingSite => GroundAt((float)Planet.Landing.X, (float)Planet.Landing.Y);
 
+    /// <summary>
+    /// The first floor at or below a point that someone on foot stands on (a place's floor, a deck,
+    /// the dug ground), and never above the point: a thing left inside a ceiling or on a ledge out of
+    /// reach comes down to it. With nothing below in reach, the natural ground.
+    /// </summary>
+    /// <summary>A creature's drawn body, in whichever sim's view it is (the patch's, or a cave's or place's).</summary>
+    public Node3D DrawnOf(global::Wildlife.Creature c)
+    {
+        if (Wildlife?.View?.ViewOf(c) is { } v) return v;
+        if (Wildlife != null) foreach (DeepSite s in Wildlife.Sites) if (s.ViewOf(c) is { } d) return d;
+        return null;
+    }
+
+    public Vector3 FloorUnder(Vector3 p)
+    {
+        var q = PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.3f, p + Vector3.Down * 80f, GalHack.Physics.Layers.Solid);
+        q.HitFromInside = false;
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(q);
+        if (hit.Count > 0) return (Vector3)hit["position"];
+        Vector3 ground = GroundAt(p.X, p.Z);
+        return float.IsFinite(ground.Y) ? ground : p;
+    }
+
     /// <summary>The natural ground (before digging) under a frame position.</summary>
     public virtual Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);
+
+    /// <summary>How far above and below the natural ground its collision is looked for, m: dug ground, a road's bed, a face between its corners.</summary>
+    const float GroundReach = 3f;
+
+    PhysicsRayQueryParameters3D _groundRay;
+
+    /// <summary>
+    /// The height of the ground's own collision at a column, what a foot or a hull set down there meets (the natural
+    /// ground's height is off it between its faces' corners, and wherever it was dug); the natural ground where no
+    /// collision stands near it (not streamed in yet).
+    /// </summary>
+    public float GroundTop(float x, float z)
+    {
+        float natural = GroundAt(x, z).Y;
+        if (!float.IsFinite(natural)) return natural;
+        _groundRay ??= new PhysicsRayQueryParameters3D { CollisionMask = GalHack.Physics.Layers.World, HitFromInside = false };
+        _groundRay.From = new Vector3(x, natural + GroundReach, z);
+        _groundRay.To = new Vector3(x, natural - GroundReach, z);
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(_groundRay);
+        return hit.Count > 0 ? hit["position"].AsVector3().Y : natural;
+    }
+
+    ImageTexture _seaMap;
 
     ShaderMaterial WaterMaterial(bool sea)
     {
         WorldLook look = Planet.Look;
         var water = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/water.gdshader") };
-        water.SetShaderParameter("shallow", look.Shallow);
-        water.SetShaderParameter("deep", look.Deep);
-        water.SetShaderParameter("lava", look.Lava);
-        water.SetShaderParameter("glow", look.LiquidGlow);
-        if (sea)
-        {
-            water.SetShaderParameter("sea", true);
-            water.SetShaderParameter("sea_map", Planet.SeaTexture());
-        }
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("shallow"), look.Shallow);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("deep"), look.Deep);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("lava"), look.Lava);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow"), look.LiquidGlow);
+        // Rivers read the sea's mask too: where one reaches the sea, the sea draws it.
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("sea_map"), _seaMap ??= Planet.SeaTexture());
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("sea_mask"), Planets.Gen.WorldMap.SeaFrom);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("sea"), sea);
         return water;
+    }
+
+    // ---- Dry ground over the sea --------------------------------------------------------------
+
+    const int DryTexels = 256; // a metre each, round the eye
+    Image _dry;
+    ImageTexture _dryTexture;
+    Vector3 _dryAt = new(float.NaN, 0f, 0f);
+
+    /// <summary>Columns dug under sea level (canonical) where the sea is drawn, in under the shore, but the ground held none.</summary>
+    readonly HashSet<(int X, int Z)> _dugDry = new();
+
+    /// <summary>A pit dug in the shore under the sea's level stays as dry as the ground it was dug from: the sea stops drawing over it.</summary>
+    void DugDry(IReadOnlyList<TerrainDigging.Terrain.RemovedCell> cells)
+    {
+        foreach (var c in cells)
+        {
+            if (c.Cell.Y >= 1) continue; // its floor is still over the water
+            int x = (int)Mathx.WrapX(c.Cell.X, Planet.Width), z = (int)Mathx.Wrap(c.Cell.Z, Planet.Height);
+            if (_dugDry.Contains((x, z)) || !Planet.Map.IsSea(x + 0.5, z + 0.5) || Planet.Source.WaterSurfaceAt(x + 0.5, z + 0.5, out _)) continue;
+            _dugDry.Add((x, z));
+            _dryAt = new Vector3(float.NaN, 0f, 0f); // marked on the next frame
+        }
+    }
+
+    /// <summary>
+    /// The sea plane is drawn by the world map's cells. A place whose pad stands dry over a sea cell, with
+    /// rooms dug below sea level, showed the plane through its openings: a sheet of water hanging at
+    /// ground level over a stairwell. Round the eye, each such place's footprint where the ground holds no
+    /// sea (as the water is decided, <see cref="PlanetTerrainSource.WaterSurfaceAt"/>) is marked dry, and
+    /// the sea draws nothing there; so is every column dug under the sea's level where it held none (<see cref="DugDry"/>).
+    /// </summary>
+    void KeepDry(Vector3 eye)
+    {
+        if (_seaMaterial == null || Planet == null) return;
+        if (!float.IsNaN(_dryAt.X) && new Vector2(eye.X - _dryAt.X, eye.Z - _dryAt.Z).Length() < 48f) return;
+        _dryAt = eye;
+        _dry ??= Image.CreateEmpty(DryTexels, DryTexels, false, Image.Format.R8);
+        _dry.Fill(Colors.Black);
+        PlanetTerrainSource src = Planet.Source;
+        float ox = MathF.Floor(eye.X) - DryTexels / 2, oz = MathF.Floor(eye.Z) - DryTexels / 2;
+        int marked = 0;
+        foreach (TerrainStamp st in src.Stamps)
+        {
+            if (st.Shape == StampShape.Road || st.CarveBottom >= src.WaterLevel) continue; // nothing of it dug below the sea
+            Vector3 at = Planet.NearestCopy(new Vector3(st.MinX, 0f, st.MinZ), eye);
+            int i0 = (int)(at.X - ox), k0 = (int)(at.Z - oz), w = st.MaxX - st.MinX + 1, d = st.MaxZ - st.MinZ + 1;
+            if (i0 + w < 0 || k0 + d < 0 || i0 >= DryTexels || k0 >= DryTexels) continue;
+            for (int k = Math.Max(0, k0); k < Math.Min(DryTexels, k0 + d); k++)
+            for (int i = Math.Max(0, i0); i < Math.Min(DryTexels, i0 + w); i++)
+            {
+                double x = Mathx.WrapX(ox + i + 0.5, Planet.Width), z = Mathx.Wrap(oz + k + 0.5, Planet.Height);
+                if (src.WaterSurfaceAt(x, z, out _)) continue;
+                _dry.SetPixel(i, k, Colors.White);
+                marked++;
+            }
+        }
+        foreach (var (cx, cz) in _dugDry)
+        {
+            Vector3 at = Planet.NearestCopy(new Vector3(cx, 0f, cz), eye);
+            int i = (int)(at.X - ox), k = (int)(at.Z - oz);
+            if (i < 0 || k < 0 || i >= DryTexels || k >= DryTexels) continue;
+            _dry.SetPixel(i, k, Colors.White);
+            marked++;
+        }
+        DryMarked = marked;
+        if (_dryTexture == null) _dryTexture = ImageTexture.CreateFromImage(_dry);
+        else _dryTexture.Update(_dry);
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("dry_map"), _dryTexture);
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("dry_area"), new Vector4(ox, oz, DryTexels, marked > 0 ? 1f : 0f));
+    }
+
+    /// <summary>Metres of ground round the eye the sea is kept off (for tests).</summary>
+    public int DryMarked { get; private set; }
+
+    /// <summary>Whether the sea is kept off a point (for tests): it lies in the dry mask's area and is marked.</summary>
+    public bool KeptDry(float x, float z)
+    {
+        if (_dry == null || float.IsNaN(_dryAt.X)) return false;
+        float ox = MathF.Floor(_dryAt.X) - DryTexels / 2, oz = MathF.Floor(_dryAt.Z) - DryTexels / 2;
+        int i = (int)MathF.Floor(x - ox), k = (int)MathF.Floor(z - oz);
+        return i >= 0 && k >= 0 && i < DryTexels && k < DryTexels && _dry.GetPixel(i, k).R > 0.5f;
     }
 
     // ---- Vessels --------------------------------------------------------------------------
@@ -224,6 +522,24 @@ public partial class SurfaceZone : Node3D
     {
         Vessels.Remove(vessel);
         _vesselOf.Remove(vessel.Body);
+    }
+
+    /// <summary>A vessel about to be taken out of the world: whoever is in it is set out first (the sleeper listens).</summary>
+    public event System.Action<Vessel> Removing;
+
+    /// <summary>
+    /// Takes a vessel out of the world for good (its last block gone, salvaged, cleared away): anyone seated in it or
+    /// aboard is set out first, so freeing its node frees only its own. Its weather, physics and tracking go with it.
+    /// </summary>
+    public void Remove(Vessel vessel)
+    {
+        if (!Vessels.Contains(vessel)) return;
+        Removing?.Invoke(vessel);
+        Weather?.Bridge?.Untrack(vessel.Body);
+        Physics.Unregister(vessel.Body);
+        Physics.StuckFields.Remove(vessel.Field);
+        Untrack(vessel);
+        vessel.Node.QueueFree();
     }
 
     public Vessel VesselOf(Body body)
@@ -248,7 +564,8 @@ public partial class SurfaceZone : Node3D
             if (!_building.IsCompleted) return;
             Arrive();
         }
-        if (Planet == null) return;
+        if (!Arrived) return;
+        Topple();
         Vector3 focus = Focus();
         Streamer.SetFocus(focus);
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
@@ -259,13 +576,62 @@ public partial class SurfaceZone : Node3D
         UpdateValleyFog(delta, focus);
         Vector3 eye = Camera?.GlobalPosition ?? focus;
         Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
+        KeepDry(eye);
         Sky.PlaceCloudDeck(eye);
         Light.DimFog(Sky.Environment);
+        Underwater.Follow(eye, Camera);
+        // The water's underside is lit by the day above it.
+        float day = 0.15f + 0.85f * Sky.Daylight;
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("daylight"), day);
+        _riverMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("daylight"), day);
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("rain"), Weather.RainHere);
+        _riverMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("rain"), Weather.RainHere);
     }
 
     public override void _PhysicsProcess(double delta)
     {
         if (Planet != null) WrapFrame();
+        if (Streamer != null) HoldLoose();
+        TakeBroken();
+    }
+
+    /// <summary>Loose bodies lying where the ground has no collision (past the collision radius): held still, off the weather.</summary>
+    public readonly HashSet<GalHack.Physics.Body> Held = new();
+
+    /// <summary>
+    /// Terrain collides only round the player. A loose body (a wreck, a fitting cut off) that wind or a tumble carries out of it
+    /// would fall through the world, and be lifted back out by the stuck-safety, again and again. One that comes down there instead
+    /// is set on the ground, held asleep and out of the weather, and let go when collision reaches it.
+    /// </summary>
+    void HoldLoose()
+    {
+        for (int i = 0; i < Vessels.Count; i++)
+        {
+            Vessel v = Vessels[i];
+            GalHack.Physics.Body b = v.Body;
+            if (b.Motion != GalHack.Physics.Motion.Free || v.Binding is not GalHack.Physics.Engine.FreeBinding free) continue;
+            Vector3 at = b.WorldPosition.ToGodot();
+            if (Streamer.CollidesAt(at))
+            {
+                if (Held.Remove(b)) free.Wake();
+                continue;
+            }
+            Vector3 ground = GroundAt(at.X, at.Z);
+            if (!Held.Contains(b))
+            {
+                if (at.Y - ground.Y > 3f) continue; // still in the air: it may yet come down on ground that collides
+                float dy = v.DepthBelow((x, z) => GroundAt(x, z).Y); // its lowest corner on the ground, none below it
+                b.Position += System.Numerics.Vector3.UnitY * dy;
+                Held.Add(b);
+                free.Teleport();
+            }
+            free.Rigid.LinearVelocity = Vector3.Zero;
+            free.Rigid.AngularVelocity = Vector3.Zero;
+            free.Rigid.Sleeping = true;
+            b.Velocity = System.Numerics.Vector3.Zero;
+            b.AngularVelocity = System.Numerics.Vector3.Zero;
+            b.Asleep = true;
+        }
     }
 
     /// <summary>Morning fog pools on the low ground within a kilometre or so (as planet-surface does it).</summary>

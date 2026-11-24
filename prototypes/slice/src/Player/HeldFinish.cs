@@ -3,7 +3,7 @@ using Godot;
 namespace Slice.Player;
 
 /// <summary>
-/// A worn, mottled finish for held items (the survival tool now, every gun later): a soft
+/// A worn, mottled finish for held items (the Sleeper tool now, every gun later): a soft
 /// two-tone mottle, darker grime in the creases and near edges, lighter worn edges with a touch
 /// of bare metal, faint scratches, and a little roughness variation. All of it is noise worked
 /// out in the shader from the mesh's own local position, so there is no texture, no tiling, and
@@ -25,7 +25,37 @@ uniform float seed = 0.0;
 varying vec3 lp;
 
 void vertex() { lp = VERTEX; }
+" + Body;
 
+    /// <summary>
+    /// The same finish for a model's parts merged into one mesh (<see cref="Merge"/>): each vertex carries its part's own
+    /// position and settings, so one draw shades every part as its own material did.
+    /// </summary>
+    const string MergedCode = @"
+shader_type spatial;
+
+varying vec3 lp;
+varying flat vec3 base_color;
+varying flat float wear;
+varying flat float base_rough;
+varying flat float base_metal;
+varying flat vec3 half_size;
+varying flat int shape;
+varying flat float seed;
+
+void vertex() {
+    lp = CUSTOM0.xyz;
+    shape = int(CUSTOM0.w + 0.5);
+    base_color = CUSTOM1.rgb;
+    wear = CUSTOM1.a;
+    half_size = CUSTOM2.xyz;
+    seed = CUSTOM2.w;
+    base_rough = CUSTOM3.x;
+    base_metal = CUSTOM3.y;
+}
+" + Body;
+
+    const string Body = @"
 float h31(vec3 p) {
     p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
     p *= 17.0;
@@ -91,7 +121,135 @@ void fragment() {
 }
 ";
 
-    static Shader _shader;
+    const string EmitterCode = @"
+shader_type spatial;
+render_mode blend_mix, cull_back;
+
+uniform vec3 tint : source_color = vec3(0.18, 0.77, 0.71);
+uniform vec3 half_size = vec3(0.05);
+uniform int shape = 0;            // 0 box lens (long axis Z), 1 round lens (disc facing Y)
+uniform float glow = 1.0;
+
+varying vec3 lp;
+void vertex() { lp = VERTEX; }
+
+void fragment() {
+    vec2 q = lp.xz / half_size.xz;
+    float d = shape == 1 ? length(q) : max(abs(q.x), abs(q.y) * 0.8);
+    float centre = clamp(1.0 - d, 0.0, 1.0);
+    // Faint moulded ribs across the lens, and a fine cell grid.
+    float ribs = shape == 1 ? abs(fract(length(lp.xz) * 170.0) - 0.5) : abs(fract(lp.z * 120.0) - 0.5);
+    float rib = 1.0 - smoothstep(0.0, 0.12, ribs);
+    float cell = shape == 1 ? abs(fract(atan(lp.z, lp.x) * 1.9099) - 0.5) : abs(fract(lp.x * 400.0) - 0.5);
+    float grid = (1.0 - smoothstep(0.0, 0.07, cell)) * 0.5;
+    float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+    float edge = smoothstep(0.0, 0.25, 1.0 - d);   // dimmer toward the bezel
+    vec3 e = tint * (0.45 + 1.6 * pow(centre, 1.4)) * edge;
+    e *= 1.0 - 0.28 * rib - 0.18 * grid;
+    e += mix(tint, vec3(1.0), 0.6) * pow(centre, 4.0) * 0.5;      // hot core
+    e += mix(tint, vec3(1.0), 0.7) * fres * 0.5;                  // soft rim highlight
+    ALBEDO = tint * 0.3;
+    EMISSION = e * glow;
+    ROUGHNESS = 0.12;
+    SPECULAR = 0.9;
+    ALPHA = clamp(0.78 + 0.2 * fres, 0.0, 1.0);
+}
+";
+
+    static Shader _shader, _emitterShader, _merged;
+    static ShaderMaterial _mergedMaterial;
+    static readonly StringName[] Params = { "base_color", "wear", "base_rough", "base_metal", "half_size", "shape", "seed" };
+
+    /// <summary>
+    /// A model's worn parts (the meshes under the root drawn with <see cref="Make"/>'s finish, the emitters left as they are) as
+    /// one mesh, one draw: a townsman's gun was a draw a part, twenty of them. Each part's vertices keep its own frame in a channel
+    /// of their own, so its wear and edges fall where they did.
+    /// </summary>
+    public static void Merge(Node3D root)
+    {
+        var verts = new System.Collections.Generic.List<Vector3>();
+        var normals = new System.Collections.Generic.List<Vector3>();
+        var c0 = new System.Collections.Generic.List<float>();
+        var c1 = new System.Collections.Generic.List<float>();
+        var c2 = new System.Collections.Generic.List<float>();
+        var c3 = new System.Collections.Generic.List<float>();
+        var indices = new System.Collections.Generic.List<int>();
+        var merged = new System.Collections.Generic.List<MeshInstance3D>();
+        foreach (Node n in root.GetChildren())
+        {
+            if (n is not MeshInstance3D mi || mi.Mesh == null || mi.MaterialOverride is not ShaderMaterial m || m.Shader != _shader) continue;
+            Color colour = m.GetShaderParameter(Params[0]).AsColor().SrgbToLinear();
+            float wear = m.GetShaderParameter(Params[1]).AsSingle(), rough = m.GetShaderParameter(Params[2]).AsSingle(), metal = m.GetShaderParameter(Params[3]).AsSingle();
+            Vector3 half = m.GetShaderParameter(Params[4]).AsVector3();
+            int shape = m.GetShaderParameter(Params[5]).AsInt32();
+            float seed = m.GetShaderParameter(Params[6]).AsSingle();
+            Transform3D at = mi.Transform;
+            for (int s = 0; s < mi.Mesh.GetSurfaceCount(); s++)
+            {
+                Godot.Collections.Array arrays = mi.Mesh.SurfaceGetArrays(s);
+                Vector3[] v = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+                Vector3[] nv = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
+                int[] ix = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+                int first = verts.Count;
+                for (int i = 0; i < v.Length; i++)
+                {
+                    verts.Add(at * v[i]);
+                    normals.Add((at.Basis * nv[i]).Normalized());
+                    c0.Add(v[i].X); c0.Add(v[i].Y); c0.Add(v[i].Z); c0.Add(shape);
+                    c1.Add(colour.R); c1.Add(colour.G); c1.Add(colour.B); c1.Add(wear);
+                    c2.Add(half.X); c2.Add(half.Y); c2.Add(half.Z); c2.Add(seed);
+                    c3.Add(rough); c3.Add(metal); c3.Add(0f); c3.Add(0f);
+                }
+                if (ix.Length == 0) for (int i = 0; i < v.Length; i++) indices.Add(first + i);
+                else foreach (int i in ix) indices.Add(first + i);
+            }
+            merged.Add(mi);
+        }
+        if (merged.Count < 2) return;
+        var arraysOut = new Godot.Collections.Array();
+        arraysOut.Resize((int)Mesh.ArrayType.Max);
+        arraysOut[(int)Mesh.ArrayType.Vertex] = verts.ToArray();
+        arraysOut[(int)Mesh.ArrayType.Normal] = normals.ToArray();
+        arraysOut[(int)Mesh.ArrayType.Custom0] = c0.ToArray();
+        arraysOut[(int)Mesh.ArrayType.Custom1] = c1.ToArray();
+        arraysOut[(int)Mesh.ArrayType.Custom2] = c2.ToArray();
+        arraysOut[(int)Mesh.ArrayType.Custom3] = c3.ToArray();
+        arraysOut[(int)Mesh.ArrayType.Index] = indices.ToArray();
+        long rgba = (long)Mesh.ArrayCustomFormat.RgbaFloat;
+        var format = (Mesh.ArrayFormat)(rgba << (int)Mesh.ArrayFormat.FormatCustom0Shift | rgba << (int)Mesh.ArrayFormat.FormatCustom1Shift
+            | rgba << (int)Mesh.ArrayFormat.FormatCustom2Shift | rgba << (int)Mesh.ArrayFormat.FormatCustom3Shift);
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arraysOut, null, null, format);
+        _merged ??= new Shader { Code = MergedCode };
+        _mergedMaterial ??= new ShaderMaterial { Shader = _merged };
+        var one = new MeshInstance3D { Name = "Parts", Mesh = mesh, MaterialOverride = _mergedMaterial, CastShadow = merged[0].CastShadow };
+        root.AddChild(one);
+        root.MoveChild(one, 0);
+        foreach (MeshInstance3D mi in merged)
+        {
+            root.RemoveChild(mi);
+            mi.QueueFree();
+        }
+    }
+
+    /// <summary>A moulded translucent plastic emitter lens (a glowing panel or tip), brightest at its centre; tint it per mode.</summary>
+    public static ShaderMaterial Emitter(Mesh mesh, Color tint)
+    {
+        _emitterShader ??= new Shader { Code = EmitterCode };
+        Vector3 half = new(0.05f, 0.01f, 0.05f);
+        int shape = 0;
+        switch (mesh)
+        {
+            case BoxMesh b: half = b.Size * 0.5f; break;
+            case CylinderMesh c: shape = 1; half = new Vector3(c.TopRadius, c.Height * 0.5f, c.TopRadius); break;
+            case SphereMesh s: shape = 1; half = new Vector3(s.Radius, s.Height * 0.5f, s.Radius); break;
+        }
+        var m = new ShaderMaterial { Shader = _emitterShader };
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), tint);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("half_size"), half);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shape"), shape);
+        return m;
+    }
 
     /// <summary>A worn material for a box or a cylinder mesh (its edges are the ones that wear).</summary>
     public static ShaderMaterial Make(Mesh mesh, Color baseColor, float wear = 0.6f, float roughness = 0.6f, float metallic = 0.1f, float seed = 0f)
@@ -107,15 +265,19 @@ void fragment() {
                 float r = Mathf.Max(c.TopRadius, c.BottomRadius);
                 half = new Vector3(r, c.Height * 0.5f, r);
                 break;
+            // Rounder shapes (a gun's shrouds, a living gun's sacs and ribs) wear like a cylinder round their axis.
+            case SphereMesh s: shape = 1; half = new Vector3(s.Radius, s.Height * 0.5f, s.Radius); break;
+            case CapsuleMesh k: shape = 1; half = new Vector3(k.Radius, k.Height * 0.5f, k.Radius); break;
+            case TorusMesh t: shape = 1; half = new Vector3(t.OuterRadius, (t.OuterRadius - t.InnerRadius) * 0.5f, t.OuterRadius); break;
         }
         var m = new ShaderMaterial { Shader = _shader };
-        m.SetShaderParameter("base_color", baseColor);
-        m.SetShaderParameter("wear", wear);
-        m.SetShaderParameter("base_rough", roughness);
-        m.SetShaderParameter("base_metal", metallic);
-        m.SetShaderParameter("half_size", half);
-        m.SetShaderParameter("shape", shape);
-        m.SetShaderParameter("seed", seed);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("base_color"), baseColor);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("wear"), wear);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("base_rough"), roughness);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("base_metal"), metallic);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("half_size"), half);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shape"), shape);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("seed"), seed);
         return m;
     }
 }

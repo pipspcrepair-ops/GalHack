@@ -9,10 +9,9 @@ namespace Slice.Places;
 
 /// <summary>
 /// A place's moving and usable parts: doors (two leaves that slide into the walls beside the
-/// doorway, E to open and shut; locked ones need a keycard of their clearance, and a lamp beside
-/// them says which), lift cars (the shaft is ridden Empyrion's way, up and down with Space and
+/// doorway, E to open and shut), lift cars (the shaft is ridden Empyrion's way, up and down with Space and
 /// Ctrl, the car under your feet; a shaft door opens only with the car there, and E on it calls
-/// the car), keycards lying where their owners fell, the draft that gives a hidden room away, and
+/// the car), the draft that gives a hidden room away, and
 /// a few real lamps for the place's lights nearest you.
 /// </summary>
 public partial class Place
@@ -26,12 +25,14 @@ public partial class Place
         public AnimatableBody3D[] Leaves;
         public Vector3[] Shut;            // each leaf's centre when shut (local)
         public Vector3 Along;             // the doorway's width direction
-        public float Width, Open, Target;
+        public float Width;
+        /// <summary>Its state, shared with what moves through the place (<see cref="DoorWay"/>).</summary>
+        public DoorWay Way = new();
+        public float Open { get => Way.Open; set => Way.Open = value; }
+        public float Target { get => Way.Target; set => Way.Target = value; }
         public bool Jammed, Blast;
-        public string Clearance;
         public int Lift = -1, Stop = -1;
         public Vector3 Centre;            // local, mid-height
-        public MeshInstance3D Lamp;
         public List<Int3> Cells;
         public bool IsShut => Open < 0.05f;
     }
@@ -44,10 +45,20 @@ public partial class Place
 
     static StandardMaterial3D _band, _seam;
 
+    /// <summary>How far a door leaf's band and seam stop short of its ends, top and bottom.</summary>
+    const float Inset = 0.006f;
+
     IEnumerable<int> BuildDoors()
     {
+        // The doors as bodies meet them first: what the years left standing open or tore out is settled there.
+        List<DoorWay> ways = DoorWays.Of(Memory);
+        if (!_youCounted)
+        {
+            // You are a body no door shuts on.
+            _youCounted = true;
+            Memory.Bodies.Add(() => IsInstanceValid(this) && Places != null ? new[] { (Places.Focus() - GlobalPosition, Slice.Player.Survivor.Radius, Slice.Player.Survivor.Height) } : Array.Empty<(Vector3, float, float)>());
+        }
         Layout layout = Inst.Layout;
-        var locks = layout.Extras.Locks.ToDictionary(l => l.Doorway);
         var liftDoor = new Dictionary<int, (int lift, int stop)>();
         for (int li = 0; li < layout.Extras.Lifts.Count; li++)
             for (int s = 0; s < layout.Extras.Lifts[li].StopDoors.Count; s++) liftDoor[layout.Extras.Lifts[li].StopDoors[s]] = (li, s);
@@ -72,7 +83,15 @@ public partial class Place
             var lo = new Vector3(min.X, min.Y, min.Z);
             var hi = new Vector3(max.X + 1, max.Y + 1, max.Z + 1);
             bool alongX = facing is Dir.North or Dir.South;
+            // The leaves run in the wall either side: where decay took that wall, the door fell with it (a way in, not a leaf hanging in the air).
+            Int3 sideA = alongX ? min + new Int3(-1, 0, 0) : min + new Int3(0, 0, -1), sideB = alongX ? max with { Y = min.Y } + new Int3(1, 0, 0) : max with { Y = min.Y } + new Int3(0, 0, 1);
+            if (!lift && (Inst.Blocks.Get(sideA).IsAir || Inst.Blocks.Get(sideB).IsAir))
+            {
+                foreach (Int3 c in doorCells) Inst.Blocks.Set(c, Block.Air);
+                continue;
+            }
             bool blast = b0.Variant == DoorState.Blast;
+            bool danger = blast || index >= 0 && layout.Doorways[index].Hazard;
             float thick = blast ? 0.4f : 0.18f;
             float width = alongX ? hi.X - lo.X : hi.Z - lo.Z, height = hi.Y - lo.Y;
             Vector3 along = alongX ? Vector3.Right : Vector3.Back;
@@ -85,7 +104,6 @@ public partial class Place
             {
                 Index = index, Root = root, Along = along, Width = width, Centre = centre, Cells = cells,
                 Jammed = b0.Variant == DoorState.Jammed, Blast = blast,
-                Clearance = index >= 0 && locks.TryGetValue(index, out DoorLock lk) ? lk.Clearance : null,
                 Leaves = new AnimatableBody3D[2], Shut = new Vector3[2],
             };
             if (lift) (door.Lift, door.Stop) = liftDoor[index];
@@ -96,16 +114,29 @@ public partial class Place
                 var leaf = new AnimatableBody3D { Name = side == 0 ? "Leaf A" : "Leaf B", CollisionLayer = Layers.World, CollisionMask = 0, SyncToPhysics = true };
                 leaf.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
                 leaf.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = paint });
-                // A hazard band across the middle, and the dark edge where the leaves meet.
+                // Hazard stripes across a dangerous opening's own door (a blast door, an airlock), never on a person's
+                // door, and the dark edge where the leaves meet. Each stands proud of the leaf's faces (the seam prouder
+                // than the stripes it crosses) and stops short of its ends, top and bottom: no face of one lies in a
+                // face of another, where the two would flicker.
+                float band = half - 2f * Inset;
+                if (danger && b0.Material != PoiGenerator.Gen.Material.Timber)
+                {
+                    int bars = Math.Max(2, (int)MathF.Round(band / 0.25f));
+                    float bar = band / bars, tall = blast ? 0.4f : 0.3f;
+                    for (int k = 0; k < bars; k++)
+                    {
+                        float at = -band / 2f + bar * (k + 0.5f);
+                        leaf.AddChild(new MeshInstance3D
+                        {
+                            Mesh = new BoxMesh { Size = alongX ? new Vector3(bar, tall, thick + 0.02f) : new Vector3(thick + 0.02f, tall, bar) },
+                            MaterialOverride = k % 2 == 0 ? _band : _seam, Position = along * at + new Vector3(0f, -0.4f, 0f),
+                        });
+                    }
+                }
+                float edge = (side == 0 ? 1f : -1f) * (half / 2f - 0.02f - 2f * Inset);
                 leaf.AddChild(new MeshInstance3D
                 {
-                    Mesh = new BoxMesh { Size = alongX ? new Vector3(half, blast ? 0.4f : 0.2f, thick + 0.02f) : new Vector3(thick + 0.02f, blast ? 0.4f : 0.2f, half) },
-                    MaterialOverride = _band, Position = new Vector3(0f, -0.4f, 0f),
-                });
-                float edge = (side == 0 ? 1f : -1f) * (half / 2f - 0.02f);
-                leaf.AddChild(new MeshInstance3D
-                {
-                    Mesh = new BoxMesh { Size = alongX ? new Vector3(0.04f, height, thick + 0.015f) : new Vector3(thick + 0.015f, height, 0.04f) },
+                    Mesh = new BoxMesh { Size = alongX ? new Vector3(0.04f, height - 2f * Inset, thick + 0.04f) : new Vector3(thick + 0.04f, height - 2f * Inset, 0.04f) },
                     MaterialOverride = _seam, Position = along * edge,
                 });
                 door.Shut[side] = centre + along * ((side == 0 ? -1f : 1f) * half / 2f);
@@ -114,36 +145,35 @@ public partial class Place
                 door.Leaves[side] = leaf;
                 _doorOf[leaf.GetInstanceId()] = door;
             }
-            if (door.Clearance != null)
+            if (ways.FirstOrDefault(w => w.Index == index) is { } way) door.Way = way;
+            else
             {
-                // The lock's lamp beside the doorway, in its clearance's colour (green once you can open it).
-                Vector3 side = along * (width / 2f + 0.3f);
-                Vector3 outward = new Vector3(facing.Vec().X, 0, facing.Vec().Z) * (thick / 2f + 0.52f);
-                door.Lamp = new MeshInstance3D
-                {
-                    Name = "Lock lamp", Mesh = new BoxMesh { Size = new Vector3(0.12f, 0.18f, 0.12f) },
-                    Position = centre + side + outward + Vector3.Down * 0.2f,
-                    MaterialOverride = LampMaterial(ClearanceColor(door.Clearance)),
-                };
-                root.AddChild(door.Lamp);
+                door.Open = door.Jammed ? 0.5f : Memory.DoorsOpen.TryGetValue(index, out bool open) && open ? 1f : 0f;
+                door.Target = door.Open;
             }
-            door.Open = door.Jammed ? 0.5f : Memory.DoorsOpen.TryGetValue(index, out bool open) && open ? 1f : 0f;
-            door.Target = door.Open;
             PlaceLeaves(door);
             _doors.Add(door);
+            // Its leaves are drawn only while its cube is (from further off the merged drawing has it, shut).
+            Group home = GroupAt(GroupOf(ChunkOf(new Int3(Mathf.FloorToInt(centre.X), Mathf.FloorToInt(centre.Y), Mathf.FloorToInt(centre.Z)))));
+            home.Doors.Add(door);
+            root.Visible = home.Near;
             yield return 0;
         }
     }
 
-    static StandardMaterial3D LampMaterial(Color c) => new()
-    {
-        AlbedoColor = c, EmissionEnabled = true, Emission = c, EmissionEnergyMultiplier = 1.6f, Roughness = 0.4f,
-    };
 
-    public static Color ClearanceColor(string clearance)
+    /// <summary>A door shot out of its doorway: its cells are air (an open doorway, as the years leave one), its leaves, and the way bodies know it by, gone.</summary>
+    public void TakeDoor(Door d)
     {
-        Rgb c = Fixtures.ClearanceColor(clearance);
-        return new Color(c.R / 255f, c.G / 255f, c.B / 255f);
+        var cells = d.Cells.Where(c => Inst.Blocks.Get(c).Type == BlockType.Door).ToList();
+        foreach (Int3 c in cells) Inst.Blocks.Set(c, Block.Air);
+        Remesh(cells);
+        Memory.Modified = true;
+        Memory.DoorWays?.RemoveAll(w => w.Index == d.Index);
+        foreach (AnimatableBody3D leaf in d.Leaves) _doorOf.Remove(leaf.GetInstanceId());
+        _doors.Remove(d);
+        foreach (Group g in _groups.Values) g.Doors.Remove(d);
+        d.Root.QueueFree();
     }
 
     void PlaceLeaves(Door d)
@@ -156,41 +186,37 @@ public partial class Place
     {
         foreach (Door d in _doors)
         {
+            // A settlement that won't have you shuts its way in and what you opened (its own people still use the rest).
+            if (Memory.Town is { GatesShut: true } && d.Target > 0.5f && (d.Index == -1 || d.Way.ByPlayer)) { d.Target = 0f; Memory.DoorsOpen[d.Index] = false; }
             float target = d.Jammed ? 0.5f : d.Target;
             // A shaft door stays shut unless the car is at its stop.
             if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop)) target = 0f;
-            if (d.Open == target) continue;
-            d.Open = Mathf.MoveToward(d.Open, target, dt * 1.6f);
-            PlaceLeaves(d);
-        }
-        if (_lampTimer-- <= 0)
-        {
-            _lampTimer = 20;
-            foreach (Door d in _doors.Where(d => d.Lamp != null))
-            {
-                bool may = Places.HasClearance(d.Clearance);
-                d.Lamp.MaterialOverride = LampMaterial(may ? new Color("3fcf5e") : ClearanceColor(d.Clearance));
-            }
+            float was = d.Open;
+            DoorWays.Step(Memory, d.Way, target, dt);
+            if (d.Open != was) PlaceLeaves(d);
         }
     }
 
-    int _lampTimer;
+    bool _youCounted;
 
     /// <summary>E on a door: open or shut it, if you may. Returns what happened, for the visor.</summary>
     public (bool Ok, string Message) UseDoor(Door d)
     {
-        if (d.Jammed) return (false, "Jammed: it won't move further, but there's room to squeeze through");
-        if (d.Clearance != null && !Places.HasClearance(d.Clearance))
-            return (false, $"LOCKED: needs a {d.Clearance.ToUpperInvariant()} keycard");
+        if (d.Jammed) return (false, "JAMMED · SQUEEZE THROUGH");
+        // A settlement that won't have you keeps its doors shut.
+        if (Memory.Town is { GatesShut: true } && d.Target < 0.5f) return (false, "BARRED");
         if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop))
         {
             CallLift(d.Lift, d.Stop);
-            return (true, "The lift is coming");
+            return (true, "LIFT CALLED");
         }
         d.Target = d.Target > 0.5f ? 0f : 1f;
+        d.Way.ByPlayer = d.Target > 0.5f;
+        if (d.Target > 0.5f) d.Way.ByFolk = false;
+        d.Way.ClearFor = 0f;
         Memory.DoorsOpen[d.Index] = d.Target > 0.5f;
         Places.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, ToWorld(d.Centre), d.Blast ? 0.6f : 0.9f, -8f);
-        return (true, d.Target > 0.5f ? (d.Clearance != null ? $"{d.Clearance.ToUpperInvariant()} card accepted" : "") : "");
+        return (true, "");
     }
 
     // ---- Lifts ----------------------------------------------------------------------------------
@@ -301,56 +327,6 @@ public partial class Place
         }
     }
 
-    // ---- Keycards -------------------------------------------------------------------------------
-
-    readonly List<(KeyCard Key, Node3D Node)> _keys = new();
-
-    void BuildKeys()
-    {
-        var holder = new Node3D { Name = "Keys" };
-        AddChild(holder);
-        foreach (KeyCard k in Inst.Extras.Keys)
-        {
-            if (Memory.KeysTaken.Contains(k)) continue;
-            Color c = ClearanceColor(k.Clearance);
-            var card = new MeshInstance3D
-            {
-                Name = $"Keycard {k.Clearance}", Mesh = new BoxMesh { Size = new Vector3(0.09f, 0.008f, 0.056f) },
-                MaterialOverride = new StandardMaterial3D { AlbedoColor = c, EmissionEnabled = true, Emission = c, EmissionEnergyMultiplier = 0.5f },
-                Position = new Vector3(k.Cell.X + 0.55f, k.Cell.Y + 0.08f, k.Cell.Z + 0.42f), RotationDegrees = new Vector3(0, 23, 0),
-            };
-            holder.AddChild(card);
-            _keys.Add((k, card));
-        }
-    }
-
-    /// <summary>The keycard nearest a look ray within reach (local space), or null.</summary>
-    public KeyCard KeyAlong(Vector3 eyeWorld, Vector3 dir, float reach)
-    {
-        Vector3 eye = FromWorld(eyeWorld);
-        KeyCard best = null;
-        float bestAlong = reach;
-        foreach (var (k, node) in _keys)
-        {
-            Vector3 c = node.Position;
-            float along = (c - eye).Dot(dir);
-            if (along < 0f || along > bestAlong) continue;
-            if ((eye + dir * along - c).Length() > 0.35f) continue;
-            bestAlong = along;
-            best = k;
-        }
-        return best;
-    }
-
-    public void TakeKey(KeyCard k)
-    {
-        Memory.KeysTaken.Add(k);
-        int i = _keys.FindIndex(e => e.Key == k);
-        if (i < 0) return;
-        _keys[i].Node.QueueFree();
-        _keys.RemoveAt(i);
-    }
-
     // ---- Hidden rooms' tells ----------------------------------------------------------------------
 
     readonly Dictionary<SecretRoom, Node3D> _drafts = new();
@@ -390,16 +366,7 @@ public partial class Place
     }
 
     /// <summary>The way out of a hidden room's wall onto the side it is found from (the side that isn't the hidden room).</summary>
-    public Int3 FoundFrom(SecretRoom s) => FoundFrom(Inst, s);
-
-    public static Int3 FoundFrom(PoiInstance inst, SecretRoom s)
-    {
-        Int3 f = s.Facing.Vec(), wall = s.WallCells[0];
-        PlacedModule hidden = inst.Layout.Modules[s.Module];
-        Int3 a = wall + f;
-        bool intoHidden = a.X >= hidden.Min.X && a.X <= hidden.Max.X && a.Z >= hidden.Min.Z && a.Z <= hidden.Max.Z;
-        return intoHidden ? f * -1 : f;
-    }
+    public Int3 FoundFrom(SecretRoom s) => RoomDecor.FoundFrom(Inst, s);
 
     /// <summary>The hidden room whose breakable wall holds this cell, if any.</summary>
     public SecretRoom SecretAt(Int3 cell)
@@ -416,6 +383,30 @@ public partial class Place
         foreach (Int3 c in s.WallCells) Inst.Blocks.Set(c, Block.Air);
         Remesh(s.WallCells);
         if (_drafts.Remove(s, out Node3D draft)) draft.QueueFree();
+    }
+
+    // ---- Small fittings -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The small fittings no block can be: each house's service fitting (<see cref="ServicePoint"/>), an insulator on a
+    /// short bracket at its roof's corner where the drop from the street ends, drawn from its parts, and only where what
+    /// holds it still stands (an eave fallen in took its fitting with it).
+    /// </summary>
+    void BuildFittings()
+    {
+        foreach (ServicePoint p in Inst.Layout.Extras.Service)
+        {
+            if (Inst.Blocks.Get(p.Anchor).IsAir) continue;
+            var root = new Node3D { Name = "Service fitting" };
+            foreach (var (x, y, z, w, h, d, round, c) in p.Parts())
+                root.AddChild(new MeshInstance3D
+                {
+                    Mesh = round ? new CylinderMesh { TopRadius = w / 2f, BottomRadius = w / 2f, Height = h, RadialSegments = 10, Rings = 1 } : new BoxMesh { Size = new Vector3(w, h, d) },
+                    Position = new Vector3(x, y, z),
+                    MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(c.R / 255f, c.G / 255f, c.B / 255f), Roughness = round ? 0.25f : 0.5f, Metallic = round ? 0f : 0.5f },
+                });
+            AddChild(root);
+        }
     }
 
     // ---- Lights -------------------------------------------------------------------------------
@@ -447,6 +438,8 @@ public partial class Place
         }
     }
 
+    int[] _nearest = Array.Empty<int>();
+
     void TickLights(float dt)
     {
         _time += dt;
@@ -455,12 +448,33 @@ public partial class Place
         {
             _poolTimer = 15;
             Vector3 at = FromWorld(Places.Focus());
-            var nearest = _spots.Select((s, i) => (s, i)).OrderBy(t => SpotPos(t.s.Spot).DistanceSquaredTo(at)).Take(_pool.Count).ToList();
+            // The pool's worth of nearest spots, nearest first, picked without sorting them all (a place can have hundreds),
+            // and a lamp moved only when its spot changes.
+            int k = Math.Min(_pool.Count, _spots.Count);
+            if (_nearest.Length < k) _nearest = new int[k];
+            Span<float> near = stackalloc float[k];
+            int found = 0;
+            for (int i = 0; i < _spots.Count; i++)
+            {
+                float d = SpotPos(_spots[i].Spot).DistanceSquaredTo(at);
+                if (found == k && d >= near[k - 1]) continue;
+                int j = found < k ? found++ : k - 1;
+                while (j > 0 && near[j - 1] > d) { near[j] = near[j - 1]; _nearest[j] = _nearest[j - 1]; j--; }
+                near[j] = d;
+                _nearest[j] = i;
+            }
             for (int i = 0; i < _pool.Count; i++)
             {
                 OmniLight3D l = _pool[i];
-                if (i >= nearest.Count || SpotPos(nearest[i].s.Spot).DistanceTo(at) > 60f) { l.Visible = false; _poolSpot[l] = -1; continue; }
-                var (s, index) = nearest[i];
+                if (i >= found || near[i] > 60f * 60f)
+                {
+                    if (l.Visible) l.Visible = false;
+                    _poolSpot[l] = -1;
+                    continue;
+                }
+                int index = _nearest[i];
+                if (_poolSpot.TryGetValue(l, out int was) && was == index && l.Visible) continue;
+                var s = _spots[index];
                 l.Visible = true;
                 l.Position = SpotPos(s.Spot);
                 l.LightColor = new Color(s.Spot.Color.R / 255f, s.Spot.Color.G / 255f, s.Spot.Color.B / 255f);
@@ -473,6 +487,13 @@ public partial class Place
             if (!l.Visible || !_poolSpot.TryGetValue(l, out int i) || i < 0) continue;
             var (spot, phase) = _spots[i];
             float t = _time + phase;
+            if (spot.Style is { } style)
+            {
+                (float energy, Color colour) = PlanetSurface.Poi.PoiLitFaces.At(style, spot.Energy, _time);
+                l.LightEnergy = energy;
+                l.LightColor = colour;
+                continue;
+            }
             float wave = spot.Mode switch
             {
                 LightMode.Flicker => Mathf.Sin(t * 3.1f) + Mathf.Sin(t * 11.7f) * 0.6f > 0.2f ? 0.9f : 0.04f,

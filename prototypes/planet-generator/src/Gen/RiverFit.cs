@@ -23,6 +23,7 @@ public static class RiverFit
     const float TouchGap = 12f;     // rivers whose channels come this near have met
     const float TouchStep = 1f;     // and a difference in level worth bringing down there: less is a rapid's
     const float MaxFall = 0.14f;    // the steepest a river runs: rapids, a metre in seven, never a sheet of water on end
+    const float EstuaryReach = 16f; // how near the sea a river's levee may come before the river comes down to it, and how far above that it is at the sea's level
 
     static readonly ConditionalWeakTable<WorldMap, float[][]> Cache = new();
 
@@ -40,11 +41,26 @@ public static class RiverFit
             var fit = new float[river.Count];
             float run = float.MaxValue;
             float low = float.MaxValue;
+            int mouth = -1;
             for (int k = 0; k < river.Count; k++)
             {
                 if (k % Every == 0) low = LowestBeside(river, k, model, w, h);
                 run = Math.Min(run, Math.Min(river.Level[k], low - Below));
-                fit[k] = Math.Max(run, 0f);
+                fit[k] = Math.Max(run, SurfaceSampler.RiverDrop);
+                if (mouth >= 0) continue;
+                float side = river.Width[k] * 0.5f + Math.Min(SurfaceSampler.BankReach(fit[k]), EstuaryReach);
+                if (SeaNear(map, river.X[k], river.Y[k], side + 74f) && InSea(map, river, k, model, w, h, side)) mouth = k;
+            }
+            // Where it reaches the sea a river comes down to the sea's level: from a little above the first point whose
+            // channel, or levee, the sea is drawn over, its water is the sea's (an estuary), and above that it falls to it
+            // as a tributary falls to its main river. Left at the land's level it stood metres over the sea at its mouth.
+            if (mouth >= 0)
+            {
+                int from = mouth;
+                for (float back = 0f; from > 0 && back < river.Width[mouth] * 0.5f + 2f * EstuaryReach; from--)
+                    back += MathF.Sqrt(MathF.Pow(river.X[from] - river.X[from - 1], 2) + MathF.Pow(river.Y[from] - river.Y[from - 1], 2));
+                for (int k = from; k < river.Count; k++) fit[k] = SurfaceSampler.RiverDrop;
+                FallTo(river, fit, from, SurfaceSampler.RiverDrop);
             }
             levels[r] = fit;
         }
@@ -68,7 +84,7 @@ public static class RiverFit
             {
                 River river = rivers[r];
                 int end = river.Count - 1;
-                if (end < 1 || levels[r][end] <= 0.01f) continue;
+                if (end < 1 || levels[r][end] <= SurfaceSampler.RiverDrop + 0.01f) continue;
                 var (cx, cy) = Key(river.X[end], river.Y[end]);
                 int main = -1, at = -1;
                 float best = JoinReach * JoinReach;
@@ -161,6 +177,56 @@ public static class RiverFit
         return moved;
     }
 
+    /// <summary>
+    /// Where a river point's channel lies: the sampler looks the river up from a displaced point, so the channel
+    /// sits off its line by the displacement there. Step back by it (two rounds settle it near enough).
+    /// </summary>
+    public static void Channel(River river, int k, TerrainModel model, double w, double h, out double qx, out double qy)
+    {
+        double x = river.X[k], y = river.Y[k];
+        qx = x;
+        qy = y;
+        for (int i = 0; i < 2; i++)
+        {
+            model.Meander(Mathx.WrapX(qx, w), Mathx.Wrap(qy, h), out double mx, out double my);
+            qx = x - mx;
+            qy = y - my;
+        }
+    }
+
+    /// <summary>
+    /// Whether any map cell within reach of a point could put the sea there (cheap, before <see cref="InSea"/>: the
+    /// blend between cells is never deeper than the deepest of them). The reach takes in how far the meander moves a channel.
+    /// </summary>
+    static bool SeaNear(WorldMap map, double x, double y, double reach)
+    {
+        int i0 = (int)Math.Floor((x - reach) / map.CellSize - 0.5), i1 = (int)Math.Floor((x + reach) / map.CellSize - 0.5) + 1;
+        int j0 = (int)Math.Floor((y - reach) / map.CellSize - 0.5), j1 = (int)Math.Floor((y + reach) / map.CellSize - 0.5) + 1;
+        for (int j = j0; j <= j1; j++)
+        for (int i = i0; i <= i1; i++)
+            if (map.SeaDepth[map.Index(i, j)] > WorldMap.SeaFrom) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the sea is drawn over a river point's channel or within <paramref name="side"/> of its middle either
+    /// way (its levee's reach: a river beside the sea, held up over it, stood a bank out in the water).
+    /// </summary>
+    static bool InSea(WorldMap map, River river, int k, TerrainModel model, double w, double h, float side)
+    {
+        // Round where the channel is found (a few metres more for how roughly the meander is stepped back), every
+        // way: the coast may run in aslant, or alongside.
+        Channel(river, k, model, w, h, out double cx, out double cy);
+        side += 4f;
+        for (int a = 0; a < 16; a++)
+        {
+            double ux = Math.Cos(a * Math.PI / 8), uy = Math.Sin(a * Math.PI / 8);
+            for (int q = 1; q <= 4; q++)
+                if (map.IsSea(cx + ux * side * q * 0.25, cy + uy * side * q * 0.25)) return true;
+        }
+        return map.IsSea(cx, cy);
+    }
+
     /// <summary>The lowest land at a river point: on its line and either side of its channel, where the meander puts it.</summary>
     static float LowestBeside(River river, int k, TerrainModel model, double w, double h)
     {
@@ -168,15 +234,7 @@ public static class RiverFit
         float tx = river.X[b] - river.X[a], ty = river.Y[b] - river.Y[a], len = MathF.Sqrt(tx * tx + ty * ty);
         if (len < 1e-3f) return model.Elevation(Mathx.WrapX(river.X[k], w), Mathx.Wrap(river.Y[k], h), Spacing);
         float nx = -ty / len, ny = tx / len, side = river.Width[k] * 0.5f + 6f;
-        // The sampler looks up the river from a displaced point, so the channel sits off its line by
-        // the displacement there: step back by it (two rounds settle it near enough).
-        double x = river.X[k], y = river.Y[k], qx = x, qy = y;
-        for (int i = 0; i < 2; i++)
-        {
-            model.Meander(Mathx.WrapX(qx, w), Mathx.Wrap(qy, h), out double mx, out double my);
-            qx = x - mx;
-            qy = y - my;
-        }
+        Channel(river, k, model, w, h, out double qx, out double qy);
         float low = float.MaxValue;
         foreach (float s in new[] { 0f, -side, side })
             low = Math.Min(low, model.Elevation(Mathx.WrapX(qx + nx * s, w), Mathx.Wrap(qy + ny * s, h), Spacing));

@@ -204,13 +204,13 @@ void fragment() {
         if (Swappable(m))
         {
             var s = new ShaderMaterial { Shader = PlainOf(m.CullMode, m.Transparency != BaseMaterial3D.TransparencyEnum.Disabled) };
-            s.SetShaderParameter("albedo", m.AlbedoColor);
-            if (m.AlbedoTexture != null) s.SetShaderParameter("albedo_texture", m.AlbedoTexture);
-            s.SetShaderParameter("vertex_albedo", m.VertexColorUseAsAlbedo);
-            s.SetShaderParameter("vertex_srgb", m.VertexColorIsSrgb);
-            s.SetShaderParameter("roughness", m.Roughness);
-            s.SetShaderParameter("metallic", m.Metallic);
-            s.SetShaderParameter("specular", m.MetallicSpecular);
+            s.SetShaderParameter(PlanetSurface.Fx.Names.Of("albedo"), m.AlbedoColor);
+            if (m.AlbedoTexture != null) s.SetShaderParameter(PlanetSurface.Fx.Names.Of("albedo_texture"), m.AlbedoTexture);
+            s.SetShaderParameter(PlanetSurface.Fx.Names.Of("vertex_albedo"), m.VertexColorUseAsAlbedo);
+            s.SetShaderParameter(PlanetSurface.Fx.Names.Of("vertex_srgb"), m.VertexColorIsSrgb);
+            s.SetShaderParameter(PlanetSurface.Fx.Names.Of("roughness"), m.Roughness);
+            s.SetShaderParameter(PlanetSurface.Fx.Names.Of("metallic"), m.Metallic);
+            s.SetShaderParameter(PlanetSurface.Fx.Names.Of("specular"), m.MetallicSpecular);
             made = s;
         }
         Converted.AddOrUpdate(m, made);
