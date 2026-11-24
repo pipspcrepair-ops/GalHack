@@ -1619,7 +1619,7 @@ public sealed partial class Town : IKeeper
         {
             Person p = People[i];
             // (What they hold or carry goes with the pose carried between their poses.)
-            if (p.View is { Visible: true } && p.View.Glide())
+            if (p.View is { Visible: true } && p.PoseAway < PersonView.FarRange && p.View.Glide()) // (held past the far range: nothing eased between)
             {
                 PoseWeapon(p);
                 PoseSack(p);

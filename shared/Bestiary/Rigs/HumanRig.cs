@@ -552,6 +552,7 @@ public sealed partial class HumanRig : Rig
         if (g.Act == BodyAct.WaveOff) twist -= act * 0.25f; // turned half away from them
         // A weapon up: the left shoulder comes round toward the target (an archer's side-on stance).
         HoldKind kind = Weapons.HoldOf(f.Prop);
+        if (kind == HoldKind.None && Species.Mount.Length > 0) kind = HoldKind.Pistol; // a machine's gun on its right forearm: the arm comes up to aim it, as a pistol's
         float squareOff = 0f; // the upper body turned to a weapon (the hips and legs stay square)
         StrikeCurve(_blowAt, out float blowWind, out float blowHit);
         float strikeOn = _blow == StrikeKind.None ? 0f : MathF.Max(blowWind, blowHit); // (as far as the blow is thrown: a hand lets go of a weapon by degrees)

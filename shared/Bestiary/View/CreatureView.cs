@@ -161,7 +161,7 @@ public partial class CreatureView : Node3D
         ShaderMaterial material = CreatureMaterials.For(c.Species);
         float range = c.Species.Plan == BodyPlan.Giant ? 600f : c.Species.Body.Size < 0.8f ? 110f : 220f;
         if (c.Species.InSpace) range = MathF.Max(400f, c.Species.Body.Size * 45f); // nothing hides a leviathan in open space
-        if (WildlifeView.Field(c)) range = 0f; // people and machines are drawn wherever the game shows them (their fire carries far)
+        if (c.Species.Importance != Importance.Ambient || WildlifeView.Field(c)) range = 0f; // drawn wherever the game shows them (a fight is seen far)
 
         if (c.Rig is SwarmRig swarm)
         {
@@ -587,8 +587,8 @@ public partial class WildlifeView : Node3D
             else c.Dormant = ThreatsSleep && rank == Importance.Threat && d > far && !Stirred(c);
             // Past the near ring (unless it is in a fight) nothing casts a line through the world's collision for it; the harmless never do.
             c.NoRays = rank == Importance.Ambient || d > NearDistance && !Stirred(c);
-            // People and machines are drawn out to wherever the patch has them: what they fire is seen and heard far further than life is drawn.
-            float shown = Field(c) ? float.PositiveInfinity : far;
+            // People and machines, and a danger shot at lately, are drawn out to wherever the patch has them: a fight is seen and heard far further than life is drawn.
+            float shown = Field(c) || FieldDrawn && rank != Importance.Ambient && c.ProvokedBy != null && _sim.Time - c.ProvokedAt < 10f ? float.PositiveInfinity : far;
             bool fresh = false;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
@@ -623,14 +623,16 @@ public partial class WildlifeView : Node3D
             if (view.Visible != visible) view.Visible = visible;
             c.Shown = visible;
             if (visible) DrawnCount++;
-            // Posed as the rig is near; a few times a second past the middle distance, and past the far distance held, re-posed twice a second.
-            if (visible && (d < MidDistance ? c.RigInterval == 1 || c.RigPending == 0f : (_frame + c.Id) % (d < far ? MidEvery : FarEvery) == 0))
+            // Posed as the rig is near, and so is one fighting or taking aim (its shots leave the muzzle drawn); a few times a second
+            // past the middle distance, and past the far distance held, re-posed twice a second.
+            bool posed = d < MidDistance || c.Attacking || c.WantAim > 0f;
+            if (visible && (posed ? c.RigInterval == 1 || c.RigPending == 0f : (_frame + c.Id) % (d < far ? MidEvery : FarEvery) == 0))
             {
                 view.Sync();
                 float lift = Lift != null && d > LiftFrom ? Lift(c) : 0f;
                 if (MathF.Abs(view.Position.Y - lift) > 0.01f) view.Position = new Vector3(0f, lift, 0f);
             }
-            else if (visible) view.Glide();
+            else if (visible && d < far) view.Glide(); // (held past the far distance: nothing eases between its poses, it's a few pixels tall)
             view.Listen(d);
             view.ShadowsAt(d);
             if (Audio != null && d < StepHeard && c.Rig.Steps != c.StepsHeard)
@@ -657,7 +659,7 @@ public partial class WildlifeView : Node3D
     }
 
     /// <summary>People and machines (anyone who fights as people do): drawn at every distance, as far as the patch has them.</summary>
-    public static bool Field(Creature c) => FieldDrawn && c.Species.Importance == Importance.Person || Arming.Fights(c.Species);
+    public static bool Field(Creature c) => FieldDrawn && (c.Species.Importance == Importance.Person || Arming.Fights(c.Species));
 
     /// <summary>Measurements: off, people and machines are drawn as far as other life (the old way, for an A/B).</summary>
     public static bool FieldDrawn = true;
