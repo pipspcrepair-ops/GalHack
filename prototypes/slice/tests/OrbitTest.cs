@@ -68,10 +68,12 @@ public partial class OrbitTest : Node
         try
         {
             more = _run.MoveNext();
+            if (_game?.Survivor != null && DisplayServer.GetName() != "headless") _game.ThirdPerson = _game.Survivor.Seated != null; // piloting in a window: the chase view, as the owner flies (owner, 24 Nov)
             if (more)
             {
                 WatchZones();
                 WatchSkyClouds();
+                WatchCloudHandOver();
             }
         }
         catch (Exception e)
@@ -185,6 +187,13 @@ public partial class OrbitTest : Node
         if (_skiff == null) yield break;
         foreach (int x in ClimbOut()) yield return x;
         if (!_game.InOrbit) yield break;
+        if (_keep != null)
+        {
+            // The clouds' pictures: flight alone, seated at the controls in the chase view the whole way, up past 1,300 m and down again.
+            foreach (int x in Descent()) yield return x;
+            TheCloudsHandedOver();
+            yield break;
+        }
         foreach (int x in ToTheDerelict()) yield return x;
         if (_wreck != null)
         {
@@ -195,6 +204,7 @@ public partial class OrbitTest : Node
         foreach (int x in Persistence()) yield return x;
         foreach (int x in Handovers()) yield return x;
         Check(_skyBandTicks > 0 && _cloudsOver == 0, $"over the cloud tops in the band, up and down, the sky's clouds are seen from the true height, none over you: {_cloudsOver} of {_skyBandTicks} ticks wrong{(_firstCloudsOver != null ? ": " + _firstCloudsOver : "")}");
+        TheCloudsHandedOver();
         Check(_zoneViolations == 0, $"every tick the sleeper and the Skiff were in exactly one zone, the one the game says ({_zoneViolations} ticks wrong{(_firstViolation != null ? ": " + _firstViolation : "")})");
     }
 

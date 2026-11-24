@@ -219,7 +219,7 @@ public partial class RoundTripTest : Node
     int _cloudFrames, _pastCap;
     string _firstCloud;
 
-    /// <summary>Every drawn frame in orbit: no surface's cloud deck anywhere, and over the band the globe's clouds and air hug it (none without air).</summary>
+    /// <summary>Every drawn frame in orbit: no surface's cloud deck over the cap, and over the band the globe's clouds and air hug it (none without air).</summary>
     void WatchClouds()
     {
         if (!_game.InOrbit) return;
@@ -228,7 +228,8 @@ public partial class RoundTripTest : Node
         Globe g = here.Globe;
         float r = here.GlobeRadius;
         bool airless = here.World == null || here.World.Sky.Density < SurfaceWeather.NoAir;
-        string wrong = Zones().FirstOrDefault(z => z.Sky?.CloudDeck?.IsVisibleInTree() == true) is SurfaceZone deck ? $"{deck.Name}'s flat cloud deck drawn (its zone {(deck.Visible ? "shown" : "hidden")}, the deck at {deck.Sky.CloudDeckFade:P0}, over {_game.Spaceflight.Below.Name}, {(_game.Spaceflight.Aligned ? "aligned" : "not aligned")})"
+        bool overCap = here.Height(_game.Camera.GlobalPosition) >= _game.Spaceflight.Below.Physics.Zone.Ceiling; // under it, coming down, the deck comes back with height
+        string wrong = Zones().FirstOrDefault(z => overCap && z.Sky?.CloudDeck?.IsVisibleInTree() == true) is SurfaceZone deck ? $"{deck.Name}'s flat cloud deck drawn (its zone {(deck.Visible ? "shown" : "hidden")}, the deck at {deck.Sky.CloudDeckFade:P0}, over {_game.Spaceflight.Below.Name}, {(_game.Spaceflight.Aligned ? "aligned" : "not aligned")})"
             : _game.Spaceflight.Band < 1f || !g.Visible ? null
             : g.CloudLift > Thin * r ? $"{here.Name}'s clouds {g.CloudLift:F0} m over its ground ({g.CloudLift / r:P1} of its radius)"
             : g.AirShown && (airless || g.AirThickness > Thin * r) ? $"{here.Name}'s air drawn {g.AirThickness:F0} m deep{(airless ? " round a world with none" : "")}"
