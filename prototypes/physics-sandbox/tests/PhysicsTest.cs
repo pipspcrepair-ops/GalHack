@@ -72,8 +72,7 @@ public partial class PhysicsTest : Node
     IEnumerable<int> Scenarios()
     {
         bool standOnOnly = OS.GetCmdlineUserArgs().Contains("--stand-on"), surfOnly = OS.GetCmdlineUserArgs().Contains("--surf");
-        bool focus = OS.GetCmdlineUserArgs().Contains("--focus");
-        if (!focus && !standOnOnly && !surfOnly && !OS.GetCmdlineUserArgs().Contains("--hulls"))
+        if (!standOnOnly && !surfOnly && !OS.GetCmdlineUserArgs().Contains("--hulls"))
         {
             GD.Print("-- determinism: two identical worlds, side by side --");
             foreach (int x in Determinism()) yield return x;
@@ -110,12 +109,6 @@ public partial class PhysicsTest : Node
             yield break;
         }
         StructureChecks();
-        if (focus)
-        {
-            foreach (int x in HoverHoles()) yield return x;
-            foreach (int x in HullsInGround()) yield return x;
-            yield break;
-        }
         foreach (int x in MultiCellBlocks()) yield return x;
         foreach (int x in ForcePath()) yield return x;
         foreach (int x in NoAutoOrientation()) yield return x;
@@ -1303,20 +1296,12 @@ public partial class PhysicsTest : Node
         rover.Binding.Teleport();
         rover.Flight.Input = PilotInput.LetGo;
 
-        // A pit dug with the survival tool's 1.4 m balls, two balls deep, its floor a metre longer and wider than the rover
-        // each way, and its ends dug as ramps of about 30° (under the 45° limit). The rover is 9 by 7 m on the 1 m grid: the
-        // 10 by 7 m pit with sheer ends was dug for the half-size Sand Flea; the rover wedged against its ends and rode its sides.
-        var (lo, hi) = rover.Structure.Bounds();
-        float cell = rover.Structure.Grid.CellSize;
-        float floor = (hi.Z - lo.Z + 1) * cell * 0.5f + 1f, top = floor + 2.5f, side = MathF.Ceiling(((hi.X - lo.X + 1) * cell * 0.5f + 1f) / 1.5f) * 1.5f;
+        // A pit dug with the survival tool's 1.4 m balls: 10 m along the lane, 7 m across, two balls deep.
         N.Vector3 pit = _w.Ground(-18f, laneZ);
-        for (float dx = -MathF.Ceiling(top / 1.25f) * 1.25f; dx <= top + 0.01f; dx += 1.25f)
-        {
-            float deepest = MathF.Min(1.8f, 0.5f + (top - MathF.Abs(dx)) * 0.55f); // the lower ball's centre at the floor
-            for (float y = 0.5f; y <= deepest + 0.01f; y += 0.65f)
-                for (float dz = -side; dz <= side + 0.01f; dz += 1.5f)
-                    _w.Terrain.Dig(TInt3.Floor(new N.Vector3(pit.X + dx, pit.Y - y, pit.Z + dz)), 1.4f);
-        }
+        for (float dx = -5f; dx <= 5.01f; dx += 1.25f)
+            for (float dz = -3f; dz <= 3.01f; dz += 1.5f)
+                for (int layer = 0; layer < 2; layer++)
+                    _w.Terrain.Dig(TInt3.Floor(new N.Vector3(pit.X + dx, pit.Y - 0.5f - layer * 1.3f, pit.Z + dz)), 1.4f);
 
         // The biggest crater a crash cuts (the 6 m cap), its blast sphere where a crash puts it.
         N.Vector3 rim = _w.Ground(24f, laneZ);
@@ -1385,16 +1370,13 @@ public partial class PhysicsTest : Node
             rover.Flight.Input = crawl;
             yield return 0;
             run.NoseDown = MathF.Min(run.NoseDown, Pitch());
-            if (ticks % 30 == 0) GD.Print($"DBG {run.Name} in t{ticks}: x {rover.Body.Position.X - centre.X:F2} z {rover.Body.Position.Z - centre.Z:F2} heading {Units.Degrees(MathX.Heading(rover.Body.Rotation)):F0} pitch {Pitch():F0} ref {rover.Vessel.Hover.GroundRef - centre.Y:F2} att {rover.Vessel.Hover.Attitude} v {rover.Body.Velocity}");
         }
         for (int i = 0; i < 60; i++)
         {
             rover.Flight.Input = PilotInput.LetGo;
             yield return 0;
             ticks++;
-            if (i % 10 == 9) GD.Print($"DBG {run.Name} t{i}: x {rover.Body.Position.X - centre.X:F2} v {rover.Body.Velocity} refused {rover.Vessel.Hover.SlopeRefused} att {rover.Vessel.Hover.Attitude} clear {rover.Vessel.Hover.Clearance:F2} floor {rover.Body.OnFloor}");
         }
-        GD.Print($"DBG {run.Name}: stopped {rover.Body.Position.X - centre.X:F1} m past centre, v {MathX.Flat(rover.Body.Velocity).Length():F2}, top {rover.Stats.TopSpeed:F1}, back accel {HandlingModel.Compute(rover.Spec, new FlightConditions(9.8f, true), _w.Handling).Accel(Direction.Back):F2}, mass {rover.Body.Mass:F0}");
         run.Bottom = centre.Y - rover.Vessel.Hover.GroundRef;
         run.Bottomed = run.Bottom > run.Depth * 0.6f && MathX.Flat(rover.Body.Velocity).Length() < 0.5f;
 
@@ -1799,7 +1781,6 @@ public partial class PhysicsTest : Node
         }
         diver.Flight.Input = PilotInput.LetGo;
         float top = diver.Stats.TopSpeed;
-        GD.Print($"DBG diver: underwater {diver.Body.Water.Underwater}, frozen {diver.Vessel.Frozen}, y {diver.Body.Position.Y - level:F2} under level, keel over bed {diver.Body.Position.Y - diver.Body.Shape.FeetBelowOrigin - source.SurfaceHeight(diver.Body.Position.X, diver.Body.Position.Z):F2}, bed {level - source.SurfaceHeight(diver.Body.Position.X, diver.Body.Position.Z):F2} down, dived {dived}, top {top:F0}, drift {drift:F3}");
         Check(diver.Body.Water.Underwater && !diver.Vessel.Frozen && drift < 0.1f && crawl > 1f && crawl < 0.15f * top && descent > 0.5f,
             $"a powered Corsair is flown under the water: it goes down at up to {descent:F1} m/s, holds its depth hands off ({drift * 100f:F1} cm in 2 s: its engines carry its weight less its buoyancy), " +
             $"and full ahead the heavy drag holds it to {crawl:F1} m/s (top speed in air {top:F0})");
