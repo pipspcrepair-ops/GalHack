@@ -115,6 +115,8 @@ public sealed class PoiPlan
     public float Danger;
     /// <summary>A place nobody marked (a roadside house, a shed) on a world that keeps insects (<see cref="WorldConditions.Insects"/>): a few harmless crawlers on its walls and ceilings.</summary>
     public bool Crawlers;
+    /// <summary>How much oxygen its world's air holds against Earth's (<see cref="WorldConditions.Rich"/>): how big its crawlers may grow.</summary>
+    public float Air = 1f;
 }
 
 /// <summary>One creature to put in a place: its role, species, spot and how it hides.</summary>
@@ -272,14 +274,23 @@ public static partial class PoiFauna
         for (int i = 0; i < n; i++)
         {
             PoiRoom room = rooms[rng.Int(0, rooms.Count - 1)];
-            if (Fits(fauna, DeepRole.Crawler, theme, room, false) is not { Passive: true } sp) continue;
+            if (Fits(fauna, DeepRole.Crawler, theme, room, false) is not { Passive: true } big) continue;
+            // Their size goes by the air (owner, 24 Nov): small bugs mostly, a few cm to 15 cm; the odd big one up to the
+            // place's own size where the air is rich enough to feed it, none where it is poor (as Earth's insects in its high-oxygen eras).
+            float bigShare = poi.Air < 0.6f ? 0f : Math.Clamp((poi.Air - 0.8f) * 0.6f, 0.06f, 0.45f);
+            float most = big.Body.Size;
+            float length = rng.Chance(bigShare) && most > 0.2f ? rng.Range(MathF.Max(0.15f, most * (poi.Air > 1.3f ? 0.4f : 0.15f)), most)
+                : MathF.Min(most, 0.04f + 0.11f * rng.Float() * rng.Float());
+            Species sp = fauna.Sized(big, length);
             // Two in three on a wall, the rest on the ceiling.
+            Vector3 at, up;
             if (rng.Chance(0.67f))
             {
                 Crack w = WallCrack(room, rng, 0, -1);
-                pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Crawler, Species = sp, Position = w.Position + Vector3.Up * rng.Range(0.4f, MathF.Max(0.6f, room.Size.Y - 0.6f)), Up = w.Normal, Room = room.Index });
+                (at, up) = (w.Position + Vector3.Up * rng.Range(0.4f, MathF.Max(0.6f, room.Size.Y - 0.6f)), w.Normal);
             }
-            else Ceiling(pop, fauna, theme, room, rng, false, DeepRole.Crawler);
+            else (at, up) = (FloorPoint(room, rng, 0.9f) with { Y = room.Max.Y - 0.05f }, Vector3.Down);
+            pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Crawler, Species = sp, Position = at, Up = up, Room = room.Index });
         }
         if (pop.Spawns.Count == before) return;
         pop.Silent = false;
