@@ -15,11 +15,11 @@ namespace Slice.Tests;
 public partial class ClimateTest
 {
     /// <summary>A fresh world of any type that rolled airless (a cratered barren body).</summary>
-    static WorldChoice AirlessWorld()
+    internal static WorldChoice AirlessWorld(ulong? seed = null)
     {
         for (int i = 0; i < 4096; i++)
         {
-            WorldChoice w = WorldChoice.Fresh("random");
+            WorldChoice w = WorldChoice.Fresh("random", i == 0 ? seed : null);
             if (w.Spec().Airless) return w;
         }
         throw new InvalidOperationException("no airless world in 4,096 rolls");

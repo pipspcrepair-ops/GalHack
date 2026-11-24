@@ -106,6 +106,11 @@ public partial class FallTest : Node
     IEnumerable<int> Scenario()
     {
         int worlds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--worlds=")) is { } w ? int.Parse(w[9..]) : 3;
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--air") >= 0)
+        {
+            foreach (int x in AirScenario(worlds)) yield return x;
+            yield break;
+        }
         for (int i = 0; i < worlds; i++)
             foreach (int x in World(i == 0, i == 0 ? FirstSeed : null)) yield return x;
         // Every case shown on at least one of the worlds (a world may have nobody sitting, or no creature near, at the time).
@@ -116,28 +121,28 @@ public partial class FallTest : Node
     /// <summary>--seed=N: the first world's seed (a failure's world again, for an A/B; never pinned in a run).</summary>
     static readonly ulong? FirstSeed = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seed=")) is { } s ? ulong.Parse(s[7..]) : null;
 
-    IEnumerable<int> World(bool first, ulong? seed)
+    IEnumerable<int> World(bool first, ulong? seed, bool air = false)
     {
         const string family = "survivor_town";
         PlanetSurface.Poi.PoiSiting.ForceFamily = family;
-        WorldChoice world = WorldChoice.Fresh("temperate", seed);
+        WorldChoice world = air ? ClimateTest.AirlessWorld(seed) : WorldChoice.Fresh("temperate", seed);
         _game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(_game);
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;
         PlanetSurface.Poi.PoiSiting.ForceFamily = null;
-        _game.Zone.Weather.Bridge.Calm = true;
-        _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        if (_game.Zone.Weather.Bridge != null) _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim?.Snap(Weather.Model.WeatherKind.Clear); // (an airless world has no weather)
         _game.Zone.Sky.TimeOfDay = 0.42;
         _max = _game.Suit.Sim.Data.Vitals.Health.Max;
         GD.Print($"-- a settlement, {world}, gravity {G:F1} m/s² --");
-        foreach (int x in Settlement(family, first)) yield return x;
+        foreach (int x in Settlement(family, first, air)) yield return x;
         _game.QueueFree();
         _game = null;
         yield return 0;
     }
 
-    IEnumerable<int> Settlement(string family, bool shots)
+    IEnumerable<int> Settlement(string family, bool shots, bool air = false)
     {
         var site = _game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == family && s.Instance?.Townsfolk != null);
         if (site == null) { GD.Print($"  (no {family} with people could be seated on this world)"); yield break; }
@@ -151,6 +156,11 @@ public partial class FallTest : Node
         if (town == null) { Check(false, $"the {family} stands with its people"); yield break; }
         if (town.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
         for (int i = 0; i < 900 && town.People.Any(p => p.Looks == null || !p.Dead && p.View == null); i++) { TopUp(); yield return 0; }
+        if (air)
+        {
+            foreach (int x in Air(town, place)) yield return x;
+            yield break;
+        }
         var used = new HashSet<Town.Person>();
         bool Free(Town.Person p) => !p.Dead && !p.Gone && p.Looks != null && p.View != null && p.Run == null && !used.Contains(p) && town.CanStand(p.Pos);
 

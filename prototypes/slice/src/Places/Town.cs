@@ -717,6 +717,7 @@ public sealed partial class Town : IKeeper
     void Step(Person p, int who, Vector3 player, Vector3 eye, Vector3 look, float tickDt, bool night, float time)
     {
         if (p.Gone) return;
+        if (!p.Dead) Breathe(p, tickDt);
         p.StunReady = MathF.Max(0f, p.StunReady - tickDt);
         p.StunFor = MathF.Max(0f, p.StunFor - tickDt);
         // Whoever a Husk holds, or a stun has caught, stays where they are.
