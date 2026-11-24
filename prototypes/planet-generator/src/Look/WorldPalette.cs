@@ -868,11 +868,11 @@ public sealed record WorldPalette
             case Biome.Basalt: return Bedrock;
             case Biome.Ash: return Rgb.Lerp(Sand, Dust, 0.3f);
             case Biome.LavaField: return Bedrock * 0.7f;
-            case Biome.Obsidian: case Biome.Sulfur:
             // Ice and hot springs take their own meltwater's tint (the shallows), sinter the world's dust, so ice worlds differ in the land as in the sea.
             case Biome.BlueIce: return MeltTint(BiomeLook.Ground(biome));
             case Biome.HotSpring: return MeltTint(BiomeLook.Ground(biome));
             case Biome.Sinter: return Rgb.Lerp(BiomeLook.Ground(biome), Dust, 0.7f); // its crust is the world's own minerals
+            case Biome.Obsidian: case Biome.Sulfur:
             case Biome.CrystalPlain: case Biome.CrystalSpires: case Biome.Chalk: case Biome.GlowMoss:
             case Biome.FungalForest: case Biome.SporeMarsh: case Biome.Mycelium:
                 return BiomeLook.Ground(biome);
