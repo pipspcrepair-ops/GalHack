@@ -113,6 +113,8 @@ public sealed class PoiPlan
     public readonly List<Species> Hollows = new();
     /// <summary>How dangerous the place is, 0..1 (its rarity and state): how thickly it is held (place-patterns E2).</summary>
     public float Danger;
+    /// <summary>A place nobody marked (a roadside house, a shed) on a world that keeps insects (<see cref="WorldConditions.Insects"/>): a few harmless crawlers on its walls and ceilings.</summary>
+    public bool Crawlers;
 }
 
 /// <summary>One creature to put in a place: its role, species, spot and how it hides.</summary>
@@ -244,26 +246,66 @@ public static partial class PoiFauna
         fauna.Variant = (int)(Rng.Mix(poi.Seed, 0x7A41) % 3);
         try
         {
-            PoiPopulation pop;
-            if (poi.Kept == null || poi.Rooms.TrueForAll(r => poi.Kept.Contains(r.Index))) pop = PopulateOne(poi, fauna, rules);
-            else
-            {
-                // Its holders keep the storeys they are on; the rest of it is nobody's, with what lives in any place's dark.
-                pop = PopulateOne(Part(poi, true), fauna, rules);
-                Join(pop, PopulateOne(Part(poi, false), fauna, rules));
-            }
-            if (poi.Holder != PlaceHolder.Machines || pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
-            // Machines that fit no beat and no post on their storeys walk the whole place; fitting nowhere, they leave it nobody's.
-            if (poi.Kept != null)
-            {
-                poi.Kept = null;
-                pop = PopulateOne(poi, fauna, rules);
-                if (pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
-            }
-            poi.Holder = PlaceHolder.Empty;
-            return PopulateOne(poi, fauna, rules);
+            PoiPopulation pop = PopulateHeld(poi, fauna, rules);
+            if (poi.Crawlers) WallCrawlers(poi, pop, fauna);
+            return pop;
         }
         finally { fauna.Variant = 0; }
+    }
+
+    /// <summary>
+    /// A few harmless insects on the walls and ceilings of a place nobody marked (owner, 17 and 24 Nov): more in a bigger
+    /// place, and in one left to rot than in one lived in. Their own roll, so the place's other rolls stay as they were;
+    /// none where the world's insects aren't harmless (a swarm took it).
+    /// </summary>
+    static void WallCrawlers(PoiPlan poi, PoiPopulation pop, DeepFauna fauna)
+    {
+        var rng = Rng.For(poi.Seed, "wall-crawlers");
+        List<PoiRoom> rooms = poi.Rooms.FindAll(r => r.Kind is not (RoomKind.Vent or RoomKind.Duct) && r.Size.Y >= 1.5f);
+        if (rooms.Count == 0) return;
+        float area = 0f;
+        foreach (PoiRoom r in rooms) area += r.Size.X * r.Size.Z;
+        float state = poi.State == PlaceState.Active ? 0.35f : poi.State == PlaceState.Abandoned ? 1f : 1.3f;
+        int n = Math.Clamp((int)MathF.Round((1f + area / 30f) * state * rng.Range(0.7f, 1.3f)), 1, 6);
+        PoiTheme theme = poi.Derelict ? PoiTheme.Derelict : poi.Theme;
+        int before = pop.Spawns.Count;
+        for (int i = 0; i < n; i++)
+        {
+            PoiRoom room = rooms[rng.Int(0, rooms.Count - 1)];
+            if (Fits(fauna, DeepRole.Crawler, theme, room, false) is not { Passive: true } sp) continue;
+            // Two in three on a wall, the rest on the ceiling.
+            if (rng.Chance(0.67f))
+            {
+                Crack w = WallCrack(room, rng, 0, -1);
+                pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Crawler, Species = sp, Position = w.Position + Vector3.Up * rng.Range(0.4f, MathF.Max(0.6f, room.Size.Y - 0.6f)), Up = w.Normal, Room = room.Index });
+            }
+            else Ceiling(pop, fauna, theme, room, rng, false, DeepRole.Crawler);
+        }
+        if (pop.Spawns.Count == before) return;
+        pop.Silent = false;
+        pop.Note = Tally(pop);
+    }
+
+    static PoiPopulation PopulateHeld(PoiPlan poi, DeepFauna fauna, DeepTables rules)
+    {
+        PoiPopulation pop;
+        if (poi.Kept == null || poi.Rooms.TrueForAll(r => poi.Kept.Contains(r.Index))) pop = PopulateOne(poi, fauna, rules);
+        else
+        {
+            // Its holders keep the storeys they are on; the rest of it is nobody's, with what lives in any place's dark.
+            pop = PopulateOne(Part(poi, true), fauna, rules);
+            Join(pop, PopulateOne(Part(poi, false), fauna, rules));
+        }
+        if (poi.Holder != PlaceHolder.Machines || pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
+        // Machines that fit no beat and no post on their storeys walk the whole place; fitting nowhere, they leave it nobody's.
+        if (poi.Kept != null)
+        {
+            poi.Kept = null;
+            pop = PopulateOne(poi, fauna, rules);
+            if (pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
+        }
+        poi.Holder = PlaceHolder.Empty;
+        return PopulateOne(poi, fauna, rules);
     }
 
     /// <summary>The rooms its holders keep (with its open ground, and them), or the rest of it as nobody's.</summary>

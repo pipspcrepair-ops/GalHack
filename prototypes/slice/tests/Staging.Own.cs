@@ -125,7 +125,9 @@ public sealed partial class Staging
         DeepSite deep = _game.Zone.Wildlife.Sites.FirstOrDefault(s => s.Sim == p.Memory.Fauna?.Sim);
         if (deep == null) throw new InvalidOperationException("the place's creatures never stood");
         WorldLife life = _game.Zone.Wildlife.Life;
-        var held = deep.Sim.Creatures.Where(c => !c.Dead && !c.Removed && c.Species.Role != DeepRole.Subsister).ToList();
+        // --who=crawler: a wall crawler of a place nobody marked (--force-family=flavour_house) instead of its holders.
+        bool crawler = _args.GetValueOrDefault("who", "") == "crawler";
+        var held = deep.Sim.Creatures.Where(c => !c.Dead && !c.Removed && (crawler ? c.Species.Passive && c.Species.Role == DeepRole.Crawler && !c.InWalls : c.Species.Role != DeepRole.Subsister)).ToList();
         GD.Print($"(inside: {string.Join(", ", held.GroupBy(c => c.Species.CommonName).Select(g => $"{g.Count()} {g.Key}"))})");
         // The busiest room: the holder with most of its own round it, the world's own first.
         Creature target = held.OrderByDescending(c => life.Signature.Is(c.Species) || c.Species.Hosts?.Any(life.Signature.Is) == true ? 1 : 0)
