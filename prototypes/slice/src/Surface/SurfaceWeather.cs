@@ -41,7 +41,6 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     public Camera3D Camera => Zone.Camera;
     public Vector3 ToSun => Zone.Sky.ToSun;
     public float CloudBaseY => Zone.Sky.Air.CloudBase;
-    public IReadOnlyList<Hazard> Hazards => Sim?.Hazards ?? (IReadOnlyList<Hazard>)Array.Empty<Hazard>();
     public Vector2 Wind2D => Sim?.Here.Wind ?? Vector2.Zero; // the observer's: a dust storm's gale only inside it
 
     PlanetWorld _planet;

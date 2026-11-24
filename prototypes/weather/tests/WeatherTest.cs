@@ -55,9 +55,9 @@ public partial class WeatherTest : Node
         PullOrderedByMass();
         Section("Damage: never reduced, a tornado fling's landing included");
         FlingIsUniform();
-        StrikesAreWarnedFirst();
+        StrikesHaveNoTelegraph();
         Section("Lightning");
-        LightningBuildsThenHitsHighest();
+        LightningHitsHighest();
         Section("Modifiers per weather");
         ModifiersApply();
         Section("Smooth transitions");
@@ -439,55 +439,56 @@ public partial class WeatherTest : Node
     }
 
     /// <summary>
-    /// Lightning and burning debris may kill, so neither may ever be a surprise: every strike the
-    /// weather throws is visible (glow, beam) for its whole configured lead, and every one that
-    /// lands near the player is on the visor for that long too.
+    /// Lightning and burning debris land with no lead-up: the model keeps no pending hit to show, glow
+    /// or warn about, the visor never mentions one, and a hit simply appears as an event with its full
+    /// damage. Without a warning they have to be fair, so a player standing in the open takes few of them.
     /// </summary>
-    void StrikesAreWarnedFirst()
+    void StrikesHaveNoTelegraph()
     {
         var warnings = new List<WarningEntry>();
-        foreach (var (weather, kind, rules, near) in new[]
+        var rng = new Random();
+        foreach (var (weather, kind, rules, evKind, maxPerMinute) in new[]
         {
-            (WeatherKind.Thunderstorm, HazardKind.Lightning, _data.Lightning, 350f),
-            (WeatherKind.FireStorm, HazardKind.Debris, _data.Debris, 60f),
+            (WeatherKind.Thunderstorm, HazardKind.Lightning, _data.Lightning, WeatherEventKind.LightningStrike, 0.8),
+            (WeatherKind.FireStorm, HazardKind.Debris, _data.Debris, WeatherEventKind.DebrisImpact, 0.15),
         })
         {
-            var sim = new WeatherSim(_data, "temperate", 23, weather);
+            ulong seed = (ulong)rng.NextInt64(); // a fresh world every run
+            var sim = new WeatherSim(_data, "temperate", seed, weather);
             sim.Snap(weather);
-            AddStrikePoints(sim);
             var player = new StrikePoint { Id = 99, Name = "YOU", Position = new Vector3(0, 1.8f, 0) };
             sim.StrikePoints.Add(player);
 
-            var seen = new Dictionary<int, double>();
-            var warned = new Dictionary<int, double>();
-            int hits = 0, nearHits = 0, late = 0;
-            double shortestSeen = double.MaxValue, shortestWarned = double.MaxValue;
-            for (int i = 0; i < 60 * 600; i++) // ten minutes of storm around a player at the origin
+            const int Minutes = 60;
+            int hits = 0, onYou = 0, bad = 0;
+            for (int i = 0; i < 60 * 60 * Minutes; i++) // an hour of storm around a lone player in the open
             {
                 sim.Step(Dt, Vector3.Zero);
-                foreach (Hazard h in sim.Hazards) seen.TryAdd(h.Id, sim.Time);
                 sim.GetWarnings(warnings, Vector3.Zero);
-                foreach (WarningEntry w in warnings) if (w.HazardId > 0) warned.TryAdd(w.HazardId, sim.Time);
-
+                // The only warnings a storm may carry are the weather's own, never one about a hit.
+                if (warnings.Any(w => w.Kind == null && (w.Text.Contains("ightning") || w.Text.Contains("ebris")))) bad++;
                 foreach (WeatherEvent e in sim.Events)
                 {
-                    if (e.Kind != WeatherEventKind.LightningStrike && e.Kind != WeatherEventKind.DebrisImpact) continue;
+                    if (e.Kind != evKind) continue;
                     hits++;
-                    double shown = sim.Time - seen[e.Id];
-                    shortestSeen = Math.Min(shortestSeen, shown);
-                    if (shown < rules.WarningSeconds - 1e-3) late++;
-                    if (new Vector2(e.Position.X, e.Position.Z).Length() >= near) continue;
-                    nearHits++;
-                    double onVisor = warned.TryGetValue(e.Id, out double at) ? sim.Time - at : -1;
-                    shortestWarned = Math.Min(shortestWarned, onVisor);
-                    if (onVisor < rules.WarningSeconds - 1e-3) late++;
+                    if (e.Damage <= 0f || e.DamageRadius <= 0f) bad++; // a hit that deals nothing is not a hit
+                    float distance = new Vector2(e.Position.X, e.Position.Z).Length();
+                    if (e.Target == player || distance < e.DamageRadius) onYou++;
                 }
             }
             string what = kind == HazardKind.Lightning ? "lightning" : "burning debris";
-            Check(late == 0 && hits > 20 && nearHits > 10,
-                $"every {what} hit is shown and on the visor for its full {rules.WarningSeconds:F1} s lead first " +
-                $"({hits} hits, {nearHits} near you; shortest {shortestSeen:F2} s shown, {shortestWarned:F2} s on the visor)");
+            double perMinute = onYou / (double)Minutes;
+            Check(bad == 0 && hits > Minutes / 3 && perMinute <= maxPerMinute,
+                $"{what}: no visor warning about any of {hits} hits, each deals {rules.Damage:F0}, and a lone player in the open takes {perMinute:F2} a minute (limit {maxPerMinute}, seed {seed})");
         }
+
+        // A hit shows up only as an event on the tick it lands, aimed where asked.
+        var one = new WeatherSim(_data, "temperate", (ulong)rng.NextInt64(), WeatherKind.Clear);
+        one.Snap(WeatherKind.Clear);
+        one.Strike(HazardKind.Debris, new Vector3(30, 0, 0));
+        one.Step(Dt, new Vector3(1000, 0, 0));
+        Check(one.Events.Count == 1 && one.Events[0].Kind == WeatherEventKind.DebrisImpact && MathF.Abs(one.Events[0].Position.X - 30f) < 1e-3f,
+            "an asked-for hit lands on the very next tick, where it was aimed");
 
         // Damage is never reduced: a hit lands in full, and enough of them kill.
         var hp = new Health(100f);
@@ -499,9 +500,9 @@ public partial class WeatherTest : Node
         Check(new Health(100f).Hit(DamageRules.FallDamage(10f)) == 0f, "a 10 m/s landing is free");
     }
 
-    void LightningBuildsThenHitsHighest()
+    void LightningHitsHighest()
     {
-        var sim = new WeatherSim(_data, "temperate", 11, WeatherKind.Clear);
+        var sim = new WeatherSim(_data, "temperate", (ulong)new Random().NextInt64(), WeatherKind.Clear);
         sim.Snap(WeatherKind.Clear);
         var spire = new StrikePoint { Id = 1, Name = "spire", Position = new Vector3(0, 60, 0) };
         var tree = new StrikePoint { Id = 2, Name = "tree", Position = new Vector3(30, 12, 5) };
@@ -509,28 +510,21 @@ public partial class WeatherTest : Node
         var mast = new StrikePoint { Id = 4, Name = "far mast", Position = new Vector3(160, 95, 0) };
         sim.StrikePoints.AddRange(new[] { spire, tree, player, mast });
 
-        Hazard h = sim.StartStrike(HazardKind.Lightning, new Vector3(25, 0, 0));
-        bool glowOnSpire = h.TargetPoint == spire;
-        float struckAt = -1f;
-        StrikePoint hit = null;
-        for (int i = 0; i < 60 * 10 && struckAt < 0f; i++)
+        StrikePoint Hit(Vector3 aim)
         {
-            sim.Step(Dt, Vector3.Zero);
-            foreach (var e in sim.Events)
-                if (e.Kind == WeatherEventKind.LightningStrike) { struckAt = h.Age; hit = e.Target; }
+            sim.Strike(HazardKind.Lightning, aim);
+            sim.Step(Dt, new Vector3(5000, 0, 0));
+            return sim.Events.Single(e => e.Kind == WeatherEventKind.LightningStrike).Target;
         }
-        float buildUp = _data.Lightning.BuildUpSeconds;
-        Check(glowOnSpire, "the build-up glow shows on the spire from the start");
-        Check(struckAt >= buildUp - 1e-3f && struckAt < buildUp + 2 * Dt, $"it strikes only after the {buildUp:F1} s build-up (at {struckAt:F2} s)");
+
+        StrikePoint hit = Hit(new Vector3(25, 0, 0));
         Check(hit == spire, $"it hits the highest point in its radius ({hit?.Name ?? "ground"}), not the taller mast outside it");
 
         player.Position = new Vector3(-150, 22f, 0); // jetpacking alone over open ground
-        Hazard h2 = sim.StartStrike(HazardKind.Lightning, new Vector3(-160, 0, 10));
-        Check(h2.TargetPoint == player, "a player high in the air over open ground becomes the target");
+        Check(Hit(new Vector3(-160, 0, 10)) == player, "a player high in the air over open ground becomes the target");
         player.Position = new Vector3(-150, 1.0f, 0); // drops and crouches
         tree.Position = new Vector3(-170, 9f, 20);
-        for (int i = 0; i < 60 * 5; i++) sim.Step(Dt, Vector3.Zero);
-        Check(h2.TargetPoint == tree, "getting low hands the strike to a taller tree nearby");
+        Check(Hit(new Vector3(-160, 0, 10)) == tree, "getting low hands the strike to a taller tree nearby");
     }
 
     void ModifiersApply()

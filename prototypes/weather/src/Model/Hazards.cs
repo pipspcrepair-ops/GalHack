@@ -14,32 +14,8 @@ public sealed class StrikePoint
     public Vector3 Position { get; set; }
 }
 
+/// <summary>The weather's damaging hits. They land with no lead-up: nothing is shown, sounded or warned beforehand.</summary>
 public enum HazardKind { Lightning, Debris }
-
-/// <summary>
-/// A strike that is coming: lightning charging up, or burning debris falling. Every hazard
-/// is visible for its whole build-up before it hits, so a danger is never silent.
-/// </summary>
-public sealed class Hazard
-{
-    public int Id { get; init; }
-    public HazardKind Kind { get; init; }
-
-    /// <summary>Where the strike was aimed. Lightning then picks the highest point within <see cref="Radius"/>.</summary>
-    public Vector3 Center { get; init; }
-    public float Radius { get; init; }
-    public float BuildUp { get; init; }
-    public float Age { get; internal set; }
-
-    /// <summary>Where it will hit, re-picked every tick while lightning charges.</summary>
-    public Vector3 Target { get; internal set; }
-
-    /// <summary>What it will hit, or null for bare ground.</summary>
-    public StrikePoint TargetPoint { get; internal set; }
-
-    public float Progress => Math.Clamp(Age / BuildUp, 0f, 1f);
-    public float Remaining => MathF.Max(0f, BuildUp - Age);
-}
 
 public enum WeatherEventKind { LightningStrike, DebrisImpact, TornadoForming, TornadoTouchdown, TornadoGone }
 

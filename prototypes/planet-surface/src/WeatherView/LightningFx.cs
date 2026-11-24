@@ -9,8 +9,7 @@ using Channel = PlanetSurface.Fx.Bolts.Channel;
 namespace PlanetSurface.WeatherView;
 
 /// <summary>
-/// Ported from the weather prototype (bolts rise from this planet's cloud base). Lightning you can see coming: while a strike charges, its target glows and crackles (St
-/// Elmo's fire) and the cloud above flickers; then a branching bolt, a flash that lights the
+/// Ported from the weather prototype (bolts rise from this planet's cloud base). Lightning with no lead-up: nothing shows until the strike, then a branching bolt, a flash that lights the
 /// cloud round it, and a few re-strokes. Near and far differ: a near strike has its bolt, a wide
 /// flash and a shadow-casting light; a far one is a glow inside its own cell, now and then a
 /// thin bolt, no light on the ground; between them it fades by distance. Bolts are drawn as every
@@ -48,98 +47,30 @@ public partial class LightningFx : Node3D
     const float Halo = 5f;
 
     ShaderMaterial _boltMaterial;
-    StandardMaterial3D _glowMaterial;
     ImmediateMesh _boltMesh;
     MeshInstance3D _bolt;
     OmniLight3D _strikeLight;
     readonly List<Channel> _segments = new();
-    readonly List<Channel> _crackles = new();
     float _boltAge = 99f;
     bool _drawBolt;
     Vector3 _boltTarget;
     readonly RandomNumberGenerator _rng = new() { Seed = 4242 };
 
-    sealed class Charge
-    {
-        public Node3D Root;
-        public MeshInstance3D Ball;
-        public OmniLight3D Light;
-        public ImmediateMesh Crackle;
-        public GpuParticles3D Sparks;
-        public float NextCrackle;
-    }
-    readonly List<Charge> _charges = new();
-
     public override void _Ready()
     {
         ProcessPriority = -10; // compute the flash before WeatherFx lights the scene with it
         _boltMaterial = Bolts.Material(new Color("e6dcff"), 6f);
-        // The charge glow: a soft, over-bright sprite that blooms, readable from far away.
-        _glowMaterial = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, BlendMode = BaseMaterial3D.BlendModeEnum.Add,
-            BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled, BillboardKeepScale = true, AlbedoTexture = Fx.SoftDot,
-            AlbedoColor = new Color(2.4f, 2.1f, 4.2f), Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            NoDepthTest = false, DisableFog = true,
-        };
-
         _boltMesh = new ImmediateMesh();
         _bolt = new MeshInstance3D { Mesh = _boltMesh, MaterialOverride = _boltMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, TopLevel = true };
         AddChild(_bolt);
         _strikeLight = new OmniLight3D { LightColor = new Color("d8ccff"), OmniRange = 120f, LightEnergy = 0f, ShadowEnabled = true, Visible = false, TopLevel = true }; // walls stop it
         AddChild(_strikeLight);
-
-        for (int i = 0; i < 3; i++) _charges.Add(MakeCharge());
-    }
-
-    Charge MakeCharge()
-    {
-        var root = new Node3D { Visible = false, TopLevel = true };
-        AddChild(root);
-        var ball = new MeshInstance3D
-        {
-            Mesh = new QuadMesh { Size = new Vector2(5f, 5f) },
-            MaterialOverride = _glowMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        };
-        root.AddChild(ball);
-        var light = new OmniLight3D { LightColor = new Color("b8a6ff"), OmniRange = 26f, ShadowEnabled = true };
-        root.AddChild(light);
-        var crackle = new ImmediateMesh();
-        var crackleNode = new MeshInstance3D { Mesh = crackle, MaterialOverride = _boltMaterial, TopLevel = true, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
-        root.AddChild(crackleNode);
-        var sparks = new GpuParticles3D
-        {
-            Amount = 40, Lifetime = 0.5f, LocalCoords = false, AmountRatio = 0f,
-            ProcessMaterial = new ParticleProcessMaterial
-            {
-                EmissionShape = ParticleProcessMaterial.EmissionShapeEnum.Sphere, EmissionSphereRadius = 1.2f,
-                Direction = Vector3.Up, Spread = 70f, InitialVelocityMin = 2f, InitialVelocityMax = 7f, Gravity = new Vector3(0, -3, 0),
-                ScaleMin = 0.5f, ScaleMax = 1.2f,
-            },
-            DrawPass1 = new QuadMesh { Size = new Vector2(0.15f, 0.15f) },
-            MaterialOverride = new StandardMaterial3D
-            {
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
-                AlbedoColor = new Color(2.5f, 2.2f, 4f), AlbedoTexture = Fx.SoftDot, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            },
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        };
-        root.AddChild(sparks);
-        return new Charge { Root = root, Ball = ball, Light = light, Crackle = crackle, Sparks = sparks };
-    }
-
-    public int ActiveParticles()
-    {
-        int n = 0;
-        foreach (Charge c in _charges) if (c.Root.Visible) n += (int)(c.Sparks.Amount * c.Sparks.AmountRatio);
-        return n;
     }
 
     public override void _Process(double delta)
     {
         float dt = (float)delta;
         Vector3 camera = Fx.Camera.GlobalPosition;
-        UpdateCharges(dt, camera);
 
         if (!Held) _boltAge += dt;
         float stroke = Stroke(_boltAge);
@@ -170,53 +101,6 @@ public partial class LightningFx : Node3D
         if (t < 0.3f) return 0.75f * (1f - (t - 0.21f) / 0.09f);
         if (t < BoltLife) return 0.08f * (1f - (t - 0.3f) / (BoltLife - 0.3f));
         return 0f;
-    }
-
-    void UpdateCharges(float dt, Vector3 camera)
-    {
-        int used = 0;
-        float skyFlicker = 0f;
-        Vector3 flickerAt = default;
-        foreach (Hazard h in Fx.Hazards)
-        {
-            if (h.Kind != HazardKind.Lightning || used >= _charges.Count) continue;
-            Charge c = _charges[used++];
-            float p = h.Progress;
-            c.Root.Visible = true;
-            c.Root.GlobalPosition = h.Target;
-            float pulse = 0.75f + 0.25f * Mathf.Sin(h.Age * (8f + 30f * p));
-            float size = Mathf.Lerp(0.3f, 1.6f, p * p) * pulse;
-            c.Ball.Scale = Vector3.One * size;
-            c.Light.LightEnergy = (0.5f + 5f * p * p) * pulse * LightShare();
-            c.Sparks.AmountRatio = Mathf.Clamp(p * 1.4f - 0.2f, 0f, 1f);
-            c.NextCrackle -= dt;
-            if (c.NextCrackle <= 0f)
-            {
-                c.NextCrackle = Mathf.Lerp(0.2f, 0.05f, p);
-                BuildCrackles(h.Target, p);
-                Bolts.Draw(c.Crackle, _crackles, camera, Halo, 0.3f + 0.7f * p);
-            }
-            float flicker = p * p * (_rng.Randf() < 0.15f ? 0.35f : 0.05f);
-            if (flicker > skyFlicker) { skyFlicker = flicker; flickerAt = h.Target; }
-        }
-        for (int i = used; i < _charges.Count; i++) _charges[i].Root.Visible = false;
-        if (!Closed && skyFlicker > Flash) // the cloud above it flickers as the charge builds
-        {
-            Flash = skyFlicker;
-            FlashAt = new Vector3(flickerAt.X, Mathf.Max(Fx.CloudBaseY, flickerAt.Y + 150f) + 120f, flickerAt.Z);
-        }
-    }
-
-    /// <summary>Short streamers reaching up from the target, more and longer as the charge builds.</summary>
-    void BuildCrackles(Vector3 at, float progress)
-    {
-        _crackles.Clear();
-        int count = 1 + (int)(progress * 4f);
-        for (int i = 0; i < count; i++)
-        {
-            var end = at + new Vector3(_rng.RandfRange(-3f, 3f), _rng.RandfRange(2f, 4f + progress * 6f), _rng.RandfRange(-3f, 3f));
-            Jag(_crackles, at, end, 3, 0.18f, 0.7f, 0);
-        }
     }
 
     /// <summary>The strike: a branching bolt from the cloud base down to the target.</summary>

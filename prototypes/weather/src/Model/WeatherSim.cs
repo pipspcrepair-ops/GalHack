@@ -35,11 +35,11 @@ public enum WarningLevel { Advisory, Warning, Danger }
 
 /// <summary>
 /// A visor warning. <see cref="ArrivesAt"/> is when the danger lands; <see cref="Kind"/> is set for
-/// weather warnings and <see cref="HazardId"/> for strikes (lightning, debris). For a symbol-only
+/// weather warnings. Lightning and debris hits are never warned. For a symbol-only
 /// visor: <see cref="Sign"/> names the hazard's sign, <see cref="Left"/> is how long it lasts once
 /// here (seconds; 0 when unknown) and <see cref="From"/> is where it is or comes from.
 /// </summary>
-public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0, int HazardId = 0,
+public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0,
     string Sign = null, double Left = 0, Vector3? From = null);
 
 /// <summary>Weather that lingers on the ground after it has passed.</summary>
@@ -79,7 +79,6 @@ public sealed class WeatherSim
     public Func<float, float, float> GroundHeight { get; set; } = static (_, _) => 0f;
 
     public IReadOnlyList<Segment> Timeline => _segments;
-    public IReadOnlyList<Hazard> Hazards => _hazards;
     public IReadOnlyList<Tornado> Tornadoes => _tornadoes;
 
     /// <summary>The storms in the sky: where the rain, strikes and funnels come from.</summary>
@@ -122,7 +121,6 @@ public sealed class WeatherSim
     public IReadOnlyList<WeatherEvent> Events => _events;
 
     readonly List<Segment> _segments = new();
-    readonly List<Hazard> _hazards = new();
     readonly List<Tornado> _tornadoes = new();
     readonly List<StormCell> _cells = new();
     readonly List<DustStorm> _dust = new();
@@ -132,6 +130,7 @@ public sealed class WeatherSim
     float _cellTimer, _dustTimer;
     Front _front;
     readonly List<WeatherEvent> _events = new();
+    readonly List<(HazardKind kind, Vector3 center)> _queued = new();
     readonly Rng _timelineRng, _hazardRng, _dustRng;
     readonly uint _gustSeed;
     float _lightningCharge, _lightningNext, _debrisCharge, _debrisNext, _tornadoCharge, _tornadoNext, _spoutCharge, _spoutNext = 1f, _devilCharge, _devilNext = 1f;
@@ -541,24 +540,6 @@ public sealed class WeatherSim
     public void GetWarnings(List<WarningEntry> into, Vector3 observer)
     {
         into.Clear();
-        foreach (Hazard h in _hazards)
-        {
-            float distance = Flat(h.Target - observer).Length();
-            if (h.Kind == HazardKind.Lightning && distance < 350f)
-            {
-                string what = h.TargetPoint?.Name ?? "open ground";
-                into.Add(new WarningEntry(WarningLevel.Danger,
-                    $"Lightning charge building on {what}, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining,
-                    ArrivesAt: Time + h.Remaining, HazardId: h.Id, Sign: "storm", From: h.Target));
-            }
-            else if (h.Kind == HazardKind.Debris && distance < 60f)
-            {
-                into.Add(new WarningEntry(WarningLevel.Danger,
-                    $"Burning debris incoming, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining,
-                    ArrivesAt: Time + h.Remaining, HazardId: h.Id, Sign: "falling_debris", From: h.Target));
-            }
-        }
-
         foreach (Tornado t in _tornadoes)
         {
             float distance = Flat(t.Position - observer).Length();
@@ -983,31 +964,18 @@ public sealed class WeatherSim
         return cell.Position + RandomOffset(cell.Radius * 0.6f);
     }
 
-    // ---- Hazards: lightning and falling debris ---------------------------------------
+    // ---- Hits: lightning and falling debris -------------------------------------------
 
+    /// <summary>Each hit lands the moment it is rolled: no build-up, no warning, just the event.</summary>
     void StepStrikes(float dt, Vector3 observer)
     {
         Conditions c = Current;
-        if (Accumulate(ref _lightningCharge, ref _lightningNext, c.LightningPerMinute, dt)
-            && Count(HazardKind.Lightning) < Data.Lightning.MaxConcurrent)
-            StartStrike(HazardKind.Lightning, StrikeSpot(observer));
-
-        if (Accumulate(ref _debrisCharge, ref _debrisNext, c.DebrisPerMinute, dt)
-            && Count(HazardKind.Debris) < Data.Debris.MaxConcurrent)
-            StartStrike(HazardKind.Debris, observer + RandomOffset(Data.Debris.StrikeOffset));
-
-        for (int i = _hazards.Count - 1; i >= 0; i--)
-        {
-            Hazard h = _hazards[i];
-            h.Age += dt;
-            if (h.Kind == HazardKind.Lightning) Aim(h);
-            if (h.Age < h.BuildUp) continue;
-            Aim(h); // the strike goes to whatever is highest at the moment it lands
-            StrikeRules rules = h.Kind == HazardKind.Lightning ? Data.Lightning : Data.Debris;
-            var kind = h.Kind == HazardKind.Lightning ? WeatherEventKind.LightningStrike : WeatherEventKind.DebrisImpact;
-            _events.Add(new WeatherEvent(kind, h.Id, h.Target, h.TargetPoint, rules.Damage, rules.DamageRadius));
-            _hazards.RemoveAt(i);
-        }
+        if (Accumulate(ref _lightningCharge, ref _lightningNext, c.LightningPerMinute, dt))
+            Hit(HazardKind.Lightning, StrikeSpot(observer));
+        if (Accumulate(ref _debrisCharge, ref _debrisNext, c.DebrisPerMinute, dt))
+            Hit(HazardKind.Debris, observer + RandomOffset(Data.Debris.StrikeOffset));
+        foreach (var (kind, center) in _queued) Hit(kind, center);
+        _queued.Clear();
     }
 
     /// <summary>Random events at a varying rate: charge builds with the rate and fires at an exponential threshold.</summary>
@@ -1021,13 +989,6 @@ public sealed class WeatherSim
         return true;
     }
 
-    int Count(HazardKind kind)
-    {
-        int n = 0;
-        foreach (Hazard h in _hazards) if (h.Kind == kind) n++;
-        return n;
-    }
-
     Vector3 RandomOffset(float radius)
     {
         float angle = _hazardRng.Range(0f, MathF.Tau);
@@ -1035,25 +996,16 @@ public sealed class WeatherSim
         return new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
     }
 
-    /// <summary>Starts a strike aimed at <paramref name="center"/>. Lightning will hit the highest point within its radius.</summary>
-    public Hazard StartStrike(HazardKind kind, Vector3 center)
+    /// <summary>Tests, screenshots and debug keys: a hit aimed at <paramref name="center"/> lands on the next <see cref="Step"/>, with no lead-up.</summary>
+    public void Strike(HazardKind kind, Vector3 center) => _queued.Add((kind, center));
+
+    /// <summary>Lands a hit: lightning goes to the highest point within its radius.</summary>
+    void Hit(HazardKind kind, Vector3 center)
     {
         StrikeRules rules = kind == HazardKind.Lightning ? Data.Lightning : Data.Debris;
-        var hazard = new Hazard
-        {
-            Id = _nextId++, Kind = kind, Center = Flat(center), Radius = kind == HazardKind.Lightning ? rules.Radius : 0f,
-            BuildUp = rules.WarningSeconds,
-        };
-        Aim(hazard);
-        _hazards.Add(hazard);
-        return hazard;
-    }
-
-    void Aim(Hazard h)
-    {
-        var (point, target) = HighestPoint(h.Center, h.Radius);
-        h.Target = point;
-        h.TargetPoint = target;
+        var (point, target) = HighestPoint(Flat(center), kind == HazardKind.Lightning ? rules.Radius : 0f);
+        _events.Add(new WeatherEvent(kind == HazardKind.Lightning ? WeatherEventKind.LightningStrike : WeatherEventKind.DebrisImpact,
+            _nextId++, point, target, rules.Damage, rules.DamageRadius));
     }
 
     /// <summary>The highest strike point within <paramref name="radius"/> (horizontally) of a spot, or the ground there.</summary>
@@ -1404,8 +1356,8 @@ public sealed class WeatherSim
     /// <summary>Removes every tornado at once (tests, screenshots).</summary>
     public void ClearTornadoes() => _tornadoes.Clear();
 
-    /// <summary>Calls off every strike that is coming (tests, screenshots).</summary>
-    public void ClearHazards() => _hazards.Clear();
+    /// <summary>Calls off every strike asked for and not yet landed (tests, screenshots).</summary>
+    public void ClearHazards() => _queued.Clear();
 
     // ---- Wind -------------------------------------------------------------------------
 

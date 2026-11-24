@@ -169,15 +169,14 @@ public partial class ClimateTest : Node
         sky.ClearCells();
         StormCell off = sky.AddCell(Me.WorldFeet + new Vector3(1400f, 0f, 0f), 1f);
         int strikes = 0, underCell = 0;
-        var seen = new HashSet<int>();
         for (int i = 0; i < 2400 && strikes < 4; i++)
         {
-            foreach (Hazard h in sky.Hazards)
-                if (h.Kind == HazardKind.Lightning && seen.Add(h.Id))
+            foreach (WeatherEvent e in sky.Events)
+                if (e.Kind == WeatherEventKind.LightningStrike)
                 {
                     strikes++;
                     foreach (StormCell c in sky.Cells)
-                        if (new Vector2(h.Center.X - c.Position.X, h.Center.Z - c.Position.Z).Length() < c.Radius) { underCell++; break; }
+                        if (new Vector2(e.Position.X - c.Position.X, e.Position.Z - c.Position.Z).Length() < c.Radius) { underCell++; break; }
                 }
             yield return 0;
         }
@@ -191,7 +190,7 @@ public partial class ClimateTest : Node
 
         // The storm's own strikes and thunder gone first: this one is counted alone.
         sky.Snap(WeatherKind.Clear);
-        for (int i = 0; i < 3600 && (Zone.Weather.ThunderComing > 0 || Zone.Weather.Hazards.Count > 0); i++) yield return 0;
+        for (int i = 0; i < 3600 && Zone.Weather.ThunderComing > 0; i++) yield return 0;
         Vector3 eye = _game.Camera.GlobalPosition;
         int coming = Zone.Weather.ThunderComing;
         Zone.Weather.Thunder(eye + new Vector3(1000f, 0f, 0f));

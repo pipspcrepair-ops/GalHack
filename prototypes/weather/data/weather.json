@@ -39,20 +39,16 @@
   },
 
   "lightning": {
-    "buildUpSeconds": 4.0,
     "radius": 70,
     "strikeOffset": 180,
     "damage": 45,
-    "damageRadius": 7,
-    "maxConcurrent": 2
+    "damageRadius": 7
   },
 
   "debris": {
-    "fallSeconds": 3.2,
-    "radius": 4,
-    "strikeOffset": 70,
+    "strikeOffset": 25,
     "damage": 22,
-    "maxConcurrent": 3
+    "damageRadius": 8
   },
 
   "tornado": {

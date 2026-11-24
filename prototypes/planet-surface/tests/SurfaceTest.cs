@@ -1537,7 +1537,6 @@ public partial class SurfaceTest : Node
                 same &= a.Current[k] == b.Current[k];
                 differs |= a.Current[k] != c.Current[k];
             }
-            same &= a.Hazards.Count == b.Hazards.Count;
             strikes += a.Events.Count;
         }
         Check(same && differs, $"weather is deterministic from its seed: two hours identical for the same seed ({strikes} hazard events), different for another");

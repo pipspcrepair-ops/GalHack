@@ -128,7 +128,7 @@ public sealed partial class Staging
         for (int k = 0; k < 4; k++)
         {
             f = sim.Front;
-            if (f is { Kind: FrontKind.Storm }) sim.StartStrike(HazardKind.Lightning, f.EdgeAt(f.Along(under) + (k - 1.5f) * 700f, under) - new Vector3(f.Heading.X, 0f, f.Heading.Y) * 500f);
+            if (f is { Kind: FrontKind.Storm }) sim.Strike(HazardKind.Lightning, f.EdgeAt(f.Along(under) + (k - 1.5f) * 700f, under) - new Vector3(f.Heading.X, 0f, f.Heading.Y) * 500f);
             for (int i = 0; i < 200 && !sim.Events.Any(e => e.Kind == WeatherEventKind.LightningStrike); i++) yield return 0;
             yield return 0;
             Snap($"night{k}");

@@ -134,7 +134,7 @@ public partial class ForecastTest : Node
     {
         WeatherSim sim = game.Zone.Weather.Sim;
         sim.ClearHazards();
-        sim.StartStrike(HazardKind.Lightning, game.Survivor.WorldFeet + new Vector3(20f, 0f, 0f));
+        sim.Strike(HazardKind.Lightning, game.Survivor.WorldFeet + new Vector3(20f, 0f, 0f));
         game.Alerts.Attack("wildlife", game.Survivor.WorldFeet + new Vector3(10f, 0f, 0f));
         foreach (int x in drive.Wait(4)) yield return x;
     }

@@ -258,15 +258,15 @@ public partial class BuildTest
 
         // The strikes, the funnel, lava and every attacker.
         var strikes = new List<WarningEntry>();
-        sim.StartStrike(HazardKind.Lightning, feet + new Vector3(20f, 0f, 0f));
-        sim.StartStrike(HazardKind.Debris, feet + new Vector3(10f, 0f, 0f));
+        sim.Strike(HazardKind.Lightning, feet + new Vector3(20f, 0f, 0f)); // hits are never warned: only the funnel is
+        sim.Strike(HazardKind.Debris, feet + new Vector3(10f, 0f, 0f));
         sim.SpawnTornado(feet + new Vector3(0f, 0f, 220f), feet);
         sim.GetWarnings(strikes, feet);
         sim.ClearTornadoes();
         sim.ClearHazards();
         sim.ClearCells();
         var badStrike = strikes.Where(w => !Alerts.Specific(w.Sign)).Select(w => w.Sign ?? "none").ToList();
-        Check(strikes.Count >= 3 && badStrike.Count == 0, $"lightning, falling debris and a tornado each warn by their own sign ({string.Join(", ", strikes.Select(w => w.Sign))}){(badStrike.Count == 0 ? "" : $", but {string.Join(", ", badStrike)} is not one")}");
+        Check(strikes.Count >= 1 && badStrike.Count == 0, $"a tornado warns by its own sign, and lightning and falling debris give no warning ({string.Join(", ", strikes.Select(w => w.Sign))}){(badStrike.Count == 0 ? "" : $", but {string.Join(", ", badStrike)} is not one")}");
         var badAttackers = _game.Zone.Wildlife.Fauna.Species.Where(s => !Alerts.Specific(Alerts.SignFor(s))).Select(s => s.CommonName).ToList();
         string[] others = { "storm", "lava", "husk_hazard", "hostile", "wildlife" };
         Check(badAttackers.Count == 0 && others.All(Alerts.Specific), $"every attacker of this world and the lightning strike and lava alerts have a sign of their own{(badAttackers.Count == 0 ? "" : $" (not {string.Join(", ", badAttackers)})")}");

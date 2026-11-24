@@ -80,10 +80,10 @@ public sealed partial class Staging
         Vector3 side = new Vector3(look.Z, 0f, -look.X).Normalized(), ahead = new Vector3(look.X, 0, look.Z).Normalized();
         var sim = _game.Zone.Weather.Sim;
         sim.SpawnTornado(feet + side * 260f + ahead * 120f, feet);
-        // A strike's charge builds for a few seconds only: a fresh one before each frame, landing 170 m off.
+        // A fresh strike before each frame, landing 170 m off.
         void Threats()
         {
-            sim.StartStrike(Weather.Model.HazardKind.Lightning, feet - side * 150f + ahead * 80f);
+            sim.Strike(Weather.Model.HazardKind.Lightning, feet - side * 150f + ahead * 80f);
             Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
         }
         foreach (int x in _drive.Wait(30)) yield return x;
