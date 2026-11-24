@@ -19,15 +19,15 @@ namespace GalHack.Physics;
 /// not by the face at one point: a crater's short, steep lip is climbed, a long ramp or cliff
 /// steeper than the limit is refused.
 ///
-/// Height is a velocity servo, not a spring: the target climb rate is the ground's own rise
-/// rate (from its attitude) plus a gain times the height error, reached within fixed
-/// acceleration limits. It tracks bumps tightly and can't oscillate.
+/// Height rides on a cushion (<see cref="Cushion"/>): a damped spring to ride height, so it gives
+/// on landing and bobs once or twice over a bump or a step, then settles. The cushion is vertical
+/// only; the attitude is the ground following above and nothing else, so no bounce rolls or flips it.
 /// </summary>
 public sealed class HoverController
 {
     readonly Vector3[] _engines;
     readonly Vector3[] _seen;   // this tick's probe hits: engines, then look-ahead
-    float _lift, _jumpCooldown, _jumpGrace;
+    float _lift, _jumpCooldown;
     static readonly float[] Reaches = { 0.5f, 1f }, Sides = { -1f, 1f };
 
     /// <summary>
@@ -82,7 +82,6 @@ public sealed class HoverController
     {
         _lift = 0f;
         _jumpCooldown = 0f;
-        _jumpGrace = 0f;
         Clearance = float.PositiveInfinity;
         SlopeRefused = false;
         SteepestAhead = 0f;
@@ -104,7 +103,6 @@ public sealed class HoverController
         var horizontal = MathX.Flat(velocity);
 
         _jumpCooldown -= dt;
-        _jumpGrace -= dt;
 
         // Engine probes: the ground (or water) under each engine, along the chair's down. On its side or its roof
         // they face away from the ground and find none (it falls, levelling).
@@ -200,25 +198,16 @@ public sealed class HoverController
         {
             velocity.Y = MathF.Max(velocity.Y, 0f) + h.JumpSpeed;
             _jumpCooldown = h.JumpCooldown;
-            _jumpGrace = 0.25f;
         }
 
-        // Height servo. Grip (pulling down) only works close to the ground, so jumps fly.
-        float error = GroundRef + ride + _lift - engineY;
+        // The cushion, vertical only. Jumps and ledges fly: it never pulls down.
         if (!canHover) velocity.Y -= g * dt; // too heavy: the engines can't hold it up
         else
         {
-            bool gripping = Clearance < ride + _lift + h.GripBand && _jumpGrace <= 0f;
-            float wanted = groundRise + h.VerticalGain * error;
-            if (!gripping && error < 0f) velocity.Y -= g * dt;
-            else
-            {
-                float limit = (wanted > velocity.Y ? h.MaxRise : h.MaxGrip) * dt;
-                float vy = velocity.Y;
-                velocity.Y = MathX.MoveToward(velocity.Y, wanted, limit);
-                // The engines push along the chair's down: what they change in the climb, tipped, pushes it sideways too.
-                velocity += new Vector3(-down.X, 0f, -down.Z) / -down.Y * (velocity.Y - vy);
-            }
+            float vy = velocity.Y;
+            velocity.Y = Cushion(h, GroundRef + ride + _lift - engineY, vy, groundRise, g, dt);
+            // The engines push along the chair's down: what they change in the climb, tipped, pushes it sideways too.
+            velocity += new Vector3(-down.X, 0f, -down.Z) / -down.Y * (velocity.Y - vy);
         }
 
         // Slope limit: never climb into a slope steeper than the limit; slide off one it is on (the
@@ -239,6 +228,27 @@ public sealed class HoverController
         float tilt = MathX.Angle(targetUp, Vector3.UnitY), maxTilt = Units.Radians(h.MaxSlope);
         if (tilt > maxTilt) targetUp = MathX.Slerp(Vector3.UnitY, targetUp, maxTilt / tilt);
         orientation = Follow(orientation, targetUp, 1f - MathF.Exp(-h.LevelRate * dt));
+    }
+
+    /// <summary>
+    /// The hover cushion, shared by every hover vessel and the bike: a damped spring that holds the craft at its ride
+    /// height, vertical only (it has no say in pitch or roll). Below ride height it lifts harder the lower it is, so a
+    /// landing gives and a bump or a step sets it bobbing once or twice before it settles. Stiffness m·ω² and damping
+    /// 2ζ·m·ω scale with the craft's mass, so as an acceleration one spring (the rules' frequency and damping ratio)
+    /// rides a 220 kg bike and a 17 t rover alike. The damping works against the climb relative to the ground's own
+    /// rise, so it rides up a slope without lagging into it. Stepped implicitly (backward Euler), so it can't blow up
+    /// at any tick rate. It only pushes: it never pulls down harder than gravity (a jump, a ledge, a crest fly), and
+    /// never lifts harder than maxRise.
+    /// </summary>
+    /// <param name="error">How far below ride height it is, m (negative above it).</param>
+    /// <param name="climb">Its climb now, m/s.</param>
+    /// <param name="groundRise">How fast the ground under it rises as it moves, m/s.</param>
+    /// <returns>Its climb after this tick, m/s.</returns>
+    public static float Cushion(PhysicsRules.HoverData h, float error, float climb, float groundRise, float g, float dt)
+    {
+        float w = 2f * MathF.PI * h.RideFrequency, relative = climb - groundRise;
+        float next = (relative + dt * w * w * error) / (1f + dt * (2f * h.RideDamping * w + dt * w * w));
+        return climb + Math.Clamp(next - relative, -g * dt, h.MaxRise * dt);
     }
 
     /// <summary>

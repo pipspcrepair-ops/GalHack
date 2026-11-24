@@ -101,6 +101,9 @@ public sealed class HoverBike
     /// <summary>A hop's kick off the ground, m/s.</summary>
     public const float HopSpeed = 7f;
 
+    /// <summary>Its fall off its cushion, m/s².</summary>
+    const float Gravity = 12f;
+
     /// <summary>
     /// The least height of any corner of its hull above what is solid under that corner (the ground, a base's
     /// hull, a place's blocks; not water), m: below zero, that far into it.
@@ -314,17 +317,26 @@ public sealed class HoverBike
         Velocity = new Vector3(move.X, 0f, move.Z);
         Position += Velocity * dt;
 
-        // Up and down: a spring to the cushion over the surface, free fall when well above it.
+        // Up and down: the hover cushion over the surface (the vessels' own, vertical only), free fall when well above it.
         float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out bool water);
         OnWater = water;
         float target = surface + Hover;
         bool wasAirborne = !Grounded;
-        if (Position.Y > target + 0.35f || tossed) { _vy -= 12f * dt; Grounded = false; }
+        if (Position.Y > target + 0.35f || tossed) { _vy -= Gravity * dt; Grounded = false; }
         else
         {
             // Back down: tipped past its plates' reach, it lands on its side or roof and stays there.
             if (wasAirborne && Tilt > 1.05f) Toppled = true;
-            _vy += (70f * (target - Position.Y) - 16f * _vy) * dt;
+            PhysicsRules.HoverData rules = _owner.Rules;
+            // How fast the surface rises under it: the grade to the surface a short way ahead along its travel (its
+            // look-ahead), so it lifts before a rise or a far shore and stops sinking before a near one levels out.
+            float speed = Speed, reach = Math.Clamp(speed * 0.3f, 1f, 8f), rise = 0f;
+            if (speed > 0.5f)
+            {
+                Vector3 ahead = Position + Velocity / speed * reach;
+                rise = Math.Clamp((_owner.SurfaceAt(ahead.X, ahead.Z, Position.Y + LookFrom, out _) - surface) / reach * speed, -rules.MaxClimbRate, rules.MaxClimbRate);
+            }
+            _vy = HoverController.Cushion(rules, target - Position.Y, _vy, rise, Gravity, dt);
             Grounded = true;
         }
         // A hop: its plates kick straight off the ground along the seat's own up (away from the seat's down), not a flip.
@@ -423,6 +435,10 @@ public sealed partial class HoverBikes : Node3D
     public IReadOnlyList<HoverBike> All => _bikes;
 
     public HoverBikes(SurfaceZone zone) { _zone = zone; Name = "HoverBikes"; }
+
+    /// <summary>The hover cushion's rules, shared with the hover vessels.</summary>
+    internal PhysicsRules.HoverData Rules => _zone.Physics?.Rules.Hover ?? DefaultRules;
+    static readonly PhysicsRules.HoverData DefaultRules = new();
 
     /// <summary>Sets a bike down on the ground at a point.</summary>
     public HoverBike Place(Vector3 at, float yaw)

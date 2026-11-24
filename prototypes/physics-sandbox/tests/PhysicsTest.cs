@@ -99,6 +99,7 @@ public partial class PhysicsTest : Node
             foreach (int x in RoverTrench()) yield return x;
             foreach (int x in HoverHoles()) yield return x;
             foreach (int x in HoverOnWater()) yield return x;
+            foreach (int x in HoverCushion()) yield return x;
             yield break;
         }
         if (OS.GetCmdlineUserArgs().Contains("--hulls"))
@@ -140,6 +141,7 @@ public partial class PhysicsTest : Node
         foreach (int x in WindRules()) yield return x;
         foreach (int x in WaterVolume()) yield return x;
         foreach (int x in HoverOnWater()) yield return x;
+        foreach (int x in HoverCushion()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
         foreach (int x in StuckSafety()) yield return x;
         GD.Print("-- standing on built shapes --");
@@ -1564,6 +1566,143 @@ public partial class PhysicsTest : Node
         run.Across = landN > 30 && waterN > 60 && rover.Body.Position.Z <= lake.Y - 34f;
         run.Contacts = _impacts.Count(i => i.Body == rover.Body && i.Other == null);
         for (int i = 0; i < 30; i++) yield return 0;
+    }
+
+    /// <summary>
+    /// The hover cushion is a damped spring, vertical only: dropped from 1.5× its ride height and knocked up as off a bump,
+    /// the rover gives, bobs once or twice and settles at its ride height; and nothing it does ever rolls or flips it.
+    /// Through a hard landing, the lane's bumps, trench and pit at full speed, knocks from the side and a drive off the
+    /// bank, its tilt never goes past what its ground following asks (the plane under it within the slope limit, level
+    /// in the air) and it is never upside down.
+    /// </summary>
+    IEnumerable<int> HoverCushion()
+    {
+        Ship rover = _w.Rover;
+        Body b = rover.Body;
+        HoverController hover = rover.Vessel.Hover;
+        float ride = rover.Stats.RideHeight, feet = b.Shape.FeetBelowOrigin;
+        N.Vector3 parked = b.Position;
+        float parkedHeading = MathX.Heading(b.Rotation);
+        N.Vector2 lake = SandboxTerrain.LakeCenter;
+
+        // The spring, on open water (dead flat): dropped from 1.5× ride height, then knocked up 2.5 m/s as a bump does.
+        var bobs = new List<(string, Bob)>();
+        foreach (var (what, lift, knock) in new[] { ("dropped from 1.5× ride height", 0.5f * ride, 0f), ("knocked up 2.5 m/s as off a bump", 0f, 2.5f) })
+        {
+            rover.Vessel.Place(b, new N.Vector3(lake.X, SandboxTerrain.LakeLevel + ride + feet, lake.Y), 0f);
+            rover.Binding.Teleport();
+            rover.Flight.Input = PilotInput.LetGo;
+            for (int i = 0; i < 150; i++) yield return 0;
+            b.Position.Y += lift;
+            b.Velocity = new N.Vector3(0f, knock, 0f);
+            rover.Binding.Teleport();
+            var series = new List<float>();
+            for (int i = 0; i < 300; i++)
+            {
+                yield return 0;
+                series.Add(hover.Clearance - ride);
+            }
+            bobs.Add((what, Bob.Of(series)));
+        }
+        foreach (var (what, bob) in bobs)
+        {
+            GD.Print($"INFO  cushion, {what}: overshoot {bob.Overshoot:F2} m past ride height, {bob.Bobs} bobs over 3 cm, settled within 3 cm in {bob.Settle:F2} s, off {bob.Final * 100f:F1} cm at the end");
+            Check(bob.Overshoot > 0.03f && bob.Bobs <= 3 && bob.Settle < 3f && MathF.Abs(bob.Final) < 0.02f,
+                $"the hover rover rides a cushion ({what}): it gives and bounces {bob.Overshoot:F2} m past its ride height, bobs {bob.Bobs} times and settles within 3 cm in {bob.Settle:F2} s, " +
+                $"{MathF.Abs(bob.Final) * 100f:F1} cm off ride height after");
+        }
+
+        // No roll, no flip: tilt never past what ground following asks.
+        var watch = new TiltWatch();
+        void Watch()
+        {
+            float ask = hover.Clearance < ride * 2.5f ? MathF.Min(Units.Degrees(MathX.Angle(hover.Attitude, N.Vector3.UnitY)), _w.Rules.Hover.MaxSlope) : 0f;
+            watch.Tick(Units.Degrees(MathX.Angle(MathX.Up(b.Rotation), N.Vector3.UnitY)), ask, MathX.Up(b.Rotation).Y);
+        }
+        float laneZ = SandboxTerrain.LaneZ;
+        // A hard landing from 2× ride height above its cushion, on the lane's rolling ground.
+        rover.Vessel.Place(b, _w.Ground(-40f, laneZ) + N.Vector3.UnitY * (feet + 3f * ride), -MathF.PI / 2f);
+        rover.Binding.Teleport();
+        rover.Flight.Input = PilotInput.LetGo;
+        for (int i = 0; i < 180; i++) { yield return 0; Watch(); }
+        // Down the lane flat out: its rolls, the dug pit's ramps and the trench.
+        for (int t = 0; t < 600 && b.Position.X < 12f; t++)
+        {
+            rover.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -1f));
+            yield return 0;
+            Watch();
+        }
+        rover.Flight.Input = PilotInput.LetGo;
+        // Knocked from the side, at rest and moving: 10 m/s across it, three times.
+        for (int k = 0; k < 3; k++)
+        {
+            for (int i = 0; i < 60; i++) { yield return 0; Watch(); }
+            N.Vector3 side = MathX.Rotate(b.Rotation, N.Vector3.UnitX);
+            b.Velocity += MathX.Flat(side) * (k == 1 ? -10f : 10f) + N.Vector3.UnitY * 2f;
+            for (int i = 0; i < 60; i++) { yield return 0; Watch(); }
+        }
+        // Off the bank's 13 m ledge onto the slope and basin below, at 10 m/s.
+        rover.Vessel.Place(b, _w.Ground(38f, -30f) + N.Vector3.UnitY * (feet + ride), -MathF.PI / 2f);
+        rover.Binding.Teleport();
+        for (int i = 0; i < 60; i++) { yield return 0; Watch(); }
+        for (int t = 0; t < 360 && b.Position.X < 66f; t++)
+        {
+            rover.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -10f / rover.Stats.TopSpeed));
+            yield return 0;
+            Watch();
+        }
+        rover.Flight.Input = PilotInput.LetGo;
+        for (int i = 0; i < 120; i++) { yield return 0; Watch(); }
+        GD.Print($"INFO  cushion, no roll: tilt {watch.Most:F1}° at most (ground following asked {watch.MostAsk:F1}°), never more than {watch.Excess:F2}° past the ask, lowest up {watch.LowestUp:F2}, reached x {b.Position.X:F0} off the bank");
+        Check(watch.Excess < 2f && watch.LowestUp > 0.5f && b.Position.X > 56f,
+            $"no bounce rolls or flips a hover vessel: through a hard landing, the lane flat out, side knocks and a drive off the bank its tilt is never more than {watch.Excess:F2}° past " +
+            $"what ground following asks (at most {watch.Most:F0}°, asked {watch.MostAsk:F0}°), never upside down");
+
+        rover.Vessel.Place(b, parked, parkedHeading);
+        rover.Binding.Teleport();
+        for (int i = 0; i < 30; i++) yield return 0;
+    }
+
+    /// <summary>Tilt against what ground following asked over the last 2 s (it tips toward the ask, so never past the most it asked lately).</summary>
+    sealed class TiltWatch
+    {
+        readonly Queue<float> _asks = new();
+        public float Most, MostAsk, Excess = float.NegativeInfinity, LowestUp = 1f;
+
+        public void Tick(float tilt, float ask, float upY)
+        {
+            _asks.Enqueue(ask);
+            if (_asks.Count > 120) _asks.Dequeue();
+            Most = MathF.Max(Most, tilt);
+            MostAsk = MathF.Max(MostAsk, ask);
+            Excess = MathF.Max(Excess, tilt - _asks.Max());
+            LowestUp = MathF.Min(LowestUp, upY);
+        }
+    }
+
+    /// <summary>A cushion's response from a height-off-ride series (one sample a tick): overshoot, bobs and settle time.</summary>
+    sealed class Bob
+    {
+        public float Overshoot, Settle, Final;
+        public int Bobs;
+
+        public static Bob Of(List<float> dev)
+        {
+            const float Band = 0.03f;
+            var bob = new Bob { Final = dev[^1] };
+            // The first swing's side: where it was let go (or where the knock sends it).
+            float first = dev.First(d => MathF.Abs(d) > Band);
+            int last = 0, side = 0;
+            for (int i = 0; i < dev.Count; i++)
+            {
+                if (MathF.Abs(dev[i]) > Band) last = i;
+                if (MathF.Sign(dev[i]) == -MathF.Sign(first)) bob.Overshoot = MathF.Max(bob.Overshoot, MathF.Abs(dev[i]));
+                int s = dev[i] > Band ? 1 : dev[i] < -Band ? -1 : 0;
+                if (s != 0 && s != side) { bob.Bobs++; side = s; }
+            }
+            bob.Settle = (last + 1) * Dt;
+            return bob;
+        }
     }
 
     IEnumerable<int> GearOnUnevenGround()
