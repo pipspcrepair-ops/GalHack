@@ -82,7 +82,7 @@ public partial class OccupantTest
         Check(ruined / Math.Max(1, ruinedN) > active / Math.Max(1, activeN), "a ruin has more crawlers than a lived-in place");
         Check(harmful == 0, $"every crawler is harmless ({harmful} that hunt)");
         Check(crawl.Insects > 10 && crawl.Inside == 0, $"crawlers crawl on their faces, never in them: {crawl.Insects} in {crawl.Places} places, {crawl.Inside} points inside a block (worst {crawl.Worst:F2} m){crawl.Example}");
-        Check(small >= crawlers * 0.6f && poorBig == 0 && (richBugs < 15 || richBig > 0), $"sizes follow the air: {small} of {crawlers} small (a few cm to 15 cm), {poorBig} big in poor air, {richBig} big of {richBugs} in rich air");
+        Check(small >= crawlers * 0.6f && poorBig == 0 && (richBugs < 15 || richBig > 0), $"sizes follow the air: {small} of {crawlers} small (7 to 15 cm), {poorBig} big in poor air, {richBig} big of {richBugs} in rich air");
         Check(settled > 10 && floating == 0, $"nothing hangs in the air: {floating} of {settled} crawlers off any face");
     }
 

@@ -260,6 +260,9 @@ public static partial class PoiFauna
     /// place, and in one left to rot than in one lived in. Their own roll, so the place's other rolls stay as they were;
     /// none where the world's insects aren't harmless (a swarm took it).
     /// </summary>
+    /// <summary>STAGING (screenshots only): a place's first crawler is a big one, whatever the air.</summary>
+    public static bool StageBig;
+
     static void WallCrawlers(PoiPlan poi, PoiPopulation pop, DeepFauna fauna)
     {
         var rng = Rng.For(poi.Seed, "wall-crawlers");
@@ -275,12 +278,12 @@ public static partial class PoiFauna
         {
             PoiRoom room = rooms[rng.Int(0, rooms.Count - 1)];
             if (Fits(fauna, DeepRole.Crawler, theme, room, false) is not { Passive: true } big) continue;
-            // Their size goes by the air (owner, 24 Nov): small bugs mostly, a few cm to 15 cm; the odd big one up to the
+            // Their size goes by the air (owner, 24 Nov): small bugs mostly, 7 to 15 cm (smaller doesn't read on a wall from a few metres); the odd big one up to the
             // place's own size where the air is rich enough to feed it, none where it is poor (as Earth's insects in its high-oxygen eras).
             float bigShare = poi.Air < 0.6f ? 0f : Math.Clamp((poi.Air - 0.8f) * 0.6f, 0.06f, 0.45f);
             float most = big.Body.Size;
-            float length = rng.Chance(bigShare) && most > 0.2f ? rng.Range(MathF.Max(0.15f, most * (poi.Air > 1.3f ? 0.4f : 0.15f)), most)
-                : MathF.Min(most, 0.04f + 0.11f * rng.Float() * rng.Float());
+            float length = (rng.Chance(bigShare) || StageBig && i == 0) && most > 0.2f ? rng.Range(MathF.Max(0.15f, most * (poi.Air > 1.3f ? 0.4f : 0.15f)), most)
+                : MathF.Min(most, 0.07f + 0.08f * rng.Float() * rng.Float());
             Species sp = fauna.Sized(big, length);
             // Two in three on a wall, the rest on the ceiling.
             Vector3 at, up;
