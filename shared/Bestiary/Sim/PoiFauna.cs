@@ -336,11 +336,11 @@ public static partial class PoiFauna
         int maxDepth = 0;
         foreach (PoiRoom r in poi.Rooms) maxDepth = Math.Max(maxDepth, r.Depth);
 
-        // Cracks and food first: every room has somewhere for small things to go and something to eat.
+        // Vents and food first: every room has something to eat (no wall cracks are made: see the README).
         foreach (PoiRoom room in poi.Rooms)
         {
-            int cracks = rng.Int(pr.Cracks);
-            for (int i = 0; i < cracks; i++) pop.Cracks.Add(WallCrack(room, rng, network: 1, pop.Cracks.Count));
+            // The cracks are still rolled and dropped, so every place's other rolls stay as they were.
+            for (int i = rng.Int(pr.Cracks); i > 0; i--) WallCrack(room, rng, 1, -1);
             foreach (var (at, n) in room.Vents)
                 pop.Cracks.Add(new Crack { Id = pop.Cracks.Count, Kind = CrackKind.Vent, Position = at, Normal = n, Network = 2, Size = 0.45f });
             if (room.Kind is RoomKind.Vent or RoomKind.Duct) continue;

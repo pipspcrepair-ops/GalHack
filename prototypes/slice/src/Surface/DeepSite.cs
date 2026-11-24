@@ -283,14 +283,14 @@ public partial class DeepSite : Node3D
     }
 
     /// <summary>
-    /// The lair marks (cracks, moss and scraps, nests) round the eye, a few at a time: wildlife's own
+    /// The lair marks (moss and scraps, nests) round the eye, a few at a time: wildlife's own
     /// lair view, each drawing one (they keep scaling with the nests and food). A large place has
     /// thousands, so only those in reach stand.
     /// </summary>
     void TickLairs(Vector3 eye, Stopwatch clock)
     {
         if (++_lairFrame % 20 != 0) return;
-        int count = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
+        int count = Sim.Food.Count + Sim.Nests.Count;
         for (int k = 0; k < count && clock.Elapsed.TotalMilliseconds < _allow; k++)
         {
             float d = (MarkAt(k) - eye).Length();
@@ -301,16 +301,14 @@ public partial class DeepSite : Node3D
 
     Vector3 MarkAt(int k)
     {
-        if (k < Sim.Cracks.Count) return Sim.Cracks[k].Position;
-        if ((k -= Sim.Cracks.Count) < Sim.Food.Count) return Sim.Food[k].Position;
+        if (k < Sim.Food.Count) return Sim.Food[k].Position;
         return Sim.Nests[k - Sim.Food.Count].Position;
     }
 
     LairView BuildLair(int k)
     {
         var part = new WildSim(Sim.Data, Sim.Terrain, Sim.Nav);
-        if (k < Sim.Cracks.Count) part.Cracks.Add(Sim.Cracks[k]);
-        else if ((k -= Sim.Cracks.Count) < Sim.Food.Count) part.Food.Add(Sim.Food[k]);
+        if (k < Sim.Food.Count) part.Food.Add(Sim.Food[k]);
         else part.Nests.Add(Sim.Nests[k - Sim.Food.Count]);
         var view = new LairView { Name = "Lair" };
         _lairs.AddChild(view);

@@ -157,13 +157,14 @@ public static partial class Brain
 
     // ---- Cracks: in at one, out at another (or gone) --------------------------------------
 
+    /// <summary>The wall crack a small thing runs for (a vent or a door is an ambusher's hole, never an insect's way out).</summary>
     static Crack NearestCrack(WildSim w, Creature c, float radius, Vector3? awayFrom = null)
     {
         Crack best = null;
         float bestScore = float.MaxValue;
         foreach (Crack k in w.Cracks)
         {
-            if (k.Kind == CrackKind.Door) continue;
+            if (k.Kind != CrackKind.Crack) continue;
             float d = Dist3(c, k.Position);
             if (d > radius) continue;
             float score = d;

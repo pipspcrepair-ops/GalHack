@@ -70,6 +70,7 @@ public partial class CreaturesTest : Node
             AmbushesAreTold();
             WalkThroughThePlace();
             FoodChain();
+            NoWallCracks();
             WreckNesters();
             Mutations();
             Settlements();
@@ -1097,6 +1098,7 @@ public partial class CreaturesTest : Node
     }
 
     // ---- The food chain ---------------------------------------------------------------------
+
 
     void FoodChain()
     {
