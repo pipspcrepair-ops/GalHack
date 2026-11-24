@@ -591,11 +591,13 @@ public partial class GenTest : Node
                 PlanetSpec spec;
                 do spec = PlanetSpec.Roll((ulong)rng.NextInt64(1, long.MaxValue), a, v, 8);
                 while (spec.Airless);
-                float[] f = Form(PlanetGenerator.Generate(spec), out Oklab land);
-                if (s < train) trainSet.Add((f, (int)a, v));
-                else testSet.Add((f, (int)a));
+                float[] f = Form(PlanetGenerator.Generate(spec), out Oklab? land);
+                // The classifier sees fire by its presence more than its amount (a lava world may hold little open lava): glow on a log scale.
+                float[] seen = f.Select((x, d) => d == 0 ? MathF.Log10(x + 1e-4f) : x).ToArray();
+                if (s < train) trainSet.Add((seen, (int)a, v));
+                else testSet.Add((seen, (int)a));
                 // (Today's look paints every world of a type alike, by design: its variety is the rest's.)
-                if (!WorldPalette.IsToday(spec)) (landColours.TryGetValue(a, out var colours) ? colours : landColours[a] = new List<Oklab>()).Add(land);
+                if (!WorldPalette.IsToday(spec) && land is Oklab l) (landColours.TryGetValue(a, out var colours) ? colours : landColours[a] = new List<Oklab>()).Add(l);
                 (byType.TryGetValue(a, out var forms) ? forms : byType[a] = new List<float[]>()).Add(f);
             }
         // Each feature's least on the worlds that should show it, and its most on those that shouldn't.
@@ -608,14 +610,19 @@ public partial class GenTest : Node
         float Mean(Func<Archetype, bool> which, int d) => byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Average(f => f[d]);
         float lavaGlow = Mean(a => a == Archetype.Lava, 0), otherGlow = Mean(a => a is not (Archetype.Lava or Archetype.Alien), 0);
         Check(Least(Archetype.Lava, 0) > 0f && lavaGlow >= 0.05f && lavaGlow >= 10f * otherGlow, $"lava glows: every lava world shows fire (least {Least(Archetype.Lava, 0):P1}), {lavaGlow:P1} of a lava world self-lit on average against {otherGlow:P2} of a temperate, arid or ice one");
-        float otherWhite = Most(a => a is not (Archetype.Ice or Archetype.Temperate), 1);
-        Check(Least(Archetype.Ice, 1) >= 0.4f && otherWhite < 0.15f, $"ice is ice: at least {Least(Archetype.Ice, 1):P0} of every ice world white with snow and ice, at most {otherWhite:P0} of an arid, lava or alien one");
-        // Arid worlds grow scrub where their air is humid and oases in wetlands, and a temperate world may hold a desert or
-        // badlands: the types differ in the bulk of their worlds, so each type's far tail is judged against the other's middle.
-        float Grown(Archetype a, float q) { var v = byType[a].Select(f => f[2]).OrderBy(x => x).ToList(); return v[(int)(q * (v.Count - 1))]; }
-        var (aridMid, aridHigh, aridMost) = (Grown(Archetype.Arid, 0.5f), Grown(Archetype.Arid, 0.9f), Grown(Archetype.Arid, 1f));
-        var (tempMid, tempLow, tempLeast) = (Grown(Archetype.Temperate, 0.5f), Grown(Archetype.Temperate, 0.1f), Grown(Archetype.Temperate, 0f));
-        Check(aridHigh < tempLow && aridMost < tempMid && tempLeast > aridMid, $"an arid world is thinly grown, a temperate one grown over: land covered by what grows, arid median {aridMid:F2}, 90th pct {aridHigh:F2}, most {aridMost:F2}; temperate median {tempMid:F2}, 10th pct {tempLow:F2}, least {tempLeast:F2}");
+        // Types told apart by the bulk of their worlds, each far tail judged against the other's middle: an arid world may have
+        // snow at its poles, scrub where its air is humid and oases in wetlands, and a temperate world a desert or badlands.
+        float At(Func<Archetype, bool> which, int d, float q) { var v = byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Select(f => f[d]).OrderBy(x => x).ToList(); return v[(int)(q * (v.Count - 1))]; }
+        (bool ok, string low, string high) Apart(Func<Archetype, bool> low, Archetype high, int d, string n)
+        {
+            var (lMid, lHigh, lMost) = (At(low, d, 0.5f), At(low, d, 0.9f), At(low, d, 1f));
+            var (hMid, hLow, hLeast) = (At(a => a == high, d, 0.5f), At(a => a == high, d, 0.1f), At(a => a == high, d, 0f));
+            return (lHigh < hLow && lMost < hMid && hLeast > lMid, $"median {lMid.ToString(n)}, 90th pct {lHigh.ToString(n)}, most {lMost.ToString(n)}", $"median {hMid.ToString(n)}, 10th pct {hLow.ToString(n)}, least {hLeast.ToString(n)}");
+        }
+        var white = Apart(a => a is not (Archetype.Ice or Archetype.Temperate), Archetype.Ice, 1, "P0");
+        Check(white.ok, $"ice is ice: white with snow and ice, an arid, lava or alien world {white.low}; an ice world {white.high}");
+        var grown = Apart(a => a == Archetype.Arid, Archetype.Temperate, 2, "F2");
+        Check(grown.ok, $"an arid world is thinly grown, a temperate one grown over: land covered by what grows, arid {grown.low}; temperate {grown.high}");
         float otherStrange = Most(a => a != Archetype.Alien, 6);
         Check(Least(Archetype.Alien, 6) >= 0.3f && otherStrange == 0f, $"an alien world stands in crystal and fungus: at least {Least(Archetype.Alien, 6):P0} of every alien world's land, none of any other");
 
@@ -669,12 +676,15 @@ public partial class GenTest : Node
     /// <summary>
     /// What a world's form shows, measured: the share of its globe burning bright (lava), the share white with snow and ice,
     /// how covered its land is by what grows (<see cref="WorldPalette.Cover"/>), its land fraction, mean slope, relief, and the
-    /// share of its land in crystal and fungus. <paramref name="land"/> is its land's mean colour away from snow, for variety.
+    /// share of its land in crystal and fungus. <paramref name="land"/> is its land's own mean colour for variety, unshaded and
+    /// without its snow (white on any world, and grey where the relief shades it); none where all its land is snow.
     /// </summary>
-    static float[] Form(WorldMap map, out Oklab land)
+    static float[] Form(WorldMap map, out Oklab? land)
     {
-        var colors = ColorMap.Build(map, ArchetypeLook.For(map.Spec), 192);
-        int pixels = colors.Width * colors.Height, glowing = 0, white = 0, landPixels = 0;
+        var look = ArchetypeLook.For(map.Spec);
+        var colors = ColorMap.Build(map, look, 192);
+        Rgb[] own = ColorMap.CellColors(map, look, out _);
+        int pixels = colors.Width * colors.Height, glowing = 0, white = 0, landCells = 0;
         float lr = 0f, lg = 0f, lb = 0f;
         for (int p = 0; p < pixels; p++)
         {
@@ -686,12 +696,7 @@ public partial class GenTest : Node
             float hue = (o.Hue * 180f / MathF.PI + 360f) % 360f;
             bool snow = o.L > 0.85f && o.Chroma < 0.06f || o.L > 0.8f && o.Chroma < 0.06f && hue is > 220f and < 260f;
             if (snow) white++;
-            // The land's own colour for variety: its ground and growth, not its snow (white on any world).
-            if (colors.Albedo[p * 4 + 3] > 0 || snow) continue;
-            (lr, lg, lb, landPixels) = (lr + r, lg + g, lb + b, landPixels + 1);
         }
-        landPixels = Math.Max(landPixels, 1);
-        land = Oklab.Of(new Rgb(lr / landPixels, lg / landPixels, lb / landPixels));
 
         double slope = 0, elev = 0, elev2 = 0, cover = 0;
         int cells = 0, dry = 0, strange = 0;
@@ -703,6 +708,7 @@ public partial class GenTest : Node
                 dry++;
                 cover += WorldPalette.Cover(biome);
                 if (biome is Biome.CrystalPlain or Biome.CrystalSpires or Biome.FungalForest or Biome.SporeMarsh or Biome.Mycelium or Biome.GlowMoss) strange++;
+                if (biome is not (Biome.Snow or Biome.Snowfield or Biome.Glacier)) (lr, lg, lb, landCells) = (lr + own[k].R, lg + own[k].G, lb + own[k].B, landCells + 1);
             }
             if (map.Flags[k] != 0 && !map.Has(k, CellFlags.Riparian) && !map.Has(k, CellFlags.Coast)) continue;
             slope += map.Slope[k];
@@ -710,6 +716,7 @@ public partial class GenTest : Node
             elev2 += map.Elevation[k] * map.Elevation[k];
             cells++;
         }
+        land = landCells > 0 ? Oklab.Of(new Rgb(lr / landCells, lg / landCells, lb / landCells)) : null;
         cells = Math.Max(cells, 1);
         dry = Math.Max(dry, 1);
         double elevMean = elev / cells;
