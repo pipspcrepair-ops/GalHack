@@ -190,7 +190,7 @@ public sealed class ItemCatalogue
 
     /// <summary>What the data says about a block's item beyond its bill (all optional).</summary>
     internal sealed record BlockItemSpec(string Name = null, string Short = null, int? Stack = null, double? Seconds = null,
-        int? Tier = null, string Group = null, string Uses = null, IReadOnlyList<string> Was = null);
+        int? Tier = null, string Group = null, string Uses = null, IReadOnlyList<string> Was = null, bool Part = false);
 
     static IEnumerable<string> Was(JsonElement e) =>
         e.TryGetProperty("was", out JsonElement was) ? was.EnumerateArray().Select(x => x.GetString()) : Array.Empty<string>();
@@ -239,7 +239,8 @@ public sealed class ItemCatalogue
                 e.TryGetProperty("seconds", out JsonElement sec) ? sec.GetDouble() : null,
                 e.TryGetProperty("tier", out JsonElement t) ? t.GetInt32() : null,
                 Uses: has ? DataJson.Str(item, "uses", null) : null,
-                Was: Was(e).ToList()));
+                Was: Was(e).ToList(),
+                Part: DataJson.Bool(e, "part", false)));
         }
     }
 
@@ -273,6 +274,7 @@ public sealed class ItemCatalogue
             BlockId = id,
             Family = bill.Family,
             Group = s.Group,
+            IsPart = s.Part,
         };
         if (item.StackSize <= 0) throw new InvalidDataException($"block item '{id}': stack must be positive");
         if (_byId.ContainsKey(id)) throw new InvalidDataException($"block item '{id}' clashes with an item id");

@@ -157,7 +157,7 @@ public sealed class Progress
         // agree. Deco pieces are block items too, grouped by their theme set on the deco tab.
         var nodes = new List<TechNode>();
         foreach (ItemDef i in items.Items)
-            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, i.BlockId) { Group = i.Group });
+            if (i.Unlock != null && !i.IsPart) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, i.BlockId) { Group = i.Group });
         return nodes.OrderBy(n => Array.IndexOf(Tabs, n.Tab)).ThenBy(n => n.Level).ThenBy(n => n.Name, StringComparer.Ordinal).ToList();
     }
 

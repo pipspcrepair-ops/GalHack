@@ -111,6 +111,10 @@ public sealed class ItemDef
     public bool IsUniversalDeco => BlockId == DecoCatalogue.UniversalBlock;
     /// <summary>One deco piece's own item (an unlock node and a gallery entry): never crafted or carried, since the universal block places every piece.</summary>
     public bool IsDecoPiece => Family == BlockFamily.Deco && !IsUniversalDeco;
+    /// <summary>A block that only comes with another item (a force field's emitters, data: <c>part</c>): never crafted, listed or unlocked on its own.</summary>
+    public bool IsPart { get; init; }
+    /// <summary>Shown on constructor lists, the block palette and the tech tree: not a deco piece or a part.</summary>
+    public bool IsListed => !IsDecoPiece && !IsPart;
     public string ShortName => Short ?? Name;
 
     public override string ToString() => Id;

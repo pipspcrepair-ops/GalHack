@@ -29,7 +29,7 @@
     { "make": "neodymium-bar",    "count": 1, "from": { "neodymium-ore": 2 },             "seconds": 3,   "tier": 1 },
     { "make": "gold-bar",         "count": 1, "from": { "gold-ore": 3 },                  "seconds": 3,   "tier": 1 },
     { "make": "gravium-ingot",    "count": 1, "from": { "gravium-ore": 3 },               "seconds": 4,   "tier": 2 },
-    { "make": "fold-crystal",     "count": 1, "from": { "fold-crystal-raw": 2 },          "seconds": 5,   "tier": 1 },
+    { "make": "fold-crystal",     "count": 1, "from": { "fold-crystal-raw": 2 },          "seconds": 5,   "tier": 0 },
     { "make": "emberite",         "count": 1, "from": { "emberite-ore": 2 },              "seconds": 6,   "tier": 2 },
     { "make": "starsilver-bar",   "count": 1, "from": { "starsilver-ore": 3 },            "seconds": 6,   "tier": 2 },
     { "make": "voidglass",        "count": 1, "from": { "voidglass-shard": 2 },           "seconds": 8,   "tier": 3 },
@@ -62,7 +62,7 @@
     // A drive's own parts come from its worlds (owner, 22 Nov): the warp coil's starsilver from vacuum worlds,
     // the field emitter's fold crystal from high-gravity ones.
     { "make": "field-emitter",    "count": 1, "from": { "fold-crystal": 2, "logic-module": 1, "winding": 2 }, "seconds": 14, "tier": 2 },
-    { "make": "warp-coil",        "count": 1, "from": { "starsilver-bar": 4, "magnet": 4 }, "seconds": 30, "tier": 3 },
+    { "make": "warp-coil",        "count": 1, "from": { "starsilver-bar": 4, "magnet": 4 }, "seconds": 30, "tier": 2 },
     { "make": "fusion-core",      "count": 1, "from": { "emberite": 2, "magnet": 2, "machine-frame": 1 }, "seconds": 30, "tier": 3 },
     { "make": "voidglass-lens",   "count": 1, "from": { "voidglass": 1, "glass": 2 },    "seconds": 14,  "tier": 3 },
     { "make": "storm-capacitor",  "count": 1, "from": { "stormcore": 1, "winding": 2 },  "seconds": 14,  "tier": 3 },
@@ -76,8 +76,9 @@
     { "make": "o2-bottle",        "count": 1, "from": { "iron-bar": 1 },                    "seconds": 2,   "tier": 0 },
     { "make": "medkit",           "count": 1, "from": { "biomass": 2, "polymer": 1 },     "seconds": 3,   "tier": 0 },
     { "make": "biofuel",          "count": 1, "from": { "biomass": 3 },                   "seconds": 2,   "tier": 0 },
-    // Warp fuel is gathered: one pentaxite makes two cells (Empyrion's pentaxid ore to crystals).
-    { "make": "warp-cell",        "count": 2, "from": { "pentaxite": 1 },                 "seconds": 5,   "tier": 1 },
+    // Warp fuel is gathered: one pentaxite makes two cells (Empyrion's pentaxid ore to crystals). Both
+    // drive fuels refine in any constructor (owner, 25 Nov); the drives come from the large one.
+    { "make": "warp-cell",        "count": 2, "from": { "pentaxite": 1 },                 "seconds": 5,   "tier": 0 },
     { "make": "energy-cell",      "count": 2, "from": { "copper-bar": 1, "graphite": 1 }, "seconds": 3,   "tier": 0 },
     { "make": "fuel-pack",        "count": 1, "from": { "burnstone": 3 },                 "seconds": 2,   "tier": 0 },
     { "make": "large-fuel-pack",  "count": 1, "from": { "fuel-pack": 4, "polymer": 1 },   "seconds": 6,   "tier": 1 },

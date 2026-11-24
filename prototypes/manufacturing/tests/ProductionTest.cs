@@ -176,7 +176,9 @@ public partial class ProductionTest : TestBase
         Check(survival.Order("iron-plate", 4).Ok, "the survival constructor makes hull plates from ore");
         Check(small.Order("thrust-assembly").Status == OrderStatus.NeedsHigherTier, "a small constructor can't make a thrust assembly");
         Check(large.Order("thrust-assembly").Ok, "a large constructor can");
-        Check(large.Order("warp-coil").Status == OrderStatus.NeedsHigherTier, "only an advanced constructor makes warp coils");
+        Check(large.Order("fusion-core").Status == OrderStatus.NeedsHigherTier, "only an advanced constructor makes fusion cores");
+        Check(large.Order("warp-coil").Ok && survival.Order("warp-cell").Status != OrderStatus.NeedsHigherTier && survival.Order("fold-crystal").Status != OrderStatus.NeedsHigherTier,
+            "a large constructor makes warp coils (so both drives), and any constructor refines both drive fuels");
         Check(small.Order("echo-shard").Status == OrderStatus.NoRecipe, "unique finds can't be ordered");
         Check(small.Order("iron-ore").Status == OrderStatus.NoRecipe, "raw ore can't be ordered");
         double t = _items.Item("iron-plate").Recipe.Seconds;

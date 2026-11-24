@@ -609,6 +609,8 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 ## Gathering and building
 
+- [x] Warp and fold fuel and drives can't be produced (owner, 25 Nov): warp cells and fold crystal now refine in any constructor; warp coils (so both drives) come from the large constructor, not only the advanced one [batch] [high]
+- [x] "Force" (the bare force field emitter) did nothing (owner, 25 Nov): emitters only come with a force field, so they are off the constructor lists, the palette and the tech tree (blocks.json `part`) [batch] [high]
 - [ ] Gather mode slowly chips at everything it points at, never instant deletion, including building blocks found in the world [batch] [normal]
 - [ ] Sustained drilling, resources trickling in, blocks shrinking into their neighbours; faster tools by level; own blocks stay instant [batch] [normal]
 - [ ] Trees give materials with each hit, fall over once depleted, leave a stump, and the trunk fades [batch] [normal]
