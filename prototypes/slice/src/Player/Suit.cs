@@ -139,7 +139,9 @@ public sealed class Suit : IDamageSink
         double weather = _zone.Weather.Sim == null ? 0 : _zone.Weather.Sim.Current.Temperature - _zone.Weather.Sim.Archetype.BaseTemperature;
         double day = _climate.DayNightSwing * Math.Clamp(_zone.Sky.ToSun.Y * 2f, -1f, 1f);
         double height = -_climate.LapsePerKm * Math.Max(0, p.Y) / 1000.0;
-        double oxygen = OxygenAt(_zone, p.Y);
+        string air = planet.Sky.Air.ToString();
+        double oxygen = planet.Sky.Density < SurfaceWeather.NoAir ? 0 : _climate.OxygenByAir.TryGetValue(air, out double o2) ? o2 : 21; // an airless world: none
+        if (p.Y > _zone.Physics.Zone.Ceiling) oxygen = 0;
         // Head under water: nothing to breathe, the suit on its own oxygen (or held breath).
         if (_zone.Water.Under(new Godot.Vector3((float)p.X, (float)p.Y + Survivor.EyeHeight, (float)p.Z), out _)) oxygen = 0;
         // The world's background, and what a nuclear crater and its ring left in the ground here.
@@ -157,11 +159,6 @@ public sealed class Suit : IDamageSink
             }
         return new Exposure(temperature, oxygen, radiation, null, planet.Palette.BiomeAt(x, z).ToString(), LavaMetres(p));
     }
-
-    /// <summary>The world's own oxygen at a height, %: none on an airless world or above the air's ceiling (the one rule the sleeper and a town's people breathe by).</summary>
-    public static double OxygenAt(SurfaceZone zone, double y) =>
-        zone.Planet.Sky.Density < SurfaceWeather.NoAir || y > zone.Physics.Zone.Ceiling ? 0
-        : zone.Data.Rules.Climate.OxygenByAir.TryGetValue(zone.Planet.Sky.Air.ToString(), out double o2) ? o2 : 21;
 
     /// <summary>
     /// What a dust storm carries on a world a nuclear war blasted, RAD: the dust it lifts is the craters' fallout, a share of the
