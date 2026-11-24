@@ -18,7 +18,7 @@ namespace Slice.Tests;
 /// - 400 m up in fog weather the air fogs the land and the sky no more than clear air does there: the layer stays below;
 /// - 400 m up in clear air land 3 km off keeps at least 15 % of its own colour, hazed but never erased.
 ///
-/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/FogLayerTest.tscn
+/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/FogLayerTest.tscn (windowed with --keep=DIR: a shot per reading)
 /// </summary>
 public partial class FogLayerTest : Node
 {
@@ -126,6 +126,7 @@ public partial class FogLayerTest : Node
         foreach (int x in Hold(WeatherKind.Fog, new Vector3(worst.X, ground + Up, worst.Z))) yield return x;
         float top = env.FogHeight, floor = top - zone.Sky.Air.ValleyFogDepth; // the layer as it lies round the focus
         GD.Print($"  (the eye over a place with ground fog {zone.Sky.Air.GroundFog:F2}, its ground {ground:F0} m, the layer {floor:F0} to {top:F0} m)");
+        string keep = Array.Find(OS.GetCmdlineUserArgs(), a => a.StartsWith("--keep="))?["--keep=".Length..]; // shots, run in a window
         var seen = new Dictionary<(WeatherKind, bool), Seen>();
         foreach (WeatherKind kind in new[] { WeatherKind.Clear, WeatherKind.Fog, WeatherKind.Rain })
         foreach (bool high in new[] { false, true })
@@ -134,6 +135,7 @@ public partial class FogLayerTest : Node
             foreach (int x in Hold(kind, eye)) yield return x;
             var s = new Seen(env.FogDensity, Fogged(env, MathF.Sqrt(Far * Far + (eye.Y - ground) * (eye.Y - ground)), ground), env.FogSkyAffect, zone.Sky.Air.Visibility);
             seen[(kind, high)] = s;
+            if (keep != null) _game.GetViewport().GetTexture().GetImage().SavePng(System.IO.Path.Combine(keep, $"fog-{kind}-{eye.Y:F0}m.png".ToLowerInvariant()));
             GD.Print($"  ({kind} at {eye.Y:F0} m: density {s.Density * 1e6f:F0}e-6, height fog {env.FogHeightDensity:F4} under {env.FogHeight:F0} m, sky {s.Sky:F2}, land {Far / 1000f:F0} km off {s.Land:P0} fogged)");
         }
         _game.FixedCamera = null;
