@@ -90,6 +90,7 @@ public partial class Schools : Node3D
             Multimesh = mesh,
             MaterialOverride = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Metallic = 0.35f, Roughness = 0.35f },
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off, // (the fish are placed every drawn frame, in _Process)
         };
         AddChild(_view);
     }

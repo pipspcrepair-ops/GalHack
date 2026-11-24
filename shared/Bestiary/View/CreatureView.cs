@@ -177,6 +177,7 @@ public partial class CreatureView : Node3D
                 MaterialOverride = material,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 VisibilityRangeEnd = range,
+                PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off, // (its members are placed every drawn frame, in Sync)
             };
             AddChild(_swarm);
         }
