@@ -156,7 +156,7 @@ Grouped by where they plug in. Reuse names are real files or data in the batch w
 - New: a blinking point on a moon, a marker linking the two zones.
 - Why: the purest "call to adventure" available: seen in the first hour, reached much later.
 
-**17. Night Lights (S).** After dark, inhabited places show as warm specks from kilometres off, and a few old installations throw a beam straight up.
+**17. Night Lights (S).** After dark, inhabited places show as warm specks from kilometres off. (The beams straight up from old installations were removed: owner, 18 Nov.)
 - Trope: the lit window in a dark land.
 - Plugs in: POI far drawing, by occupancy.
 - Reuses: POI layer's far mesh, `Mood`, `light` colours.

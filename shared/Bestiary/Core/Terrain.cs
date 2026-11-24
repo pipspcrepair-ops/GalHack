@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 
 namespace Wildlife;
@@ -47,9 +48,24 @@ public sealed class Terrain
             _grid[j * _n + i] = height(-halfSize + i * Step, -halfSize + j * Step);
     }
 
-    /// <summary>Ground height at a point, from the baked grid (clamped at the edge of the map).</summary>
+    /// <summary>
+    /// The ground dug or blasted away, by the metre: each such column's top as it now stands (it is a hole's floor, never the
+    /// grid's slope across it). Swapped whole on a change, so a reader on a worker never sees one half-made.
+    /// </summary>
+    Dictionary<(int, int), float> _dug;
+
+    /// <summary>The ground over these 1 m columns (x, z: the column's corner, this terrain's frame) dug down to these heights.</summary>
+    public void Dug(IEnumerable<(int X, int Z, float Top)> columns)
+    {
+        var dug = _dug == null ? new Dictionary<(int, int), float>() : new Dictionary<(int, int), float>(_dug);
+        foreach (var (x, z, top) in columns) dug[(x, z)] = top;
+        _dug = dug;
+    }
+
+    /// <summary>Ground height at a point: where it has been dug, the column's top as it stands; else from the baked grid (clamped at the edge of the map).</summary>
     public float Height(float x, float z)
     {
+        if (_dug is { } dug && dug.TryGetValue(((int)MathF.Floor(x), (int)MathF.Floor(z)), out float top)) return top;
         float gx = Math.Clamp((x + HalfSize) / Step, 0f, _n - 1.001f), gz = Math.Clamp((z + HalfSize) / Step, 0f, _n - 1.001f);
         int i = (int)gx, j = (int)gz;
         float tx = gx - i, tz = gz - j;

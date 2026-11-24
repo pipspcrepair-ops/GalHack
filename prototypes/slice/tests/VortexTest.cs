@@ -47,7 +47,11 @@ public partial class VortexTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Fresh("arid") with { Variant = 1 }) };
+        // A fresh canyon world with air: an airless one (cratered barren rock) has no weather, so no vortex to follow.
+        WorldChoice canyon;
+        do canyon = WorldChoice.Fresh("arid") with { Variant = 1 };
+        while (canyon.Spec().Airless);
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), canyon) };
         AddChild(_game);
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;

@@ -10,6 +10,8 @@ public struct WorldNoise
     public float Radius, Time;
     public Vector3 Dir;
     public ITarget By;
+    /// <summary>Its number among the sim's sounds (<see cref="WildSim.NoiseSeq"/>).</summary>
+    public int Seq;
 
     /// <summary>How close its line passes someone, and how close to where it was fired or landed they stand, for it to be at them, m.</summary>
     public const float PassClose = 3f, NearBy = 6f;
@@ -131,12 +133,14 @@ public static class Senses
         c.LookAt = c.Alert > 0f ? c.LastSeen + Vector3.Up * 1.2f : null;
     }
 
-    /// <summary>Loud sounds in earshot since it last listened: each turns its head to it (it pricks up), and startles it (<see cref="Startled"/>).</summary>
+    /// <summary>Loud sounds in earshot since it last listened (muffled by walls and floors: <see cref="WildSim.Hears"/>): each turns its head to it (it pricks up), and startles it (<see cref="Startled"/>).</summary>
     public static void Hear(WildSim w, Creature c)
     {
+        int last = c.Listened;
+        c.Listened = w.NoiseSeq;
         foreach (WorldNoise n in w.Noises)
         {
-            if (n.Time <= c.HeardAt || (n.Position - c.Position).Length() > n.Radius) continue;
+            if (n.Seq <= last || !WildSim.Hears(n, c)) continue;
             c.HeardAt = n.Time;
             c.LastSeen = n.Position;
             c.Awareness = MathF.Max(c.Awareness, 0.6f);

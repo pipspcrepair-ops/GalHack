@@ -898,7 +898,7 @@ public partial class SliceTest : Node
         Check(!_game.Visor.ImpactWarning, "climbing away from the ground raises no impact warning in the cockpit");
 
         var probe = new FrameProbe(this);
-        var profiler = profiling ? new ProcessProfiler(probe, GetTree().Root, 40, this) : null;
+        var profiler = profiling ? new ProcessProfiler(probe, GetTree().Root, 600, this) : null;
         var windows = new List<double>();
         var cpuWindows = new List<double>();
         var gcWindows = new List<double>();

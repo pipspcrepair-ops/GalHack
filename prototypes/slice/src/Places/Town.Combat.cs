@@ -128,11 +128,13 @@ public sealed partial class Town
         }
         p.Hurt = 0.4f;
         p.LastHarm = harm;
-        if (byPlayer)
+        // Out on a run, it is theirs to answer: the town hears of it if they come home (Town.Runs).
+        if (byPlayer && p.Run != null) ShotAt(p, null);
+        else if (byPlayer)
         {
             Did(p.Dead ? Deed.Kill : Deed.Harm);
             Provoked();
-            if (_place != null) Alert(_place.FromWorld(_places.Zone.Wildlife.PlayerWorld()));
+            if (_place != null) Alert(Local(_places.Zone.Wildlife.PlayerWorld()));
             // Hit, they know it: no aiming about it, they're in.
             if (!p.Dead && Fighter(p)) p.EngageAt = MathF.Min(p.EngageAt < 0f ? _clock : p.EngageAt, _clock + 0.2f);
             // Hit themselves, it frightens them more (their mood sends them running: Town.Mood).
@@ -148,7 +150,7 @@ public sealed partial class Town
     /// </summary>
     bool Combat(Person p, Vector3 player, Mood mood, float dt)
     {
-        if (p.Looks == null || _place == null) return false;
+        if (p.Looks == null || _view == null) return false;
         Arm(p);
         p.Facing = MathF.Max(0f, p.Facing - dt);
         p.Masked = MathF.Max(0f, p.Masked - dt);
@@ -161,14 +163,14 @@ public sealed partial class Town
             if (p.Engaged) Disengage(p);
             return false;
         }
-        Vector3 at = foe != null ? _place.FromWorld(_places.Zone.Wildlife.WorldOf(foe)) : player;
+        Vector3 at = foe != null ? Local(_places.Zone.Wildlife.WorldOf(foe)) : player;
         float chest = foe != null ? Arming.Chest(foe) : 1.15f;
         if (!p.Engaged)
         {
             if (foe == null && !Notices(p, player, dt)) return false;
             Engage(p, foe == null);
         }
-        if (p.Indoors || p.Asleep) { p.Indoors = false; Wake(p); }
+        if (p.Asleep) Wake(p);
         p.Halt = 0f;
         // What they can see of it, a few times a second.
         if ((p.LookIn -= dt) <= 0f)
@@ -181,7 +183,7 @@ public sealed partial class Town
         p.Pause = MathF.Max(0f, p.Pause - dt);
         p.SwingIn = MathF.Max(0f, p.SwingIn - dt);
         p.Rethink -= dt;
-        Choose(p, foe == null && _clock - _seenClock < 8f ? _seenAt : at);
+        if (p.Run == null) Choose(p, foe == null && _clock - _seenClock < 8f ? _seenAt : at); // (out on the land there are no spots to take: they fight from where they stand)
         if (p.Kit.Strike) Close(p, at, chest, dt);
         else Shoot(p, at, chest, foe == null, dt);
         return true;
@@ -191,7 +193,7 @@ public sealed partial class Town
     bool Notices(Person p, Vector3 player, float dt)
     {
         if (_alert && p.EngageAt >= 0f && _clock >= p.EngageAt) return true;
-        if (p.Indoors || p.Asleep) return false;
+        if (p.Asleep) return false;
         if ((p.LookIn -= dt) > 0f) return false;
         p.LookIn = LookEvery + (float)_rng.NextDouble() * 0.2f;
         Vector3 to = player - p.Pos;
@@ -505,8 +507,8 @@ public sealed partial class Town
     /// <summary>Nothing solid between two local points.</summary>
     bool Clear(Vector3 a, Vector3 b)
     {
-        var space = _place.GetWorld3D().DirectSpaceState;
-        var q = PhysicsRayQueryParameters3D.Create(_place.ToWorld(a), _place.ToWorld(b), GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
+        var space = _view.GetWorld3D().DirectSpaceState;
+        var q = PhysicsRayQueryParameters3D.Create(World(a), World(b), GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
         return space.IntersectRay(q).Count == 0;
     }
 

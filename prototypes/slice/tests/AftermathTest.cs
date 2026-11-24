@@ -130,7 +130,7 @@ public partial class AftermathTest : Node
         for (int i = 0; i < 3600 && _game.Places.PlaceOf(site) is not { Ready: true }; i++) { TopUp(); yield return 0; }
         Slice.Places.Town town = _game.Places.PlaceOf(site)?.Memory.Town;
         if (town == null) { Check(false, "the gang's place stands with its people"); yield break; }
-        for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null && !p.Indoors && !p.Away); i++) { TopUp(); yield return 0; }
+        for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null); i++) { TopUp(); yield return 0; }
         int shots = 0;
         town.ShotFired += (_, _, _, _, _, _) => shots++;
         town.Provoked();

@@ -217,23 +217,23 @@ public partial class PowerTest : Node
             "an old fuel tank in a blueprint or a bag reads as a container");
     }
 
-    // ---- Warp and hyperdrive fuel -------------------------------------------------------------------------
+    // ---- Warp and fold fuel -------------------------------------------------------------------------
 
     void JumpFuels(GameData data)
     {
-        GD.Print("-- warp and hyperdrive fuel --");
+        GD.Print("-- warp and fold fuel --");
         ItemCatalogue items = data.Items;
         ItemDef ore = items.Item("pentaxite"), cell = items.Item("warp-cell"), raw = items.Item("fold-crystal-raw"), fold = items.Item("fold-crystal");
         Check(ore.Source == ItemSource.Mined && ore.DepositKind == nameof(DepositKind.WarpFuel) && cell.Recipe.Inputs.All(i => i.Item == ore),
             $"warp fuel is gathered: {ore.Name} is mined from its deposits and refined into warp cells ({cell.Recipe.Count} a {ore.Name.ToLowerInvariant()})");
         Check(raw.Source == ItemSource.Mined && raw.DepositKind == nameof(DepositKind.Crystal) && fold.Recipe.Inputs.All(i => i.Item == raw),
-            "hyperdrive fuel is gathered: raw fold crystal is mined from its deposits and refined into fold crystal");
+            "fold fuel is gathered: raw fold crystal is mined from its deposits and refined into fold crystal");
         PlanetSpec Spec(Archetype a, Modifier m, int km = 16) => new((ulong)Random.Shared.NextInt64(), a, 0, m, km);
-        Check(DepositField.FuelKinds(Spec(Archetype.Arid, Modifier.Cratered, 8)).Contains(DepositKind.WarpFuel) && DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.None)).Contains(DepositKind.WarpFuel)
-              && !DepositField.FuelKinds(Spec(Archetype.Temperate, Modifier.None)).Contains(DepositKind.WarpFuel),
-            "pentaxite lies on airless bodies (the start's fuel moon is always one) and on icy worlds, not on a living world");
-        Check(DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.None, 32)).Contains(DepositKind.Crystal), "fold crystal lies on the dangerous high-gravity worlds");
-        Check(data.Power.Drives["warp-drive"].Item == cell.Id && data.Power.Drives["hyperdrive"].Item == fold.Id, "the warp drive burns warp cells and the hyperdrive fold crystal, three fuels apart");
+        Check(DepositField.DriveKinds(Spec(Archetype.Arid, Modifier.Cratered, 8)).Contains(DepositKind.WarpFuel) && DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.Cratered)).Contains(DepositKind.WarpFuel)
+              && !DepositField.DriveKinds(Spec(Archetype.Temperate, Modifier.None)).Contains(DepositKind.WarpFuel) && !DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.None)).Contains(DepositKind.WarpFuel),
+            "pentaxite lies on airless bodies only (the start's fuel moon is always one), not on a world with air, icy or living");
+        Check(DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.None, 32)).Contains(DepositKind.Crystal), "fold crystal lies on the dangerous high-gravity worlds");
+        Check(data.Power.Drives["warp-drive"].Item == cell.Id && data.Power.Drives["fold-drive"].Item == fold.Id, "the warp drive burns warp cells and the fold drive fold crystal, three fuels apart");
 
         // A drive reads its reach from the fuel in core storage.
         Structure s = Build(data, "1 0 0 container-t1", "-3 0 0 warp-drive");
@@ -241,23 +241,23 @@ public partial class PowerTest : Node
         var p = new StructurePower(data.Power, s, storage);
         storage.Add(cell.Id, 12);
         storage.Add(fold.Id, 5);
-        Check(p.Range("warp-drive") is { Reach: 12.0, Unit: "AU" } && p.Range("hyperdrive") == null,
-            $"a warp drive fitted, 12 warp cells in storage: fuel for {p.Range("warp-drive")?.Reach} AU; no hyperdrive fitted, no reach");
+        Check(p.Range("warp-drive") is { Reach: 12.0, Unit: "AU" } && p.Range("fold-drive") == null,
+            $"a warp drive fitted, 12 warp cells in storage: fuel for {p.Range("warp-drive")?.Reach} AU; no fold drive fitted, no reach");
     }
 
     // ---- The start ----------------------------------------------------------------------------------------
 
     void Start(GameData data)
     {
-        GD.Print("-- the start: power before the climate node needs it --");
+        GD.Print("-- the start: the first things a sleeper makes --");
         ItemCatalogue items = data.Items;
         var fresh = new Progress(data.Progress, items, data.Catalogue);
         string[] first = { "core", "generator-t1", "container-t1", "biofuel", "energy-cell", Device.ClimateItem };
         var late = first.Where(id => !fresh.ItemAllowed(items.Item(id)) || items.Item(id).Recipe.Tier > 0).ToList();
-        Check(late.Count == 0, $"a sleeper at level 1 makes a core, a generator, a container, biofuel and a climate node at the survival constructor{(late.Count > 0 ? ": not " + string.Join(", ", late) : "")}");
+        Check(late.Count == 0, $"a sleeper at level 1 makes a core, a generator, a container, biofuel and a climate pod at the survival constructor{(late.Count > 0 ? ": not " + string.Join(", ", late) : "")}");
         Check(items.Item("biofuel").Recipe.Inputs.All(i => i.Item.Source == ItemSource.Harvested), "and the first fuel from cutting plants");
-        Check(data.Rules.ClimateNode.Power > 0 && !items.Recipes.Any(r => r.Output.Id == Device.ClimateItem && r.Inputs.Any(i => i.Item.FuelUnits > 0)),
-            $"the climate node draws {data.Rules.ClimateNode.Power} MW of its structure's power and burns nothing");
+        Check(data.Rules.ClimateNode.BurnPerSecond > 0 && !items.Recipes.Any(r => r.Output.Id == Device.ClimateItem && r.Inputs.Any(i => i.Item.FuelUnits > 0)),
+            $"the climate pod burns {data.Rules.ClimateNode.BurnPerSecond} fuel units a second of its own and is made from no fuel");
     }
 
     // ---- In the world ------------------------------------------------------------------------------------

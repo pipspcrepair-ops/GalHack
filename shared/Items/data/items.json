@@ -57,15 +57,15 @@
       "mass": 6.0, "volume": 1, "where": "High-gravity worlds", "uses": "Hardened and combat steel" },
     // Warp fuel, gathered (as Empyrion's pentaxid is): mined, then refined into warp cells. Never made from common materials.
     { "id": "pentaxite", "name": "Pentaxite", "short": "PENTAX", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "WarpFuel",
-      "mass": 2.4, "volume": 1, "where": "Moons, icy bodies and asteroid fields; always on the start's fuel moon", "uses": "Warp cells", "was": ["warp-fuel-ore"] },
+      "mass": 2.4, "volume": 1, "where": "Every vacuum world; always on the start's fuel moon", "uses": "Warp cells", "was": ["warp-fuel-ore"] },
 
-    // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
+    // ---- Raw: rare (the drives' own on vacuum and high-gravity worlds, the rest further out) -----
     { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",
-      "mass": 1.2, "volume": 1, "where": "Irradiated ice worlds; asteroids near dead and irradiated stars", "uses": "Fold crystal: hyperdrive fuel, shields" },
+      "mass": 1.2, "volume": 1, "where": "Every high-gravity world; alien crystal worlds", "uses": "Fold crystal: fold fuel, fold drives, shields" },
     { "id": "emberite-ore", "name": "Emberite ore", "short": "EMBER", "category": "raw", "rarity": "rare", "source": "mine",
       "mass": 2.8, "volume": 1, "where": "Lava worlds around young and dying stars", "uses": "Fusion cells · plasma charges · fusion cores" },
-    { "id": "starsilver-ore", "name": "Starsilver ore", "short": "STARSLV", "category": "raw", "rarity": "rare", "source": "mine",
-      "mass": 4.0, "volume": 1, "where": "Barren metal worlds and dense asteroids near giant stars", "uses": "Warp coils · advanced constructor" },
+    { "id": "starsilver-ore", "name": "Starsilver ore", "short": "STARSLV", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Starsilver",
+      "mass": 4.0, "volume": 1, "where": "Every vacuum world; always on the start's fuel moon", "uses": "Warp coils · advanced constructor" },
 
     // ---- Raw: exotic (themed worlds; optional upgrades only) ---------------------------------
     { "id": "voidglass-shard", "name": "Voidglass shard", "short": "VOIDGLS", "category": "raw", "rarity": "exotic", "source": "mine",
@@ -80,10 +80,6 @@
       "mass": 5.0, "volume": 2, "where": "Alien ruins, derelicts · salvage", "uses": "Precursor armour blocks" },
     { "id": "echo-shard", "name": "Echo shard", "short": "ECHO", "category": "unique", "rarity": "unique", "source": "explore",
       "mass": 0.5, "volume": 0.5, "where": "Alien ruins", "uses": "Charge plating · charged armour" },
-    { "id": "lattice-core", "name": "Lattice core", "short": "LATTICE", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 2.0, "volume": 2, "where": "Derelicts, faction strongholds, rare traders", "uses": "CPU extender T3" },
-    { "id": "lattice-array", "name": "Lattice array", "short": "ARRAY", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 4.0, "volume": 4, "where": "Derelicts, faction strongholds, rare traders", "uses": "CPU extender T4" },
 
     // ---- Refined: made from raw only. The blueprint factory pays in these. -----------------
     { "id": "iron-bar", "name": "Iron bar", "category": "refined", "rarity": "common", "mass": 2.4, "volume": 0.5 },
@@ -100,7 +96,7 @@
     { "id": "gold-bar", "name": "Gold bar", "category": "refined", "rarity": "uncommon", "mass": 4.0, "volume": 0.3 },
     { "id": "gravium-ingot", "name": "Gravium ingot", "short": "GRAV IN", "category": "refined", "rarity": "uncommon", "mass": 7.0, "volume": 0.5 },
     { "id": "fold-crystal", "name": "Fold crystal", "short": "FOLD XL", "category": "refined", "rarity": "rare", "mass": 0.8, "volume": 0.5,
-      "uses": "Hyperdrive fuel · ~1 per light year · shields" },
+      "uses": "Fold fuel · ~1 per light year · field emitters · shields" },
     { "id": "emberite", "name": "Refined emberite", "short": "EMBERIT", "category": "refined", "rarity": "rare", "mass": 2.0, "volume": 0.5 },
     { "id": "starsilver-bar", "name": "Starsilver bar", "short": "STARBAR", "category": "refined", "rarity": "rare", "mass": 3.2, "volume": 0.4 },
     { "id": "voidglass", "name": "Voidglass pane", "short": "VOIDPAN", "category": "refined", "rarity": "exotic", "mass": 1.0, "volume": 0.5 },
@@ -136,8 +132,6 @@
     { "id": "voidglass-lens", "name": "Voidglass lens", "short": "LENS", "category": "component", "rarity": "exotic", "mass": 2.0, "volume": 1 },
     { "id": "storm-capacitor", "name": "Storm capacitor", "short": "STORMCP", "category": "component", "rarity": "exotic", "mass": 4.0, "volume": 1.5 },
     { "id": "rimefire-injector", "name": "Rimefire injector", "short": "INJECTR", "category": "component", "rarity": "exotic", "mass": 3.0, "volume": 1 },
-    { "id": "lattice-processor", "name": "Lattice processor", "short": "LAT-PRC", "category": "component", "rarity": "unique", "mass": 3.0, "volume": 2 },
-    { "id": "lattice-matrix", "name": "Lattice matrix", "short": "LAT-MTX", "category": "component", "rarity": "unique", "mass": 6.0, "volume": 4 },
     { "id": "charge-plating", "name": "Charge plating", "short": "CHRGPLT", "category": "component", "rarity": "unique", "mass": 8.0, "volume": 2 },
     // Force fields: one component makes one field of any size, drawn across an opening on a structure,
     // with its four corner emitters. Each tier is its own tech line (not shields'): what a field of
@@ -174,7 +168,7 @@
 
     // ---- Tools ------------------------------------------------------------------------------
     { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20, "unlock": { "level": 1, "cost": 0, "tab": "misc" } },
-    { "id": "climate-node", "name": "Climate node", "short": "CLIMATE", "category": "tool", "rarity": "common", "mass": 12.0, "volume": 12,
-      "uses": "Set down · a core's power · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
+    { "id": "survival-climate-pod", "name": "Survival climate pod", "short": "CLIMATE", "category": "tool", "rarity": "common", "mass": 12.0, "volume": 12, "was": ["climate-node"],
+      "uses": "Set down anywhere · burns fuel · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
   ]
 }

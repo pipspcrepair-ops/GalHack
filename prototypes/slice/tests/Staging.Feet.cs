@@ -72,7 +72,7 @@ public sealed partial class Staging
                     if (place.Memory.Town is not { } town || !place.Ready) continue;
                     foreach (Town.Person p in town.People)
                     {
-                        if (p.Gone || p.Dead || p.Indoors || p.Away || p.Sitting || p.Seat >= 0) continue;
+                        if (p.Gone || p.Dead || p.Sitting || p.Seat >= 0) continue;
                         // Getting into a seat or a bed: the ray meets the furniture itself.
                         if (p.Spot >= 0 && p.Spot < town.Spots.Count && town.Spots[p.Spot] is { Tag: "sit" or "bed" } sp
                             && new Vector2(p.Pos.X - sp.Cell.X - 0.5f, p.Pos.Z - sp.Cell.Z - 0.5f).Length() < 1.2f) continue;

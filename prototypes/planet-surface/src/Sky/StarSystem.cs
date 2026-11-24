@@ -20,12 +20,16 @@ public readonly record struct D3(double X, double Y, double Z)
     public D3 Normalized => this * (1.0 / Length);
 }
 
-/// <summary>What a start system's bodies are marked as holding (the drive and ship materials; never a jump fuel). Landing and mining come later: this says where.</summary>
+/// <summary>
+/// What a start system's bodies are marked as holding (the drive and ship materials; never a jump fuel). A drive's mark
+/// sits on its real deposits (<see cref="DepositField.DriveKinds"/>): the warp drive's on the airless fuel moon, the fold
+/// drive's on a high-gravity world.
+/// </summary>
 public static class Deposit
 {
-    // No marker for warp fuel or hyperspace fuel, ever: they are found by going there (DepositField.FuelKinds).
+    // No marker for warp fuel or fold fuel, ever: they are found by going there.
     public const string WarpDrive = "warp-drive-materials";
-    public const string HyperdriveMaterials = "hyperdrive-materials";
+    public const string FoldDriveMaterials = "fold-drive-materials";
     public const string CapitalMaterials = "capital-ship-materials";
 }
 
@@ -66,8 +70,10 @@ public sealed record Orbiter
     public int Zone { get; init; }
     public Rgb Color { get; init; }
     public Rgb Band { get; init; }
-    public bool Rings { get; init; }
-    public Rgb RingColor { get; init; }
+    public bool Rings { get; internal set; }
+    public Rgb RingColor { get; internal set; }
+    /// <summary>Its ring's outer edge, in its own radii (the inner edge is 1.45): the model's, for the views to draw (today they draw every ring to 2.42).</summary>
+    public double RingOuter { get; internal set; } = 2.42;
     /// <summary>The ring plane's normal, in the system's frame.</summary>
     public D3 RingNormal { get; init; } = new(0, 1, 0);
 }
@@ -107,6 +113,12 @@ public readonly record struct Sighting(Orbiter Body, D3 Direction, double Distan
 /// </summary>
 public sealed class StarSystem
 {
+    /// <summary>
+    /// A world's radius from its map's width, m: the map's width is its equator (true scale; the owner kept the globe
+    /// as it is, 22 Nov). The one rule every body's <see cref="Orbiter.Radius"/> comes from.
+    /// </summary>
+    public static double RadiusOf(double widthMetres) => widthMetres / Math.Tau;
+
     /// <summary>One chart AU, m. Distances have their own ruler: the worlds' would put it at 60,000 km.</summary>
     public const double AuMetres = 4e6;
 
@@ -133,12 +145,12 @@ public sealed class StarSystem
     public const double ThrusterReachRadii = ThrusterMoonTo;
 
     /// <summary>The radius of the biggest world you can land on (the largest width, <see cref="PlanetSpec.Widths"/>), m.</summary>
-    public static readonly double LargestLandableRadius = PlanetSpec.Widths[^1] * 1000.0 / Math.Tau;
+    public static readonly double LargestLandableRadius = RadiusOf(PlanetSpec.Widths[^1] * 1000.0);
 
     /// <summary>A giant's radius: eight to eleven of the home world's, and always bigger than the biggest world you could land on (so the star, bigger still, and every giant out-size every world).</summary>
     static double GiantRadius(double homeRadius, float roll) => Math.Max(homeRadius * (8.0 + 3.0 * roll), LargestLandableRadius * 1.5);
 
-    /// <summary>Surface gravity of a world with ground, m/s², given the start world's: it follows the world's size alone.</summary>
+    /// <summary>Surface gravity of a world with ground, m/s², given the start world's: from its size alone (<see cref="PlanetSpec.Gravities"/>).</summary>
     public float GravityOf(Orbiter b, float homeGravity) => homeGravity * b.Spec.GravityScale / Home.Spec.GravityScale;
 
     /// <summary>The longitude whose solar time the game's clock tells, radians: the map's middle, where start sites stand.</summary>
@@ -156,6 +168,34 @@ public sealed class StarSystem
 
     /// <summary>The fastest a moon goes round its parent, m/s: slower than a vessel in space, so one can always be caught. Its month is lengthened to fit.</summary>
     public static double MoonSpeedCap = 50.0;
+
+    /// <summary>
+    /// How orbits tilt (owner, 22 Nov: "Moons don't necessarily orbit on the same plane, same with planets. Look at our
+    /// solar system, it's not a flat plane"), in degrees and shares, after the solar system's own spread.
+    /// </summary>
+    public sealed record OrbitPlanes
+    {
+        /// <summary>Most worlds round the star lie within this of the system's plane.</summary>
+        public double Planets { get; init; } = 7.0;
+        /// <summary>The share of worlds past the frost line tilted further, and how far.</summary>
+        public double OuterShare { get; init; } = 0.1;
+        public double Outer { get; init; } = 20.0;
+        /// <summary>The share of them that are wanderers, and how far out of the plane those go.</summary>
+        public double WandererShare { get; init; } = 0.02;
+        public double Wanderer { get; init; } = 40.0;
+        /// <summary>Moons nearer than this many of their parent's radii are locked to it, on its equator (where its rings lie) within <see cref="NearMoons"/>.</summary>
+        public double LockedRadii { get; init; } = 10.0;
+        public double NearMoons { get; init; } = 3.0;
+        /// <summary>Moons farther out spread up to this from the system's plane.</summary>
+        public double FarMoons { get; init; } = 30.0;
+        /// <summary>The share of far moons that are captured bodies, at this range of tilt: steep, or past 90 going round backwards.</summary>
+        public double CapturedShare { get; init; } = 0.1;
+        public double CapturedFrom { get; init; } = 45.0;
+        public double CapturedTo { get; init; } = 170.0;
+    }
+
+    /// <summary>The one table every orbit's plane is rolled from.</summary>
+    public static OrbitPlanes Planes = new();
 
     /// <summary>The galaxy catalogue's key for this star.</summary>
     public ulong StarKey { get; private set; }
@@ -449,7 +489,7 @@ public sealed class StarSystem
         if (seed == 0) seed = spec.Seed;
         var rng = new Rng(Hash.Of(seed, 0x535953, (long)spec.Archetype, spec.Variant));
         float next() => rng.NextFloat();
-        double L = LuminosityOf(sky.Star), homeRadius = width / Math.Tau, spread = Math.Clamp(Math.Pow(L, 0.1), 0.75, 1.6);
+        double L = LuminosityOf(sky.Star), homeRadius = RadiusOf(width), spread = Math.Clamp(Math.Pow(L, 0.1), 0.75, 1.6);
         var s = new StarSystem { Luminosity = L, StarKey = seed, Spread = spread };
         double chart(double h) => spread * Math.Pow(h, 0.7) * AuMetres;
         double year(double h) => TemperateYearDays * Math.Pow(h, 1.5);
@@ -458,18 +498,46 @@ public sealed class StarSystem
         // A moon's month, no shorter than going round its orbit at the cap takes (days are the sky's, real minutes).
         double capped(double orbit, double month) => Math.Max(month, Math.Tau * orbit / (MoonSpeedCap * sky.DayMinutes * 60.0));
         double phase() => next();
-        double tilted() => (next() - 0.5f) * 0.1; // within 3 degrees of the system's plane
         double node() => next() * Math.Tau;
+        double degrees(double d) => d * Math.PI / 180.0;
+        // A world round the star: most near the system's plane, now and then one past the frost line tilted further,
+        // rarely a wanderer well out of it.
+        (double I, double Node) planetPlane(double h)
+        {
+            float roll = next();
+            double most = h <= FrostLine ? Planes.Planets : roll < Planes.WandererShare ? Planes.Wanderer
+                : roll < Planes.WandererShare + Planes.OuterShare ? Planes.Outer : Planes.Planets;
+            return (degrees(most) * next(), node());
+        }
         s.Tilt = (5.0 + 25.0 * next()) * Math.PI / 180.0;
         s.Axis = new D3(Math.Sin(s.Tilt), Math.Cos(s.Tilt), 0);
         // An orbit in the home globe's equator, near enough: within 5 degrees of it.
         double equator() => s.Tilt + (next() - 0.5f) * 0.17;
         double equatorNode() => -Math.PI / 2 + (next() - 0.5f) * 0.17;
 
+        // Every body's seed is its place in the list, given as it is added; every world with ground has its size from
+        // the start, so its moons are sized smaller and spaced round its true radius (owner, 22 Nov).
+        var widths = new Dictionary<Orbiter, int>(ReferenceEqualityComparer.Instance); // by the body itself: a record's value changes as it is dressed
+        ulong upcoming() => Hash.Of(seed, 0x424F4459, s._bodies.Count);
+        Orbiter add(Orbiter b)
+        {
+            b.Seed = upcoming();
+            s._bodies.Add(b);
+            return b;
+        }
+        Orbiter ground(Orbiter b, int widthKm)
+        {
+            widths[b] = widthKm;
+            b.Radius = RadiusOf(widthKm * 1000.0);
+            return add(b);
+        }
+        // Rolled from the seed the moon is about to get: smaller than what it orbits, a giant's any size.
+        int moonWidth(Orbiter parent) => PlanetSpec.RollWidthKm(upcoming(), WorldKind.Moon, parent.Kind == OrbiterKind.GasGiant ? int.MaxValue : widths[parent]);
+
         // Its size: a yellow star at a temperate world about 3 degrees across, closer worlds' suns bigger as their distances say.
         var star = new Orbiter { Name = "the star", Kind = OrbiterKind.Star, Radius = 0.0095 * StarSkyScale * LooksAtHome(sky.Star) * chart(1.0), Color = sky.StarColor };
         s.Star = star;
-        s._bodies.Add(star);
+        add(star);
 
         // The chains, in h. Starting from the home world's slot keeps the whole chain's spacing.
         double homeH = HomeHabitable(spec.Archetype, next());
@@ -527,14 +595,14 @@ public sealed class StarSystem
         {
             // A warm giant, whose moon this world is.
             double r = GiantRadius(homeRadius, next());
-            host = new Orbiter
+            var hostPlane = planetPlane(homeH);
+            host = add(new Orbiter
             {
                 Name = big.Name, Kind = OrbiterKind.GasGiant, Parent = star, Radius = r, Habitable = homeH, Orbit = chart(homeH), Period = year(homeH),
-                DayLength = 0.4 + 0.3 * next(), Phase0 = phase(), Inclination = tilted(), Node = node(), Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
+                DayLength = 0.4 + 0.3 * next(), Phase0 = phase(), Inclination = hostPlane.I, Node = hostPlane.Node, Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
                 Color = big.Color, Band = big.Band, Rings = big.Rings, RingColor = big.RingColor,
                 RingNormal = new D3(Math.Sin(big.RingTilt) * 0.6, Math.Cos(big.RingTilt), Math.Sin(big.RingTilt) * 0.8).Normalized,
-            };
-            s._bodies.Add(host);
+            });
             s.Neighbour = host;
         }
         double monthRadii = big != null ? 1.0 / Math.Tan(big.Radius) : 0.0;
@@ -543,10 +611,32 @@ public sealed class StarSystem
             Name = "this world", Kind = host == null ? OrbiterKind.Planet : OrbiterKind.Moon, Parent = host ?? star, Radius = homeRadius, Habitable = homeH,
             Orbit = host == null ? chart(homeH) : host.Radius * monthRadii, Period = host == null ? year(homeH) : capped(host.Radius * monthRadii, giantMonth(monthRadii)), Phase0 = phase(),
             Inclination = host == null ? 0.0 : equator(), Node = host == null ? 0.0 : equatorNode(), Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
-            Rings = ArchetypeLook.For(spec).Ring, Color = sky.Horizon,
+            Rings = host == null && ArchetypeLook.For(spec).Ring, Color = sky.Horizon, // a moon has no rings (owner, 17 Nov)
         };
         s.Home = home;
-        s._bodies.Add(home);
+        widths[home] = spec.WidthKm;
+        add(home);
+
+        // A parent's equator as an orbit's tilt and node: the plane its rings lie in (the start world's, its own axis).
+        (double I, double Node) equatorOf(Orbiter parent)
+        {
+            D3 n = parent == home ? s.Axis : parent.RingNormal;
+            double i = Math.Acos(Math.Clamp(n.Y, -1.0, 1.0));
+            return (i, i < 1e-9 ? 0.0 : Math.Atan2(-n.X, -n.Z));
+        }
+        // A moon close in is locked to its parent, on its equator within a few degrees; one farther out spreads wider;
+        // now and then a far one is a captured body, steep or going round backwards. Radii are the parent's.
+        (double I, double Node) moonPlane(Orbiter parent, double radii)
+        {
+            if (radii < Planes.LockedRadii)
+            {
+                var (i, n) = equatorOf(parent);
+                double near = degrees(Planes.NearMoons);
+                return (i + near * (2.0 * next() - 1.0), n + near * (2.0 * next() - 1.0));
+            }
+            if (next() < Planes.CapturedShare) return (degrees(Planes.CapturedFrom + (Planes.CapturedTo - Planes.CapturedFrom) * next()), node());
+            return (degrees(Planes.FarMoons) * next(), node());
+        }
 
         // A clear place for a moon round a parent, out from the orbit asked for.
         double clearOrbit(Orbiter parent, double orbit)
@@ -564,24 +654,27 @@ public sealed class StarSystem
             return orbit;
         }
 
-        // Its moons, S class. The first stands within reach of thrusters. A moon holds no moons (the
-        // giant's pull would strip them): on a giant's moon these are its siblings, round the giant.
+        // Its moons, smaller than it. The first stands within reach of thrusters. On a giant's moon these
+        // are its siblings, round the giant, of any size.
         Orbiter holder = host ?? home;
         bool first = true;
         foreach (SkyBody b in sky.Bodies)
         {
-            if (b.Kind != BodyKind.Moon) continue;
-            double r = homeRadius * 0.5;
+            if (b.Kind != BodyKind.Moon || !PlanetSpec.HoldsMoons(widths.GetValueOrDefault(holder, int.MaxValue))) continue; // a smallest world chosen to start on has none
+            int size = moonWidth(holder);
+            double r = RadiusOf(size * 1000.0);
             double wanted = host != null ? host.Radius * (3.0 + 27.0 * next())
                 : first ? homeRadius * (ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next()) : Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 14.0, homeRadius * 40.0);
             double orbit = clearOrbit(holder, wanted), month = capped(orbit, host != null ? giantMonth(orbit / host.Radius) : rockMonth(orbit / homeRadius));
             first = false;
-            s._bodies.Add(new Orbiter
+            var plane = moonPlane(holder, orbit / holder.Radius);
+            ground(new Orbiter
             {
-                Name = b.Name, Kind = OrbiterKind.Moon, Parent = holder, Radius = r, Orbit = orbit, Period = month, DayLength = month,
-                Phase0 = b.Phase0, Inclination = equator(), Node = equatorNode(), Color = b.Color, Band = b.Color, Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
-            });
+                Name = b.Name, Kind = OrbiterKind.Moon, Parent = holder, Orbit = orbit, Period = month, DayLength = month,
+                Phase0 = b.Phase0, Inclination = plane.I, Node = plane.Node, Color = b.Color, Band = b.Color, Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
+            }, size);
         }
+        if (host != null) s.DressRing(host, host.Color, widths);
 
         int number = 1;
         Orbiter world(double h, bool giant, bool ice)
@@ -592,31 +685,31 @@ public sealed class StarSystem
                 : t > 330 ? Rgb.Lerp(Rgb.Hex("a07058"), Rgb.Hex("d8c8a8"), tone)
                 : t > 210 ? Rgb.Lerp(Rgb.Hex("b89a80"), Rgb.Hex("7898b8"), tone)
                 : Rgb.Lerp(Rgb.Hex("c8d8e8"), Rgb.Hex("9098a8"), tone);
-            bool rings = giant && next() < 0.45f;
+            var plane = planetPlane(h);
             var w = new Orbiter
             {
                 Name = $"world {++number}", Kind = giant ? OrbiterKind.GasGiant : OrbiterKind.Planet, Parent = star, Habitable = h, Orbit = chart(h), Period = year(h),
-                Radius = giant ? GiantRadius(homeRadius, next()) : homeRadius * (0.5 + 1.0 * next()), DayLength = giant ? 0.4 + 0.3 * next() : 0.7 + 2.0 * next(),
-                Phase0 = phase(), Inclination = tilted(), Node = node(), Temperature = t, Zone = ZoneAt(h), Color = color, Band = Rgb.Lerp(color, Rgb.Hex("5a4a3a"), 0.45f),
-                Rings = rings, RingColor = Rgb.Lerp(Rgb.Hex("e8d8b8"), color, 0.3f),
+                Radius = giant ? GiantRadius(homeRadius, next()) : 0.0, DayLength = giant ? 0.4 + 0.3 * next() : 0.7 + 2.0 * next(),
+                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Temperature = t, Zone = ZoneAt(h), Color = color, Band = Rgb.Lerp(color, Rgb.Hex("5a4a3a"), 0.45f),
+                Rings = giant && next() < 0.45f,
             };
-            s._bodies.Add(w);
-            return w;
+            return giant ? add(w) : ground(w, PlanetSpec.RollWidthKm(upcoming()));
         }
-        void moonOf(Orbiter parent, double radii, double period)
+        Orbiter moonOf(Orbiter parent, double radii, double period)
         {
             double orbit = clearOrbit(parent, parent.Radius * radii);
             period = capped(orbit, period);
-            s._bodies.Add(new Orbiter
+            var plane = moonPlane(parent, orbit / parent.Radius);
+            return ground(new Orbiter
             {
-                Name = $"a moon of {parent.Name}", Kind = OrbiterKind.Moon, Parent = parent, Radius = homeRadius * 0.5, Orbit = orbit, Period = period, DayLength = period,
-                Phase0 = phase(), Inclination = tilted(), Node = node(), Habitable = parent.Habitable, Temperature = parent.Temperature, Zone = parent.Zone,
+                Name = $"a moon of {parent.Name}", Kind = OrbiterKind.Moon, Parent = parent, Orbit = orbit, Period = period, DayLength = period,
+                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Habitable = parent.Habitable, Temperature = parent.Temperature, Zone = parent.Zone,
                 Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
-            });
+            }, moonWidth(parent));
         }
         void rockMoons(Orbiter parent)
         {
-            if (parent.Zone == 1) return;
+            if (parent.Zone == 1 || !PlanetSpec.HoldsMoons(widths[parent])) return;
             int n = parent.Zone == 2 ? (next() < 0.25f ? 1 : 0) : (new[] { 0, 0, 1, 1, 2 })[rng.Next(5)];
             for (int m = 0; m < n; m++)
             {
@@ -624,8 +717,26 @@ public sealed class StarSystem
                 moonOf(parent, radii, rockMonth(radii));
             }
         }
+        // A giant's moon can have a moon of its own (owner, 22 Nov), smaller than it, well inside the reach of its pull
+        // against the giant's: its Hill sphere, the two taken as the same rock so mass goes as radius cubed. Orbits
+        // stay within half of that; a moon close in to its giant has no room for one.
+        void moonsOfMoon(Orbiter moon)
+        {
+            if (!PlanetSpec.HoldsMoons(widths[moon]) || next() >= MoonOfMoonChance) return;
+            double from = moon.Radius * 3.0, to = 0.5 * moon.Orbit * moon.Radius / moon.Parent.Radius / Math.Cbrt(3.0);
+            if (to < from * 1.2) return;
+            double orbit = from + (to - from) * next(), month = capped(orbit, rockMonth(orbit / moon.Radius));
+            var plane = moonPlane(moon, orbit / moon.Radius);
+            ground(new Orbiter
+            {
+                Name = $"a moon of {moon.Name}", Kind = OrbiterKind.Moon, Parent = moon, Orbit = orbit, Period = month, DayLength = month,
+                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Habitable = moon.Habitable, Temperature = moon.Temperature, Zone = moon.Zone,
+                Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
+            }, moonWidth(moon));
+        }
 
-        foreach (double h in rocks) rockMoons(world(h, false, false));
+        var rockWorlds = new List<Orbiter>();
+        foreach (double h in rocks) rockWorlds.Add(world(h, false, false));
         bool hasGiant = false;
         foreach (double h in outer)
         {
@@ -634,18 +745,29 @@ public sealed class StarSystem
             Orbiter w = world(h, giant, h > 6.0 && next() < 0.6f);
             if (!giant)
             {
-                rockMoons(w);
+                rockWorlds.Add(w);
                 continue;
             }
             double radii = 3.0 + next();
             for (int m = 0, n = 2 + rng.Next(4); m < n && radii <= 30.0; m++, radii *= 1.4 + 0.5 * next())
-                moonOf(w, radii, giantMonth(radii));
+                moonsOfMoon(moonOf(w, radii, giantMonth(radii)));
+            s.DressRing(w, w.Color, widths);
         }
+        // A heavy world every system (owner, 13 Nov): if no roll gave one, a rock round the star grows to 32 km, now and
+        // then 64. Before the rocks' moons are rolled, so theirs are sized and spaced round it.
+        if (rockWorlds.Count > 0 && !widths.Any(p => p.Key != home && PlanetSpec.Heavy(p.Value)))
+        {
+            var heavyRng = new Rng(Hash.Of(seed, 0x4856));
+            Orbiter heavy = rockWorlds[heavyRng.Next(rockWorlds.Count)];
+            widths[heavy] = heavyRng.NextFloat() < 0.1f ? 64 : 32;
+            heavy.Radius = RadiusOf(widths[heavy] * 1000.0);
+        }
+        foreach (Orbiter w in rockWorlds) rockMoons(w);
         void belt(string name, double from, double to)
         {
             // The band's true edges on the chart: its middle there isn't the middle of h.
             double orbit = (chart(from) + chart(to)) * 0.5, h = Math.Pow(orbit / chart(1.0), 1.0 / 0.7);
-            s._bodies.Add(new Orbiter
+            add(new Orbiter
             {
                 Name = name, Kind = OrbiterKind.Belt, Parent = star, Habitable = h, Orbit = orbit, BeltWidth = chart(to) - chart(from), Period = year(h),
                 Temperature = TemperatureAt(h), Zone = ZoneAt(h),
@@ -654,26 +776,10 @@ public sealed class StarSystem
         belt("the rock belt", beltFrom, beltTo);
         if (next() < 0.6f) belt("the ice belt", outer[^1] * 1.31, outer[^1] * 1.59);
 
-        // The nearest free orbit round the star from a place, outward.
-        double freeOrbit(double h)
-        {
-            for (bool moved = true; moved;)
-            {
-                moved = false;
-                foreach (Orbiter b in s._bodies)
-                    if (b.Parent == star && b.Kind != OrbiterKind.Belt && h < b.Habitable * LeastOrbitStep && b.Habitable < h * LeastOrbitStep)
-                    {
-                        h = b.Habitable * LeastOrbitStep * 1.01;
-                        moved = true;
-                    }
-            }
-            return h;
-        }
-
         // The guarantees: added, never rerolled.
         int worlds() => s._bodies.FindAll(b => b.Kind is OrbiterKind.Planet or OrbiterKind.GasGiant or OrbiterKind.Moon).Count;
-        var hosts = s._bodies.FindAll(b => b.Kind == OrbiterKind.Planet && b.Habitable >= 0.75 && b != home);
-        if (hosts.Count == 0) hosts.Add(holder);
+        var hosts = s._bodies.FindAll(b => b.Kind == OrbiterKind.Planet && b.Habitable >= 0.75 && b != home && PlanetSpec.HoldsMoons(widths[b]));
+        if (hosts.Count == 0) hosts = s._bodies.FindAll(b => b.Kind == OrbiterKind.GasGiant); // every system has one
         while (worlds() < 8)
         {
             double radii = 12.0 + 28.0 * next();
@@ -688,88 +794,96 @@ public sealed class StarSystem
         if (near == null)
         {
             double radii = ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next(), chord = homeRadius * radii;
+            var nearPlane = moonPlane(home, radii);
             // A sister keeps one small arc ahead on the same orbit, so she is always in reach: the one shared orbit.
             near = host == null
                 ? new Orbiter
                 {
-                    Name = "the near moon", Kind = OrbiterKind.Moon, Parent = home, Radius = homeRadius * 0.5, Orbit = chord, Period = capped(chord, rockMonth(radii)), DayLength = capped(chord, rockMonth(radii)),
-                    Phase0 = phase(), Inclination = equator(), Node = equatorNode(), Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
+                    Name = "the near moon", Kind = OrbiterKind.Moon, Parent = home, Orbit = chord, Period = capped(chord, rockMonth(radii)), DayLength = capped(chord, rockMonth(radii)),
+                    Phase0 = phase(), Inclination = nearPlane.I, Node = nearPlane.Node, Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
                     Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
                 }
                 : new Orbiter
                 {
-                    Name = "the sister moon", Kind = OrbiterKind.Moon, Parent = host, Radius = homeRadius * 0.5, Orbit = home.Orbit, Period = home.Period, DayLength = home.Period,
+                    Name = "the sister moon", Kind = OrbiterKind.Moon, Parent = host, Orbit = home.Orbit, Period = home.Period, DayLength = home.Period,
                     Phase0 = home.Phase0 + Math.Asin(chord * 0.5 / home.Orbit) / Math.PI, Inclination = home.Inclination, Node = home.Node, Habitable = homeH, Temperature = home.Temperature,
                     Zone = home.Zone, Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
                 };
-            s._bodies.Add(near);
+            // The smallest kind, so it can be airless (it always is: Dress); a sister round a giant could have rolled any size.
+            // The start's promise outranks "smaller than what it orbits" only on a smallest world chosen to start on.
+            ground(near, PlanetSpec.Widths[0]);
         }
         s.FuelMoon = near;
         near.Deposits.Add(Deposit.WarpDrive);
+        s.Dress(spec, widths);
 
-        // The way on out of the system, a warp away: hyperdrive materials on the cold rocks, capital ship
-        // materials in the rock belt. The jump fuels are no marker: warp fuel lies on every airless world
-        // (the near moon always is one), hyperspace fuel on the dangerous high-gravity ones (Dress).
-        Orbiter far(Func<Orbiter, bool> fits) => s._bodies.Find(b => b != home && b != host && b != near && b.Parent != home && fits(b));
-        Orbiter cold = far(b => b.Kind == OrbiterKind.Planet && b.Zone >= 5) ?? world(freeOrbit(Math.Max(homeH * 1.5, 1.8)), false, false);
-        cold.Deposits.Add(Deposit.HyperdriveMaterials);
+        // The way on out of the system, a warp away (owner, 22 Nov): fold drive materials on a dangerous high-gravity
+        // world (every system has one: above), capital ship materials in the rock belt. The jump fuels are no marker:
+        // warp fuel lies on every vacuum world (the fuel moon always is one), fold fuel on every high-gravity one.
+        s._bodies.Find(b => b != home && b.Spec is { HighGravity: true })?.Deposits.Add(Deposit.FoldDriveMaterials);
         s._bodies.Find(b => b.Kind == OrbiterKind.Belt).Deposits.Add(Deposit.CapitalMaterials);
-        s.Dress(seed, spec);
         return s;
     }
 
+    /// <summary>The chance a giant's moon, with room for one, has a moon of its own.</summary>
+    public const double MoonOfMoonChance = 0.35;
+
+    /// <summary>The frost line, in h: rock inside it, ice past it (docs/solar-systems.md section 3).</summary>
+    public const double FrostLine = 2.7;
+
+
     /// <summary>
-    /// Gives every body its seed, and every body with ground the world its zone makes it: one zone table, for
-    /// what you see from afar and what you land on. A world's size sets its gravity (<see cref="GravityOf"/>)
-    /// and its chance of having no air (<see cref="VacuumChance"/>); a system always holds one dangerous
-    /// high-gravity world, made so if the rolls gave none. The star and the giants get their geography instead.
+    /// A ring's colour, brightness and width from what the owner gave (22 Nov, from a NASA planetary scientist): past the
+    /// frost line mostly ice, bright and broad; closer in rock and dust, and faint; a giant with several large moons
+    /// (<see cref="CrowdingMoons"/> of 32 km or more) keeps only a small, faint ring, its moons pulling it apart. A rocky
+    /// world's own ring is small too. <paramref name="tint"/> is the body's colour the ring takes a little of.
     /// </summary>
-    void Dress(ulong seed, PlanetSpec home)
+    void DressRing(Orbiter b, Rgb tint, Dictionary<Orbiter, int> widths)
     {
-        var widths = new Dictionary<Orbiter, int>();
-        for (int i = 0; i < _bodies.Count; i++)
+        if (!b.Rings) return;
+        bool ice = b.Habitable > FrostLine;
+        bool small = b.Kind != OrbiterKind.GasGiant || Under(b).Count(m => widths.TryGetValue(m, out int w) && PlanetSpec.Heavy(w)) >= CrowdingMoons;
+        // Its brightness is in its colour, the one value every view draws a ring in.
+        b.RingColor = (ice ? Rgb.Lerp(Rgb.Hex("eef2f6"), tint, 0.15f) : Rgb.Lerp(Rgb.Hex("9a8672"), tint, 0.3f) * 0.55f) * (small ? 0.5f : 1f);
+        b.RingOuter = small ? 1.75 : ice ? 2.42 : 2.1;
+    }
+
+    /// <summary>How many large moons crowd a giant's ring down to a small, faint one.</summary>
+    public const int CrowdingMoons = 3;
+
+    /// <summary>
+    /// Every body with ground becomes the world its zone makes it: one zone table, for what you see from afar and what
+    /// you land on. Its size (rolled where it was placed, <paramref name="widths"/>) sets its gravity
+    /// (<see cref="PlanetSpec.Gravities"/>), how likely it is to have no air (<see cref="PlanetSpec.VacuumChances"/>)
+    /// and how dense its air is. The star and the giants get their geography instead.
+    /// </summary>
+    void Dress(PlanetSpec home, Dictionary<Orbiter, int> widths)
+    {
+        foreach (Orbiter b in _bodies)
         {
-            Orbiter b = _bodies[i];
-            b.Seed = Hash.Of(seed, 0x424F4459, i);
             b.Geography = Geography.Of(b);
             if (b == Home)
             {
                 b.Spec = home;
                 continue;
             }
-            if (b.Kind is not (OrbiterKind.Planet or OrbiterKind.Moon)) continue;
-            widths[b] = b.Kind == OrbiterKind.Planet ? PlanetSpec.RollWidthKm(b.Seed)
-                : b.Parent.Kind == OrbiterKind.GasGiant ? PlanetSpec.RollWidthKm(b.Seed, WorldKind.Moon)
-                : b.Parent.Radius * Math.Tau > 20000.0 ? 16 : 8;
-            b.Radius = widths[b] * 1000.0 / Math.Tau;
-        }
-        if (!home.HighGravity && !widths.Values.Any(w => w >= PlanetSpec.StartWidthKm * PlanetSpec.DangerousGravity))
-        {
-            // A heavy world every system: one of the rocks round the star grows to 32 km, now and then 64.
-            var rocks = widths.Keys.Where(b => b.Kind == OrbiterKind.Planet).ToList();
-            var rng = new Rng(Hash.Of(seed, 0x4856));
-            if (rocks.Count > 0)
-            {
-                Orbiter heavy = rocks[rng.Next(rocks.Count)];
-                widths[heavy] = rng.NextFloat() < 0.1f ? 64 : 32;
-                heavy.Radius = widths[heavy] * 1000.0 / Math.Tau;
-            }
-        }
-        foreach (var (b, width) in widths)
-        {
+            if (!widths.TryGetValue(b, out int width)) continue;
             var (type, variant) = TypeOf(b);
             // Vacuum or not: small bodies can't hold air. Only the kinds that keep craters can be airless, so a
             // living world that lost its air is bare rock (or ice, out in the cold) and not a living world.
-            bool vacuum = b == FuelMoon || new Rng(Hash.Of(b.Seed, 0x564143)).NextFloat() < VacuumChance(width);
+            bool vacuum = b == FuelMoon || new Rng(Hash.Of(b.Seed, 0x564143)).NextFloat() < PlanetSpec.VacuumChances[PlanetSpec.ClassOf(width)];
             if (vacuum && !PlanetSpec.Craters(type)) type = b.Zone >= 5 ? Archetype.Ice : Archetype.Arid;
             PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width);
-            if (PlanetSpec.Craters(type)) spec = spec with { Modifiers = vacuum ? spec.Modifiers | Modifier.Cratered : spec.Modifiers & ~Modifier.Cratered };
-            b.Spec = spec;
+            // Its sky is the system's, so a ringed sky is no modifier here: a ring is the body's own (below).
+            Modifier mods = spec.Modifiers & ~Modifier.RingedSky;
+            if (PlanetSpec.Craters(type)) mods = vacuum ? (mods | Modifier.Cratered) & ~Modifier.PerpetualStorm : mods & ~Modifier.Cratered; // no air, no storm
+            b.Spec = spec with { Modifiers = mods };
+            // A rocky world's ring: rare (only the ringed kinds, start-sized or bigger); a moon never has one (owner, 17 Nov).
+            ArchetypeLook look = ArchetypeLook.For(b.Spec);
+            b.Rings = b.Kind == OrbiterKind.Planet && width >= PlanetSpec.StartWidthKm && look.Ring;
+            DressRing(b, look.RingColor, widths);
         }
     }
-
-    /// <summary>The chance a world of a width (km) has no air: the smaller, the likelier. The start's thruster moon always has none.</summary>
-    public static double VacuumChance(int widthKm) => widthKm switch { <= 8 => 0.9, <= 16 => 0.6, <= 32 => 0.25, _ => 0.05 };
 
     /// <summary>The type a world's place makes it, from the zone table in docs/solar-systems.md, in the types the generator has.</summary>
     public static (Archetype Type, int Variant) TypeOf(Orbiter b)
@@ -802,11 +916,14 @@ public sealed class StarSystem
     /// <summary>Why this can't be a start system, or null: what the design promises every start.</summary>
     public string StartFault()
     {
-        if (FuelMoon?.Spec is not { Airless: true } || !FuelMoon.Deposits.Contains(Deposit.WarpDrive)) return "no vacuum moon holds warp fuel and the drive's materials";
+        if (FuelMoon == null || !FuelMoon.Deposits.Contains(Deposit.WarpDrive) || !Holds(FuelMoon, DepositField.WarpKinds)) return "no vacuum moon holds warp fuel and the drive's materials";
         double reach = (Position(FuelMoon, 0.0) - Position(Home, 0.0)).Length;
         if (reach > Home.Radius * (ThrusterReachRadii + 1.0)) return $"the fuel moon stands {reach / 1000.0:F0} km off, past thrusters";
-        foreach (string d in new[] { Deposit.HyperdriveMaterials, Deposit.CapitalMaterials })
-            if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(d))) return $"no {d} anywhere a warp away";
+        if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(Deposit.FoldDriveMaterials) && Holds(b, DepositField.FoldKinds))) return $"no {Deposit.FoldDriveMaterials} anywhere a warp away";
+        if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(Deposit.CapitalMaterials))) return $"no {Deposit.CapitalMaterials} anywhere a warp away";
         return null;
     }
+
+    /// <summary>Whether a body's ground holds these deposit kinds, by the generator's own rule for what it is.</summary>
+    static bool Holds(Orbiter b, DepositKind[] kinds) => b.Spec != null && kinds.All(DepositField.DriveKinds(b.Spec).Contains);
 }

@@ -36,6 +36,12 @@ public static class Locomotion
             Fall(w, c, dt);
             return;
         }
+        if (c.Space == null && !c.Falling && !(c.Species.Flies && !c.Landed) && Swim(w, c, dt)) return;
+        if (Unfooted(w, c))
+        {
+            FreeFall(w, c, dt);
+            return;
+        }
         if (c.Phase == AttackPhase.Lunge && c.Species.Flight != FlightKind.Glide)
         {
             Lunge(w, c);
@@ -92,6 +98,114 @@ public static class Locomotion
         c.Position = p;
     }
 
+    /// <summary>How far over the ground under it a body on its feet may find itself before it falls, m.</summary>
+    const float FootSlack = 0.25f;
+
+    /// <summary>The most it steps down in a stride going down a slope, m: more, and it is over a drop.</summary>
+    const float StrideDrop = 0.5f;
+
+    /// <summary>
+    /// What its feet stand on (patch frame): the ground under its middle, or where that is a hole narrower than it (a giant over a
+    /// pit), the ground under three of its four feet, round it at its body's reach.
+    /// </summary>
+    public static float Footing(WildSim w, Creature c, float x, float z)
+    {
+        float r = c.Radius * 0.7f, h = w.Terrain.Height(x, z);
+        float a = w.Terrain.Height(x + r, z), b = w.Terrain.Height(x - r, z), d = w.Terrain.Height(x, z + r), e = w.Terrain.Height(x, z - r);
+        // (The second lowest of the four, the lowest that three of its feet stand on or over: of each pair's lower and higher.)
+        float lowA = MathF.Min(a, b), highA = MathF.Max(a, b), lowB = MathF.Min(d, e), highB = MathF.Max(d, e);
+        return MathF.Max(h, MathF.Min(MathF.Max(lowA, lowB), MathF.Min(highA, highB)));
+    }
+
+    /// <summary>The ground under it changed (dug, blasted): looked under now, asleep or not; with nothing under its feet it falls (and so is stepped till down).</summary>
+    public static void LookUnder(WildSim w, Creature c)
+    {
+        if (c.Space == null && !c.Dead && !c.Thrown) Unfooted(w, c);
+    }
+
+    /// <summary>
+    /// Nothing under its feet (the ground dug or blasted away from under it): anything that walks, crawls or stands, and a flier
+    /// standing on the ground, falls. Its feet are on the ground after every step, so only the ground changing finds this.
+    /// </summary>
+    static bool Unfooted(WildSim w, Creature c)
+    {
+        if (c.Falling) return true;
+        if (c.Species.Flies && !c.Landed || c.Species.Rig == RigKind.GasBag || c.Hop == HopPhase.Air) return false;
+        if (c.Position.Y - Footing(w, c, c.Position.X, c.Position.Z) <= FootSlack) return false;
+        c.Falling = true;
+        c.Velocity = Vector3.Zero;
+        return true;
+    }
+
+    /// <summary>Falling under the world's pull (<see cref="Drop"/>) to the ground under it, landing on its feet (<see cref="WildSim.Landed"/>).</summary>
+    static void FreeFall(WildSim w, Creature c, float dt)
+    {
+        float y = c.Position.Y, speed = MathF.Max(0f, -c.Velocity.Y), ground = Footing(w, c, c.Position.X, c.Position.Z);
+        // (Into water: down to where it floats, or to the bottom if it can stand there or sinks; the water takes the blow.)
+        bool wet = w.WaterAt?.Invoke(c.Position.X, c.Position.Z) is float top && top > ground;
+        if (wet && Shore.Swims(c.Species)) ground = MathF.Max(ground, w.WaterAt(c.Position.X, c.Position.Z).Value - c.Species.BodyHeight * w.SwimShare);
+        bool down = Drop.Step(ref y, ref speed, ground, w.Gravity, dt);
+        c.Position = new Vector3(c.Position.X, y, c.Position.Z);
+        c.Velocity = new Vector3(0f, -speed, 0f);
+        if (!down) return;
+        c.Falling = false;
+        c.Velocity = Vector3.Zero;
+        w.Landed(c, wet ? 0f : speed);
+    }
+
+    /// <summary>Water no deeper than this (or than it wades) it goes about in as on land, at the edge to drink; deeper, it makes for the bank, m.</summary>
+    const float Paddle = 0.3f;
+
+    /// <summary>
+    /// In water deeper than it paddles in (<see cref="Paddle"/>): a swimmer swims (its back at the surface) for the nearest bank it can climb out on and
+    /// walks up out of it; what can't swim walks the bottom for it where its head is clear, and drowns where it isn't. Out of its
+    /// depth with no bank in reach, it treads water and looks again. True while the water has it (and its own mind waits).
+    /// </summary>
+    static bool Swim(WildSim w, Creature c, float dt)
+    {
+        if (w.WaterAt?.Invoke(c.Position.X, c.Position.Z) is not float top || c.Position.Y > top + 0.05f) // (over it, it falls in first: Unfooted)
+        {
+            (c.Shoreward, c.ShorewardReach) = (null, 0f);
+            return false;
+        }
+        float bottom = Footing(w, c, c.Position.X, c.Position.Z), depth = top - bottom, h = c.Species.BodyHeight;
+        if (c.Shoreward == null && depth <= MathF.Min(h * w.WadeShare, Paddle)) return false; // (paddling at the edge, drinking: on its feet as on land)
+        bool swims = Shore.Swims(c.Species), deep = depth > h * w.SwimShare;
+        if (c.Shoreward == null && w.Time - c.ShorewardAt > 5f)
+        {
+            c.ShorewardAt = w.Time;
+            c.ShorewardReach = c.ShorewardReach <= 0f ? Shore.Reach : MathF.Min(c.ShorewardReach * 2f, Shore.FarReach);
+            // (Nothing it can step out onto even far off: a bank as high as its body, scrambled up.)
+            float climb = c.ShorewardReach >= Shore.FarReach ? MathF.Max(BankClimb(c), c.Species.BodyHeight) : BankClimb(c);
+            c.Shoreward = Shore.Nearest(c.Position, w.WaterAt, w.Terrain.Height, climb, c.ShorewardReach);
+        }
+        if (!swims && depth > h)
+        {
+            // Out of its depth and too heavy to swim: it sinks, and drowns.
+            c.Position = c.Position with { Y = Mathf.MoveToward(c.Position.Y, bottom, 1.5f * dt) };
+            c.Velocity = Vector3.Zero;
+            w.Damage(c, c.Stats.MaxHealth * 0.12f * dt, null);
+            return true;
+        }
+        Vector3 to = c.Shoreward is { } bank ? WildSim.Flat(bank - c.Position) : Vector3.Zero;
+        float speed = to.LengthSquared() < 0.01f ? 0f : (swims && deep ? 0.6f : 0.4f) * c.Stats.WalkSpeed;
+        Vector3 dir = speed > 0f ? to.Normalized() : c.Forward;
+        Turn(c, dir, dt);
+        Vector3 p = c.Position + c.Forward * speed * dt;
+        p = Bound(w, p, ref dir);
+        // Its back at the surface where it swims; on the bottom where it wades out (up the bank at a walk, never a leap).
+        float floatAt = top - h * w.SwimShare, under = Footing(w, c, p.X, p.Z);
+        p.Y = swims && deep ? Mathf.MoveToward(c.Position.Y, MathF.Max(floatAt, under), 2f * dt) : under;
+        if (under - c.Position.Y > 1.5f * dt) p = c.Position with { Y = c.Position.Y + 1.5f * dt }; // (the bed or the bank rising steeper than a walk ahead: it clambers up where it is, never a hop)
+        c.Velocity = c.Forward * speed;
+        c.Position = p;
+        if (w.WaterAt(p.X, p.Z) == null) c.Shoreward = null; // (out on the bank: its own way again)
+        return true;
+    }
+
+    /// <summary>How high over the water a bank may stand for a creature to climb out onto it (its own legs' reach), m.</summary>
+    static float BankClimb(Creature c) => MathF.Max(0.5f, c.Species.Body.LegLength * 0.8f);
+
     /// <summary>Downed by a hard landing: it lies still, then rolls back onto its feet over its last moments.</summary>
     static void GetUp(Creature c, float dt)
     {
@@ -126,13 +240,18 @@ public static class Locomotion
         }
         Vector3 p = c.Position + v * dt;
         Avoid(w, c, ref p, ref v);
-        // Never into another body: along its side instead.
+        // Never into another body: along its side instead (where it stood, if its side is a trunk's or a rock's: never into either).
         Vector3 held = w.Unpressed(c, c.Position, p);
+        if (held != p && IntoTrees(w, c, held)) held = c.Position;
         if (held != p) (p, v) = (held, WildSim.Flat(held - c.Position) / MathF.Max(dt, 1e-4f));
         p = Bound(w, p, ref v);
-        p.Y = w.Terrain.Height(p.X, p.Z);
+        // On its feet on the ground under them; a drop more than a stride down a slope it goes over, and falls (Unfooted).
+        p.Y = Footing(w, c, p.X, p.Z);
+        if (c.Position.Y - p.Y > StrideDrop) p.Y = c.Position.Y;
         KeepOffFaces(w, c, ref p, ref v);
         if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
+        // Nor turned off a face or out of the solid into another body: along it, or where it stood if that takes it up a face or into a trunk.
+        if (w.Unpressed(c, c.Position, p) is var clear && clear != p) p = Face(w, c.Position, clear, Brain.GaitOf(c.Species)) || IntoTrees(w, c, clear) ? c.Position : clear with { Y = Footing(w, c, clear.X, clear.Z) };
         c.Velocity = v;
         c.Position = p;
     }
@@ -198,7 +317,7 @@ public static class Locomotion
         if (!Interpenetration.SolidSurface(w, alongX, c.Species)) { p = alongX; v.Z = 0f; }
         else if (!Interpenetration.SolidSurface(w, alongZ, c.Species)) { p = alongZ; v.X = 0f; }
         else { p = c.Position; v = Vector3.Zero; return; }
-        p.Y = w.Terrain.Height(p.X, p.Z);
+        p.Y = Footing(w, c, p.X, p.Z);
     }
 
     /// <summary>Hoppers stand still on the ground and cover distance in ballistic hops.</summary>
@@ -333,7 +452,7 @@ public static class Locomotion
         float ground = w.Terrain.Height(c.Position.X, c.Position.Z);
         if (c.Position.Y > ground + 0.01f)
         {
-            float g = c.Species.Rig == RigKind.GasBag ? 2.5f : 12f;
+            float g = c.Species.Rig == RigKind.GasBag ? 2.5f : w.Gravity;
             Vector3 v = c.Velocity * MathF.Max(0f, 1f - dt) + Vector3.Down * g * dt;
             Vector3 p = c.Position + v * dt;
             if (p.Y < ground) { p.Y = ground; v = Vector3.Zero; }

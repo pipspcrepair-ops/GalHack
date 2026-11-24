@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
@@ -47,10 +47,11 @@ public partial class Game
         {
             Name = "Places", Zone = Zone, Focus = Focus,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs, AheadSeconds = rules.AheadSeconds,
-            Fauna = Zone.Wildlife.Life == null ? null : new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable), // none on an airless world
+            Fauna = Zone.Wildlife.Airless || Zone.Wildlife.Life == null ? null : new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable), // no creatures on an airless world (its people are still planned)
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;
+        Zone.Edits.Edited += edit => Places.Dug(edit.Removed); // a town's people over it fall in
         Zone.AddChild(new RuinLoot { Name = "Ruin loot", Zone = Zone, Focus = Focus });
         Hulks = new Hulks { Name = "Hulks", Zone = Zone, Focus = Focus, Places = Places };
         Zone.AddChild(Hulks);

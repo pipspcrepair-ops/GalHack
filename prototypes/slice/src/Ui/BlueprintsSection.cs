@@ -54,8 +54,19 @@ public sealed class BlueprintsSection : IMenuSection
     public BlueprintsSection(Game.Game game) => _game = game;
     public Vector2 PreferredSize => new(1560, 790);
 
-    /// <summary>The library, read when first wanted (tests point its saved folder elsewhere).</summary>
-    public BlueprintLibrary Library => _library ??= new BlueprintLibrary(_game.Zone.Data, _game.Zone.Data.Rules.Planet.Gravity);
+    /// <summary>
+    /// The library, read when first wanted and again when the zone's gravity changes, since its numbers are on that
+    /// gravity (tests point its saved folder elsewhere, and keep it).
+    /// </summary>
+    public BlueprintLibrary Library
+    {
+        get
+        {
+            float g = _game.Zone.Physics.Zone.Strength;
+            if (_library == null || _library.Gravity != g) _library = new BlueprintLibrary(_game.Zone.Data, g, _library?.Folder);
+            return _library;
+        }
+    }
 
     public LibraryEntry Selected
     {
@@ -73,7 +84,7 @@ public sealed class BlueprintsSection : IMenuSection
     }
 
     /// <summary>What the tab shows changes with these.</summary>
-    public string Signature => $"{_selected}|{Saving}|{_why}|{_saveProblem}|{_library?.Version}|{Busy}|{(_preview?.Dragging == true ? Time.GetTicksMsec() / 33 : 0)}";
+    public string Signature => $"{_selected}|{Saving}|{_why}|{_saveProblem}|{_library?.Version}|{_library?.Gravity}|{Busy}|{(_preview?.Dragging == true ? Time.GetTicksMsec() / 33 : 0)}";
 
     /// <summary>The structure SAVE would keep: the one you sit in, else the one you look at, else the one you stand in; yours only.</summary>
     public Vessel SaveTarget()

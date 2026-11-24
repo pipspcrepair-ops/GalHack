@@ -31,12 +31,15 @@ public partial class TownWalkTest : Node
     const int WatchdogMinutes = 9;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
-    readonly System.Random _rng = new();
+    /// <summary>The run's dice: --seed=N rolls a failing run's worlds and places again (an A/B; never pinned), else fresh. Told at the start.</summary>
+    static readonly int RunSeed = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seed=")) is { } s ? int.Parse(s[7..]) : System.Environment.TickCount;
+    readonly System.Random _rng = new(RunSeed);
     PoiLibrary _lib;
     WildlifeData _data;
 
     public override void _Ready()
     {
+        GD.Print($"(run seed {RunSeed}: --seed={RunSeed} rolls these worlds again)");
         var thread = new System.Threading.Thread(() =>
         {
             System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
@@ -141,7 +144,7 @@ public partial class TownWalkTest : Node
                     },
                     (p, t) =>
                     {
-                        if (p.Indoors || p.Asleep)
+                        if (p.Asleep)
                         {
                             if (p.Asleep && used.Add(p)) slept++;
                             return;

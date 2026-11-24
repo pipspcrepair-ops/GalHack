@@ -79,6 +79,36 @@ public sealed class WildSim
         Rescues++;
         Rescued?.Invoke(c);
     }
+
+    /// <summary>The world's pull on whatever falls here, m/s² (the game sets its planet's).</summary>
+    public float Gravity = 9.8f;
+    /// <summary>The water's surface over a point (sim frame; null on dry ground, and with no water known), and the shares of a body's height under it at which it swims, and below which it wades again (the game sets its own).</summary>
+    public Func<float, float, float?> WaterAt;
+    public float SwimShare = 0.7f, WadeShare = 0.55f;
+    /// <summary>What a landing at a speed (m/s) costs, as a share of the body's health (the game's own fall rule; none without one).</summary>
+    public Func<float, float> FallHurt;
+    /// <summary>A creature came down from a fall at a speed (m/s).</summary>
+    public event Action<Creature, float> Fell;
+
+    /// <summary>Landing slower than this is a step down (about half a metre), m/s: on as it was, unshaken.</summary>
+    const float StepSpeed = 3f;
+
+    /// <summary>
+    /// Down on its feet from a fall (on the land, or in a cave or a place): hurt by the fall rule and frightened by it (it runs a
+    /// moment the way it faced), its way looked for again from where it landed.
+    /// </summary>
+    internal void Landed(Creature c, float speed)
+    {
+        if (!c.Dead && FallHurt?.Invoke(speed) is float share and > 0f) Damage(c, share * c.Stats.MaxHealth, null);
+        Fell?.Invoke(c, speed);
+        if (speed < StepSpeed) return; // (a step down: on as it was)
+        c.Path.Clear();
+        c.Repath = true;
+        c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + Brain.FellFright);
+        (c.FellAt, c.Think, c.ThinkEvery) = (Time, 0f, 0f);
+        c.ScaredFrom = c.Position - c.Forward * 3f;
+    }
+
     /// <summary>An ambush or a hunt gives itself away: a rattle, dust, scratching, breathing.</summary>
     public event Action<TellEvent> Told;
     /// <summary>A predator brought down another creature.</summary>
@@ -267,7 +297,17 @@ public sealed class WildSim
     internal void RaiseClick(Creature c) => Clicked?.Invoke(c);
 
     /// <summary>A loud sound: everything within the radius turns to look. A shot says who fired it and along which way (people read a shot past them as being shot at).</summary>
-    public void Noise(Vector3 at, float radius, Vector3 dir = default, ITarget by = null) => Noises.Add(new WorldNoise { Position = at, Radius = radius, Time = Time, Dir = dir, By = by });
+    public void Noise(Vector3 at, float radius, Vector3 dir = default, ITarget by = null) => Noises.Add(new WorldNoise { Position = at, Radius = radius, Time = Time, Dir = dir, By = by, Seq = ++NoiseSeq });
+
+    /// <summary>Loud sounds made so far: each is numbered, so a creature listens to each once (<see cref="Creature.Listened"/>).</summary>
+    public int NoiseSeq;
+
+    /// <summary>Whether a loud sound reaches a creature: within its radius, and in a place or a cave, through the walls and floors on the way (<see cref="Quiet.Reaches"/>).</summary>
+    public static bool Hears(in WorldNoise n, Creature c)
+    {
+        Vector3 ear = c.Position + Vector3.Up * MathF.Min(1.2f, c.Species.BodyHeight * 0.5f);
+        return (n.Position - ear).LengthSquared() <= n.Radius * n.Radius && (c.Space == null || Quiet.Reaches(c.Space, n.Position, ear, n.Radius));
+    }
 
     /// <summary>Your standing with whoever holds the ground at a point (their people out in the world), the game's -100 to 100; left out, nobody holds it.</summary>
     public Func<Vector3, float> StandingAt;
@@ -430,6 +470,7 @@ public sealed class WildSim
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Nerve = species.Mechanical ? 1f : Rng.For(species.Seed, "nerve", c.Id).Float(); // its own stream: nothing else it rolls changes
         c.Position = c.GoodAt = c.Behind = c.ProgressAt = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
+        if (WaterAt?.Invoke(position.X, position.Z) is float top && top > c.Position.Y) c.ShorewardReach = Shore.Reach * 0.5f; // (put down in water: awake till it is out, its first look for a bank at the usual reach)
         c.SwarmAlive = species.Body.Members;
         c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)
@@ -488,8 +529,13 @@ public sealed class WildSim
             float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
-            if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species)) continue;
-            list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
+            // Never put down in or crowding one already put down (asleep till you come near, it would never be parted): on round till clear.
+            Species kind = i < young ? species.Young : species;
+            float gap = herd != null ? Brain.GrazeKeep(kind.Stats.Radius) : 0.1f;
+            for (int k = 0; k < 8 && list.Exists(o => Flat(o.Position - p).Length() < o.Radius + kind.Stats.Radius + gap); k++)
+                p = FreeSpot(p + new Vector3(MathF.Cos(a + k * 0.8f), 0f, MathF.Sin(a + k * 0.8f)) * (kind.Stats.Radius * 2f + gap), rng);
+            if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species) || list.Exists(o => Flat(o.Position - p).Length() < o.Radius + kind.Stats.Radius)) continue;
+            list.Add(Spawn(kind, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
         if (herd?.Party != null && list.Count > 0) Kennel(herd, center, rng, allow);
@@ -622,25 +668,30 @@ public sealed class WildSim
     /// <summary>
     /// Whether a body keeps its personal space: one on the ground or a floor (not one closing to strike or seize: an attack
     /// needs its reach; in a cave or a place, not a climber holding its walls; not a swarm, a cloud, nor a gas bag, which floats).
+    /// One asleep for being far from you is a body too, one that is not moved: others awake keep off it.
     /// </summary>
     public static bool Spaced(Creature c) =>
-        !(c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
+        !(c.Removed || c.Dead || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
           || c.Space != null && (c.Species.Climbs || c.Falling)
           || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed && c.Space == null);
 
+    /// <summary>The last step's keeping apart, ms (measurements).</summary>
+    public float LastApartMs { get; private set; }
+
     void KeepApart(float dt)
     {
+        long from = Stopwatch.GetTimestamp();
         Space.Bodies.Clear();
         _spaced.Clear();
         ISolidSpace inside = null;
         foreach (Creature c in Creatures)
         {
-            c.Spaced = -1;
+            (c.Spaced, c.Room) = (-1, Vector3.Zero);
             if (!Spaced(c)) continue;
             c.Spaced = _spaced.Count;
             inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
-            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Dormant ? 0f : c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c), Height = c.Species.BodyHeight });
             _spaced.Add(c);
         }
         if (_spaced.Count == 0) return;
@@ -649,8 +700,10 @@ public sealed class WildSim
             if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
         // Where each body can be put (its own say, so that of two the one that can't be moved, the other takes the whole push).
         Space.Resolve(dt, _stands ??= (i, p) => i >= _spaced.Count || Stands(_spaced[i], p), 4);
+        LastApartMs = (float)Stopwatch.GetElapsedTime(from).TotalMilliseconds;
         for (int i = 0; i < _spaced.Count; i++)
         {
+            _spaced[i].Room = Space.Bodies[i].Room;
             Vector3 moved = Space.Bodies[i].Moved;
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
@@ -715,23 +768,12 @@ public sealed class WildSim
             float r;
             if (j < _spaced.Count)
             {
-                // (Not one walking off away from it: that gap opens by itself.)
                 Creature b = _spaced[j];
-                Vector3 off = Flat(b.Position - from);
-                if (!Spaced(b) || off.LengthSquared() > 1e-4f && Flat(b.Velocity).Dot(off.Normalized()) > 0.3f) continue;
+                if (!Spaced(b)) continue;
                 (o, r) = (b.Position, b.Radius);
             }
             else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);
-            if (MathF.Abs(o.Y - from.Y) > 1.5f) continue;
-            Vector3 now = Flat(from - o), next = Flat(to - o);
-            float want = c.Radius + r, d = next.Length();
-            if (d >= want || d >= now.Length()) continue; // (clear of it, or no further in)
-            // The part of the step toward it goes; what is left goes along its side.
-            Vector3 n = now.LengthSquared() > 1e-6f ? now.Normalized() : next.LengthSquared() > 1e-6f ? next.Normalized() : Vector3.Right;
-            Vector3 step = Flat(to - from);
-            float into = step.Dot(n);
-            if (into < 0f) step -= n * into;
-            to = new Vector3(from.X + step.X, to.Y, from.Z + step.Z);
+            to = PersonalSpace.Off(from, to, c.Radius, o, r);
         }
         return to;
     }
@@ -751,14 +793,26 @@ public sealed class WildSim
         for (int i = 0; i < Creatures.Count; i++)
         {
             Creature c = Creatures[i];
-            if (c.Removed || c.Dormant && !c.Dead) continue;
+            if (c.Removed) continue;
+            // Asleep, it still hears: a shot that reaches it alerts it (and its view wakes it).
+            if (c.Dormant && !c.Dead)
+            {
+                if (Noises.Count > 0) Senses.Hear(this, c);
+                c.StepPending = 0f;
+                continue;
+            }
+            // Stepped less often (StepEvery), it takes the time it missed in one step.
+            c.StepPending += dt;
+            if (c.StepEvery > 1 && !c.Attacking && (Frame + c.Id) % c.StepEvery != 0) continue;
+            float step = c.StepPending;
+            c.StepPending = 0f;
             Stepped++;
             long begin = t0;
-            c.Age += dt;
-            c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
-            c.StunReady = MathF.Max(0f, c.StunReady - dt);
+            c.Age += step;
+            c.HurtFlash = MathF.Max(0f, c.HurtFlash - step * 4f);
+            c.StunReady = MathF.Max(0f, c.StunReady - step);
             if (c.HeldBy != null && (c.HeldBy.Removed || c.HeldBy.Dead || c.HeldBy.Holding != c.AsTarget)) c.HeldBy = null;
-            if (c.Dead) UpdateCorpse(c, dt);
+            if (c.Dead) UpdateCorpse(c, step);
             else if (c.HeldBy != null)
             {
                 // Seized face to face: it can do nothing but be held.
@@ -771,7 +825,7 @@ public sealed class WildSim
             else if (c.StunFor > 0f)
             {
                 // Stunned: caught where it stands, in its flinch, for a moment.
-                c.StunFor -= dt;
+                c.StunFor -= step;
                 c.Desired = Vector3.Zero;
                 c.Velocity = Vector3.Zero;
             }
@@ -782,7 +836,7 @@ public sealed class WildSim
             }
             else
             {
-                c.ThinkClock += dt;
+                c.ThinkClock += step;
                 if (c.Attacking || c.ThinkClock >= c.ThinkEvery)
                 {
                     c.ThinkDt = c.ThinkClock;
@@ -791,20 +845,20 @@ public sealed class WildSim
                     c.ThinkEvery = Brain.Interval(c);
                 }
                 else Brain.Follow(c);
-                Attacks.Update(this, c, dt);
-                if (c.Species.Breaker != BreakerKind.None) Breaking.Step(this, c, dt);
-                if (c.Species.Adult != null) Frisk(c, dt);
+                Attacks.Update(this, c, step);
+                if (c.Species.Breaker != BreakerKind.None) Breaking.Step(this, c, step);
+                if (c.Species.Adult != null) Frisk(c, step);
             }
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }
-            Locomotion.Move(this, c, dt);
+            Locomotion.Move(this, c, step);
             Locomotion.KeepOff(this, c);
-            if (!c.Dead && !Frozen) Brain.Headway(this, c, dt);
+            if (!c.Dead && !Frozen) Brain.Headway(this, c, step);
             // In a cave or a place nothing ends its step in a wall or a piece of furniture (a landing, a spawn): out at once.
             if (c.Space != null && !c.Dead && Interpenetration.Inside(this, c)) Interpenetration.Out(this, c);
             if (Profile) { long t = Stopwatch.GetTimestamp(); moveTicks += t - t0; t0 = t; }
 
             // Far creatures re-pose less often; the rig catches up with the summed time.
-            c.RigPending += dt;
+            c.RigPending += step;
             if (c.RigInterval <= 1 || c.Attacking || (Frame + c.Id) % c.RigInterval == 0) // a strike is judged on the pose, so it's posed every step
             {
                 c.Rig.Update(this, c, c.RigPending);

@@ -223,24 +223,7 @@ public partial class BlueprintTest : Node
         string name = plan.Name;
         Vessel v = null;
         string why = null;
-        var (lo, hi) = plan.Bounds();
-        float radius = 0.5f * new Vector2(hi.X - lo.X + 1, hi.Z - lo.Z + 1).Length();
-        var play = new Playthrough(_game);
-        for (int attempt = 0; attempt < 5 && v == null; attempt++)
-        {
-            Vector3 spot = play.FlatSpot(_game.Survivor.WorldFeet, 60f + 40f * attempt, attempt * 1.3f, 0.5f + attempt * 0.5f, span: MathF.Max(14f, radius));
-            Vector3 stand = spot - Vector3.Forward * (radius + 4f);
-            _game.Survivor.PlaceOutside((_game.Zone.GroundAt(stand.X, stand.Z) + Vector3.Up * 0.2f).ToNumerics());
-            foreach (int x in _drive.UntilSettled(20)) yield return x;
-            _game.Survivor.Yaw = 0f;
-            _game.Survivor.Pitch = 0f;
-            foreach (int x in _drive.Wait(30)) yield return x;
-            WholePlacement job = _game.Builder.PlaceWhole(plan);
-            for (int t = 0; t < 600 && !job.Done; t++) yield return 0;
-            v = job.Vessel;
-            why = job.Why ?? (job.Done ? why : "still placing after 10 s");
-            for (int t = 0; t < 300 && v != null && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
-        }
+        foreach (int x in new Playthrough(_game).PlaceWhole(plan, (placed, refused) => (v, why) = (placed, refused))) yield return x;
         if (!Check(v != null, $"{name}: set down whole by Creative's PLACE{(v == null ? $" (five spots refused, the last: {why})" : "")}")) yield break;
         // PLACE fells what stands in its box and its head room; the rest stands. A crown met higher up or on the flight leg
         // breaks under a craft its trunk can't take, and holds or turns aside a light one (vessels collide with flora).

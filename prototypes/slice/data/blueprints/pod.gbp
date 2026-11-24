@@ -65,6 +65,7 @@ block 1 2 -2 iron-plated paint=band,band,hull,hull,band,band
 block 2 2 -2 iron-plated slope rot=+x-z paint=band
 block -2 2 -1 iron-plated paint=band,band,hull,hull,band,band
 block 2 2 -1 iron-plated paint=band,band,hull,hull,band,band
+block 3 2 -1 life-support-pod
 block -2 2 0 iron-plated paint=band,band,hull,hull,band,band
 block 2 2 0 iron-plated paint=band,band,hull,hull,band,band
 block -2 2 1 iron-plated paint=band,band,hull,hull,band,band

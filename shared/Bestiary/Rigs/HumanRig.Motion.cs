@@ -26,9 +26,14 @@ public sealed partial class HumanRig
     float _blowAt, _strikeWas;
     bool _strikeBack;
 
+    /// <summary>The quickest a blow is struck, wind-up to landed (0.42 to 0.58 of it), s: a lunge cut short by a touch, or a recovery begun at once, still swings through (owner, 23 Nov: "Slow them a little").</summary>
+    const float QuickestStrike = 0.15f;
+
     /// <summary>
     /// Reads a blow off the game's one number (rising to 1 as it lands, easing back after): rising,
-    /// the wind-up and then, in its last stretch, the strike; falling, the recovery.
+    /// the wind-up and then, in its last stretch, the strike; falling, the recovery. Past the wind-up it goes
+    /// on no quicker than <see cref="QuickestStrike"/> has it, and a blow the game is done with is shown to its
+    /// end (one called off in its wind-up lowered again): a swing is never skipped through in a frame.
     /// </summary>
     void ReadBlow(in Gesture g)
     {
@@ -37,8 +42,16 @@ public sealed partial class HumanRig
         else if (v < _strikeWas) _strikeBack = true;
         else if (v > _strikeWas) _strikeBack = false;
         _strikeWas = v;
-        _blow = v <= 0f ? StrikeKind.None : g.Blow != StrikeKind.None ? g.Blow : BlowOf(Species);
-        _blowAt = _strikeBack ? 0.58f + 0.42f * (1f - v) : v < 0.85f ? 0.44f * v / 0.85f : 0.44f + 0.14f * (v - 0.85f) / 0.15f;
+        float at = v <= 0f ? (_blowAt < 0.42f ? 0f : 1f) : _strikeBack ? 0.58f + 0.42f * (1f - v) : v < 0.85f ? 0.44f * v / 0.85f : 0.44f + 0.14f * (v - 0.85f) / 0.15f;
+        if (v > 0f && (_blow == StrikeKind.None || at < _blowAt - 0.3f)) _blowAt = at; // (a new blow: from where it is asked)
+        else if (_blow != StrikeKind.None && _dt > 0f)
+        {
+            float most = 0.16f / QuickestStrike * _dt;
+            _blowAt = at > _blowAt ? MathF.Min(at, MathF.Max(_blowAt, MathF.Min(at, 0.42f)) + (at > 0.42f ? most : 0f)) : MathF.Max(at, _blowAt - most);
+        }
+        else _blowAt = at;
+        if (v > 0f) _blow = g.Blow != StrikeKind.None ? g.Blow : BlowOf(Species);
+        else if (_blowAt <= 0f || _blowAt >= 1f) _blow = StrikeKind.None;
     }
 
     /// <summary>What a blow does to the trunk: its turn, its bend, how far the hips go forward and down.</summary>
@@ -94,14 +107,14 @@ public sealed partial class HumanRig
                 if (!lead) return Bones(shoulder, F.V(0.2f, -0.85f, 0.3f), F.V(-0.45f, 0.85f, 0.3f), upper, fore).With(HandTable.At("punch-cocked", i)); // a guard up at the chin
                 ArmGoal cocked = Bones(shoulder, F.V(0.3f, -0.72f, -0.38f), F.V(-0.12f, 0.85f, 0.5f), upper, fore).With(HandTable.At("punch-cocked", i));
                 ArmGoal thrown = Bones(shoulder, F.V(-0.08f, 0.04f, 1f), F.V(-0.06f, 0.06f, 1f), upper, fore).With(HandTable.At("punch-thrown", i));
-                return Blend(cocked, thrown, k);
+                return Blend(shoulder, F.Ahead, cocked, thrown, k);
             }
             case StrikeKind.Swat:
             {
                 if (!lead) return Bones(shoulder, F.V(0.55f, -0.65f, 0.25f), F.V(0.3f, -0.4f, 0.55f), upper, fore).With(HandTable.At("swat-raised", i)); // out for balance
                 ArmGoal raised = Bones(shoulder, F.V(0.3f, 0.88f, -0.22f), F.V(0.1f, 0.55f, -0.6f), upper, fore).With(HandTable.At("swat-raised", i));
                 ArmGoal through = Bones(shoulder, F.V(-0.1f, -0.4f, 0.95f), F.V(-0.45f, -0.6f, 0.65f), upper, fore).With(HandTable.At("swat-through", i));
-                ArmGoal a = Blend(raised, through, k);
+                ArmGoal a = Blend(shoulder, F.Ahead, raised, through, k);
                 a.Hand += F.Up * 0.22f * MathF.Sin(MathF.PI * k) + F.Ahead * 0.18f * MathF.Sin(MathF.PI * k); // over the top, not through the chest
                 return a;
             }
@@ -110,7 +123,7 @@ public sealed partial class HumanRig
                 // Arms up and open, fingers spread; then both hands closing on a head in front.
                 ArmGoal open = Bones(shoulder, F.V(0.5f, 0.3f, 0.6f), F.V(0.3f, 0.6f, 0.72f), upper, fore).With(HandTable.At("seize-open", i));
                 ArmGoal grab = Bones(shoulder, F.V(0.02f, 0.18f, 1f), F.V(-0.32f, 0.18f, 1f), upper, fore).With(HandTable.At("seize-grab", i));
-                return Blend(open, grab, k);
+                return Blend(shoulder, F.Ahead, open, grab, k);
             }
             case StrikeKind.Spew:
             {
@@ -119,13 +132,13 @@ public sealed partial class HumanRig
                     : Bones(shoulder, F.V(0.2f, -0.9f, 0.3f), F.V(-0.6f, 0f, 0.8f), upper, fore);
                 clutch = clutch.With(HandTable.At("spew-clutch", i));
                 ArmGoal flung = Bones(shoulder, F.V(0.45f, -0.82f, -0.28f), F.V(0.25f, -0.9f, -0.2f), upper, fore).With(HandTable.At("spew-flung", i));
-                return Blend(clutch, flung, k);
+                return Blend(shoulder, F.Ahead, clutch, flung, k);
             }
         }
         return default;
     }
 
-    static ArmGoal Blend(ArmGoal a, ArmGoal b, float k) => new ArmGoal(a.Hand.Lerp(b.Hand, k), a.Pole.Lerp(b.Pole, k).Normalized()).With(HandSpec.Lerp(a.Spec, b.Spec, k));
+    static ArmGoal Blend(Vector3 shoulder, Vector3 ahead, ArmGoal a, ArmGoal b, float k) => new ArmGoal(Sweep(shoulder, a.Hand, b.Hand, k, ahead), a.Pole.Lerp(b.Pole, k).Normalized()).With(HandSpec.Lerp(a.Spec, b.Spec, k));
 
     /// <summary>The blow a body throws, by what it is: a machine swats or punches by its make, a person punches bare-handed and swats with a blade or a club.</summary>
     public static StrikeKind BlowOf(Species s)
@@ -172,6 +185,8 @@ public sealed partial class HumanRig
     {
         if (dir.LengthSquared() < 1e-6f) dir = -Facing;
         dir = dir.Normalized();
+        // (One hit on another still showing: the body is taken on from where that left it, not set back to stand first.)
+        if (_doll == null && (Envelope(MathF.Min(_hitAge, 1f)) > 0.05f || Stagger > 0.05f)) CarryFrom();
         _hitDir = dir;
         _hitHeavy = Math.Clamp(heavy, 0f, 1f);
         _hitAge = 0f;
@@ -192,6 +207,33 @@ public sealed partial class HumanRig
         Try(Part.LegL, _knee[0]);
         Try(Part.LegR, _knee[1]);
         _doll?.Shove(_hitPart, dir, _hitHeavy);
+    }
+
+    /// <summary>The pose a hit landed on another in (about the body's root, <see cref="_root"/>), and how much of it is still carried (1 to 0).</summary>
+    Transform3D[] _hitFrom;
+    float _hitCarry;
+    /// <summary>Where the body stood and faced when last posed.</summary>
+    Transform3D _root;
+
+    /// <summary>How long a hit on another takes to carry the body from where the last left it, s.</summary>
+    const float HitCarry = 0.1f;
+
+    void CarryFrom()
+    {
+        _hitFrom ??= new Transform3D[Pose.Length];
+        Transform3D back = _root.AffineInverse();
+        for (int i = 0; i < Pose.Length; i++) _hitFrom[i] = back * Pose[i];
+        _hitCarry = 1f;
+    }
+
+    /// <summary>The pose just made, carried on from the one a new hit landed in (<see cref="CarryFrom"/>), and the root noted.</summary>
+    void CarryHit(in Gesture g)
+    {
+        _root = new Transform3D(new Basis(Vector3.Up, g.Yaw), g.Feet);
+        if (_hitCarry <= 0f) return;
+        _hitCarry = MathF.Max(0f, _hitCarry - _dt / HitCarry);
+        float w = 1f - _hitCarry * _hitCarry * (3f - 2f * _hitCarry);
+        for (int i = 0; i < Pose.Length; i++) Pose[i] = PoseBlend.Mix(_root * _hitFrom[i], Pose[i], w);
     }
 
     /// <summary>Seconds the last hit's flinch is held at its height (a stun): the body stays caught in it.</summary>
@@ -220,6 +262,12 @@ public sealed partial class HumanRig
 
     /// <summary>Whether the dead body has come to rest (and stays as it lies).</summary>
     public bool Settled => _doll?.Settled == true;
+
+    /// <summary>The world's pull on the limp body, m/s².</summary>
+    public float Gravity = 9.8f;
+
+    /// <summary>What the body lay on went: it falls again, limp, on to whatever is below.</summary>
+    public void Unsettle() => _doll?.Wake();
 
     /// <summary>Where each joint is this frame, for the ragdoll to start from: see <see cref="Doll"/> for the order.</summary>
     readonly Vector3[] _joints = new Vector3[Doll.Count], _jointsBefore = new Vector3[Doll.Count];

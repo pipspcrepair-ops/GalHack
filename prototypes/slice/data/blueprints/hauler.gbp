@@ -243,6 +243,7 @@ block 5 0 9 thruster-t3
 block -3 1 -14 iron-plated slope rot=-x-z paint=cream
 block -2..1 1 -14 glass-plated
 block 2 1 -14 iron-plated slope rot=+x-z paint=cream
+block -4 1 -13 life-support-pod
 block -3 1 -13 iron-plated paint=inner,cream,cream,cream,cream,cream
 block 2 1 -13 iron-plated paint=cream,inner,cream,cream,cream,cream
 block -3 1 -12 iron-plated paint=inner,cream,cream,cream,cream,cream

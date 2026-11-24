@@ -157,6 +157,7 @@ public sealed partial class Town
 
     /// <summary>A spot's point: where a person stands, sits or works there (local feet).</summary>
     Vector3 At(int spot) => spot >= 0 && spot < _point.Count ? _point[spot] : Walk(Spots[spot].Cell);
+    public Vector3 SpotAt(int spot) => At(spot);
 
     /// <summary>
     /// The way to a spot from wherever they are now, when that isn't the spot they were last at (called
@@ -170,7 +171,8 @@ public sealed partial class Town
         PInt3? here = InSeat(p, p.Spot) ? Spots[p.Spot].Cell : InSeat(p, p.Seat) ? Spots[p.Seat].Cell : Stand(Cell(p.Pos));
         if (here is not { } h || !_nav.Standable(Spots[spot].Cell)) return null;
         pending = !Searched(h, spot, out List<Vector3> path);
-        return path;
+        // (Its first point is the middle of the cell they stand in: from anywhere in it, on straight for the next, not back to it first and round again.)
+        return path is { Count: > 1 } && here == Stand(Cell(p.Pos)) && Shortcut(p.Pos, path[1]) ? path.GetRange(1, path.Count - 1) : path;
     }
 
     /// <summary>On the last step of the way to a seat, inside the seat's own cells (tests).</summary>
@@ -266,29 +268,28 @@ public sealed partial class Town
             foreach (Person p in People)
             {
                 if (p.Dead || p.Gone) continue;
-                if (p.Away) { if ((p.AwayFor -= dt) <= 0f) p.Away = false; continue; }
                 Day(p, dark, dt);
-                if (p.Asleep) p.Pos = p.Pos.MoveToward(_lie[p.Home] ?? p.Pos, dt);
+                InBed(p, dt);
                 probe(p, t);
             }
         }
     }
 
     /// <summary>
-    /// The night and the morning: home to bed (or indoors where there are no beds), asleep there, and
+    /// The night and the morning: home to bed (or a seat by their spot, or the spot itself), asleep there, and
     /// up and out again. True while that is what they are doing.
     /// </summary>
     bool Day(Person p, bool hide, float dt)
     {
-        if (hide && !p.Indoors && !p.Asleep)
+        if (hide && !p.Asleep)
         {
-            // Home, wherever they were going: only reaching their own bed or door takes them in.
-            if (p.Spot != p.Home || p.Path == null) GoTo(p, p.Home);
+            if (p.Refuge < 0) p.Refuge = NightSpot(p);
+            if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
             Arrive(p, dt, true);
             return true;
         }
-        if (!hide) Wake(p);
-        if (p.Indoors || p.Asleep) return true;
+        if (!hide) { p.Refuge = -1; Wake(p); }
+        if (p.Asleep) return true;
         if (Move(p, dt))
         {
             p.Wait -= dt;
@@ -298,26 +299,56 @@ public sealed partial class Town
         return false;
     }
 
-    /// <summary>On the way home: there, into bed (asleep, for the night), shut in (from a fright), or in at the door where there are no beds.</summary>
+    /// <summary>
+    /// Where someone off duty spends the night: their own bed if their spot is one, else a seat close by it nobody else has
+    /// taken for the night, else the spot itself if nobody has, else the nearest other spot close by that nobody has (a bed
+    /// aside). Everyone stays a body in the world (owner: "Yes, remove it", of people blinking out at their home spots).
+    /// </summary>
+    int NightSpot(Person p)
+    {
+        if (p.Home < _lie.Count && _lie[p.Home] != null && Whole(p.Home)) return p.Home;
+        Vector3 home = At(p.Home);
+        int seat = -1, other = -1;
+        float seatAt = 6f, otherAt = 8f;
+        for (int i = 0; i < Spots.Count; i++)
+        {
+            if (Spots[i].Tag == "bed" || Making(p, i) > 0 || !Whole(i)) continue;
+            float d = (At(i) - home).Length();
+            if (Spots[i].Tag == "sit" && d < seatAt) (seat, seatAt) = (i, d);
+            else if (i != p.Home && d < otherAt) (other, otherAt) = (i, d);
+        }
+        return seat >= 0 ? seat : Making(p, p.Home) == 0 || other < 0 ? p.Home : other;
+    }
+
+    /// <summary>In bed, or at the spot they spend the night at (tests).</summary>
+    public bool AtNight(Person p) => p.Asleep || p.Refuge >= 0 && !p.Fleeing && p.Spot == p.Refuge && (p.Path == null || p.Step >= p.Path.Count);
+
+    /// <summary>
+    /// On the way home (or to a refuge from a fright): there, into bed for the night if it is their own; else sat or stood at
+    /// it (the frightened cowering).
+    /// </summary>
     void Arrive(Person p, float dt, bool sleep)
     {
         int home = p.Refuge >= 0 ? p.Refuge : p.Home;
-        if (!Move(p, dt) || p.Spot != home) return;
-        if (home < _lie.Count && _lie[home] != null)
-        {
-            // Asleep counts as in for everything else (out of reach, not about the place); only their body shows, in bed.
-            if (sleep && home == p.Home) { p.Asleep = true; p.Indoors = true; p.Yaw = _face[p.Home]; p.Path = null; }
-            else p.Indoors = true; // in from a fright: shut in their room, out of sight, as anyone else's door
-        }
-        else p.Indoors = _homes.Length > 0;
+        if (!Move(p, dt) || p.Spot != home || p.Fleeing) return;
+        if (sleep && home == p.Home && home < _lie.Count && _lie[home] != null) { p.Asleep = true; p.Yaw = _face[p.Home]; p.Path = null; }
+        else { Idle(p, dt); p.Sitting |= p.Seat == home; }
     }
 
-    /// <summary>Morning (or the fright over): up out of bed or out of the door, at their usual pace.</summary>
+    /// <summary>Down onto the mattress (asleep) and back up off it, at a walk: off the bed only once at their spot by it.</summary>
+    void InBed(Person p, float dt)
+    {
+        bool rising = !p.Asleep && p.Slept > 0f && p.Spot == p.Home && p.Path is { } way && p.Step < way.Count;
+        p.Slept = rising ? MathF.Max(0.02f, p.Slept - 1.2f * dt) : Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
+        if (p.Asleep && p.Home < _lie.Count && _lie[p.Home] is Vector3 lie) p.Pos = p.Pos.MoveToward(lie, 1.5f * dt);
+    }
+
+    /// <summary>Morning (or the fright over, or woken): up out of bed where they lie, at their usual pace.</summary>
     void Wake(Person p)
     {
-        if (!p.Indoors && !p.Asleep) return;
-        p.Indoors = false;
-        if (p.Asleep) { p.Asleep = false; p.Pos = At(p.Home); p.Path = null; p.Step = 0; }
+        if (!p.Asleep && !p.Fleeing) return;
+        // (Off the bed onto their spot by its side as out of a seat, the bed theirs till they are clear of it: walked, never put there.)
+        if (p.Asleep) { p.Asleep = false; p.Path = new List<Vector3> { At(p.Home) }; p.Step = 0; (p.Seat, p.GettingUp) = (p.Home, true); }
         p.Fleeing = false;
         p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
     }

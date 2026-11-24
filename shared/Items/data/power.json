@@ -19,7 +19,7 @@
 //               which have no aim of their own in the slice yet. A function not listed draws nothing:
 //               cores, containers, doors, pads, ladders.
 //   drives      the jump fuels, from core storage: the item each drive burns, how many per AU (warp drive,
-//               in a system) or per light year (hyperdrive, between stars), and the seconds it spools on
+//               in a system) or per light year (fold drive, between stars), and the seconds it spools on
 //               its block's power before it jumps. Shields must be down to jump.
 //   shield      a structure's shield takes hits before its hull. By block: its hit points and recharge per
 //               second at full power. It refills cooldown seconds after the last hit, burning dribbles of
@@ -43,15 +43,16 @@
     "constructor": { "working": 1 },
     "chair": { "seated": 1 },
     "forecast": { "on": 1 },
+    "life-support": { "on": 1 },
     "turret": { "idle": 0, "tracking": 0.3, "firing": 1 },
     "weapon": { "idle": 0, "firing": 1 },
     "shield": { "up": 0.1, "recharging": 1 },
     "warp-drive": { "engaged": 1 },
-    "hyperdrive": { "engaged": 1 }
+    "fold-drive": { "engaged": 1 }
   },
   "drives": {
     "warp-drive": { "fuel": "warp-cell", "per": 1, "unit": "AU", "spool": 10 },
-    "hyperdrive": { "fuel": "fold-crystal", "per": 1, "unit": "LY", "spool": 15 }
+    "fold-drive": { "fuel": "fold-crystal", "per": 1, "unit": "LY", "spool": 15 }
   },
   "shield": { "fuel": "fold-crystal", "foldPerHp": 0.0002, "cooldown": 15, "blocks": { "shield-generator": { "hp": 4000, "recharge": 500 } } },
   "solar": { "cloudCut": 0.75 }

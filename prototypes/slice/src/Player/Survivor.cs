@@ -104,6 +104,14 @@ public sealed class Survivor
     /// </summary>
     public float ImpactSpeed => Body.OnFloor || Seated != null || -N.Vector3.Dot(Body.Velocity, Body.Up) < 0.5f ? 0f : Body.Velocity.Length();
 
+    /// <summary>
+    /// The sleeper's fall: what landing at a speed (m/s) costs, as a share of their health (the physics module's one formula with a
+    /// sleeper's own safe speed, over a sleeper's toughness, as <see cref="Suit.Take"/> has it; the mass falls out). Nothing to about
+    /// a 12 m drop, a 30 m one about a tenth, 90 m kills. Everyone else who falls lands by it too.
+    /// </summary>
+    public static float FallShare(PhysicsRules rules, float speed) =>
+        Impacts.Damage(Mass, speed, rules.Contacts, BodyKind.Player) / Impacts.Integrity(BodyKind.Player, Mass, rules.Integrity);
+
     /// <summary>Times the survivor walked off a structure straight onto the ground (tests).</summary>
     public int StepsOff { get; private set; }
 
@@ -383,14 +391,13 @@ public sealed class Survivor
         Binding.Teleport();
     }
 
-    /// <summary>Where getting up from a seat puts you: past the chair behind it, or beside it if that's blocked.</summary>
+    /// <summary>Where getting up from a seat puts you: straight behind the chair however it is turned, or at its side only if that is walled.</summary>
     static N.Vector3 StandOffset(Vessel vessel)
     {
-        N.Vector3 seat = vessel.Seat.Value;
-        float r = vessel.ChairReach;
-        foreach (N.Vector3 o in new[] { new N.Vector3(0, 0.05f, r), new N.Vector3(r, 0.05f, 0), new N.Vector3(-r, 0.05f, 0), new N.Vector3(0, 0.05f, -r) })
-            if (vessel.DistanceFromHull(seat + o + N.Vector3.UnitY * 0.9f, 0.5f) >= 0.5f) return o;
-        return new N.Vector3(0f, 0.05f, r);
+        N.Vector3 feet = vessel.Seat.Value - N.Vector3.UnitY * vessel.SeatDrop;
+        foreach (N.Vector3 o in vessel.StandSpots)
+            if (Vessel.CanStandAt(vessel.Structure, feet + o)) return o;
+        return vessel.StandSpots.Length > 0 ? vessel.StandSpots[0] : new N.Vector3(0f, 0.05f, 1f);
     }
 
     /// <summary>Puts the survivor in a structure's cabin world at a structure-local spot, at rest relative to it.</summary>

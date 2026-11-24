@@ -337,6 +337,7 @@ block -6 4 -13 iron-plated paint=hull
 block -5..4 4 -13 iron-plated paint=hull,hull,hull,hull,inner,hull
 block 5 4 -13 iron-plated paint=hull
 block -6 4 -12 iron-plated paint=inner,hull,hull,hull,hull,hull
+block -1 4 -12 life-support-pod
 block 5 4 -12 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -6 4 -11 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 4 -11 iron-plated paint=hull,inner,hull,hull,hull,hull

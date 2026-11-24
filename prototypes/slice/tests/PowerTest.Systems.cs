@@ -112,7 +112,7 @@ public partial class PowerTest
     {
         GD.Print("-- the drives --");
         PowerRules rules = data.Power;
-        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "2 0 0 shield-generator", "0 1 0 warp-drive", "0 3 0 hyperdrive-t1");
+        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "2 0 0 shield-generator", "0 1 0 warp-drive", "0 3 0 fold-drive-t1");
         var store = new SharedStorage(data.Items, "Drives", BuildingBridge.StorageCapacity(s));
         store.Add("biofuel", 50);
         store.Add("warp-cell", 5);
@@ -124,7 +124,7 @@ public partial class PowerTest
         p.ShieldsOn = false;
         p.Tick(1.0 / 60, true, false, doing);
         Check(p.Engage("warp-drive", 6) == "NO FUEL" && p.Engage("jump-gate", 1) == "NOT FITTED", "shields down: 6 AU is past its 5 warp cells, and there's no such drive as a jump gate");
-        DriveFuel warp = rules.Drives["warp-drive"], fold = rules.Drives["hyperdrive"];
+        DriveFuel warp = rules.Drives["warp-drive"], fold = rules.Drives["fold-drive"];
         Check(p.Engage("warp-drive", 3.2) == null && p.Spooling == "warp-drive", "3.2 AU: the warp drive spools");
         p.Tick(1.0 / 60, true, false, doing);
         double mw = MwOf(s, "warp-drive");
@@ -134,9 +134,9 @@ public partial class PowerTest
         Run(p, 1, doing);
         Check(p.Spooling == null && p.LastJump == ("warp-drive", 3.2, 4) && store.Count("warp-cell") == 1 && p.DrawMW == 0,
             $"spooled, it jumps and burns 4 warp cells for 3.2 AU ({store.Count("warp-cell")} left), and draws nothing after");
-        Check(p.Engage("hyperdrive", 2.5) == null, "2.5 LY: the hyperdrive spools");
+        Check(p.Engage("fold-drive", 2.5) == null, "2.5 LY: the fold drive spools");
         Run(p, fold.Spool + 0.5, doing);
-        Check(p.LastJump == ("hyperdrive", 2.5, 3) && store.Count("fold-crystal") == 0 && p.Range("hyperdrive") is { Reach: 0, Unit: "LY" },
+        Check(p.LastJump == ("fold-drive", 2.5, 3) && store.Count("fold-crystal") == 0 && p.Range("fold-drive") is { Reach: 0, Unit: "LY" },
             $"after its {fold.Spool:F0} s it burns 3 fold crystals for 2.5 LY, and reads 0 LY left");
         Check(p.Engage("warp-drive", 1) == null, "the last warp cell's AU: spooling");
         p.Tick(1.0 / 60, false, false, doing);

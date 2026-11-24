@@ -39,5 +39,6 @@ public partial class ClimateTest
         Check(e.OxygenPercent == 0 && e.Volume == null && _game.Suit.InVacuum && vacuum.Icon == HudIcon.Vacuum && vacuum.On,
             $"out of doors the suit reads no air ({e.OxygenPercent:F0}% at {e.Temperature:F0} °C, {e.Place}) and the visor's vacuum icon is lit");
         Check(!_game.Suit.Dead && _game.Suit.OxygenShare > 0, $"the helmet shut, the sleeper breathes the suit's own air ({_game.Suit.OxygenShare:P0})");
+        foreach (int x in Pod()) yield return x;
     }
 }

@@ -303,7 +303,7 @@ public sealed partial class Staging
         Town town = p.Memory.Town;
         foreach (int x in _drive.Wait(600)) yield return x;
         // A street with people on it: the one with most others near, seen from a few metres off (the town view's way).
-        var people = town.People.Where(q => !q.Indoors && !q.Dead && !q.Gone).ToList();
+        var people = town.People.Where(q => !q.Dead && !q.Gone).ToList();
         GD.Print($"({site.Name}: {people.Count} of {town.People.Count} out)");
         Town.Person busy = people.OrderByDescending(q => people.Count(o => o.Pos.DistanceTo(q.Pos) < 12f)).First();
         Vector3 mid = p.ToWorld(busy.Pos);
@@ -323,10 +323,10 @@ public sealed partial class Staging
         _game.FixedCamera = new Transform3D(Basis.LookingAt(mid + Vector3.Up * 1.1f - best, Vector3.Up), best);
         foreach (int x in _drive.Wait(30)) yield return x;
         Camera3D cam = _game.Camera;
-        Town.Person carrier = town.People.FirstOrDefault(q => q.Carrier && !q.Gone && !q.Indoors && !cam.IsPositionBehind(p.ToWorld(q.Pos)));
+        Town.Person carrier = town.People.FirstOrDefault(q => q.Carrier && !q.Gone && !cam.IsPositionBehind(p.ToWorld(q.Pos)));
         if (carrier == null)
         {
-            carrier = town.People.Where(q => !q.Dead && !q.Gone && !q.Indoors && q.Looks.Figure.Stage != LifeStage.Child && !cam.IsPositionBehind(p.ToWorld(q.Pos)))
+            carrier = town.People.Where(q => !q.Dead && !q.Gone && q.Looks.Figure.Stage != LifeStage.Child && !cam.IsPositionBehind(p.ToWorld(q.Pos)))
                 .OrderBy(q => p.ToWorld(q.Pos).DistanceTo(cam.GlobalPosition)).First();
             carrier.Carrier = true;
             GD.Print("(STAGING: none of those in view was rolled a carrier; the nearest grown one is made one)");

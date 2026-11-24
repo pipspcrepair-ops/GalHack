@@ -8,15 +8,19 @@ namespace Planets.Gen;
 /// What a deposit yields. The first six are the common materials a small spacefaring vessel needs
 /// (hull, wiring, electronics, composites, life support and fuel); every planet guarantees them
 /// near any starting point. Magnesium to gravium are the uncommon ores, on every planet in small,
-/// scattered deposits. The last are only ever an archetype's signature resource.
+/// scattered deposits. Crystal and resin are an archetype's signature resource; the last are the
+/// drives' own, on every world of their kind (<see cref="DepositField.DriveKinds"/>).
 /// </summary>
 public enum DepositKind : byte
 {
     Iron, Copper, Silicon, Carbon, Water, Burnstone,
     Magnesium, Cobalt, Neodymium, Gold, Gravium,
+    /// <summary>Raw fold crystal: the fold drive's fuel and its field emitters', on every high-gravity world (and the alien crystal worlds' signature).</summary>
     Crystal, Resin,
-    /// <summary>The jump fuel for the warp drive (item pentaxite): on airless and icy worlds, see <see cref="DepositField.FuelKinds"/>.</summary>
+    /// <summary>The warp drive's fuel (item pentaxite), on every airless world.</summary>
     WarpFuel,
+    /// <summary>The warp drive's metal (item starsilver ore, for its warp coils), on every airless world.</summary>
+    Starsilver,
 }
 
 /// <summary>One deposit: a surface outcrop (Depth 0) or a shallow one a few metres down.</summary>
@@ -74,6 +78,7 @@ public sealed class DepositField
         [DepositKind.Crystal] = new(12f, 1.9f),
         [DepositKind.Resin] = new(12f, 1.9f),
         [DepositKind.WarpFuel] = new(12f, 1.9f),
+        [DepositKind.Starsilver] = new(12f, 1.3f),
     };
 
     /// <summary>A world's signature resource when it's an uncommon or signature-only ore: one to every so many base cells, on top of its own line.</summary>
@@ -88,20 +93,20 @@ public sealed class DepositField
         for (int k = 0; k <= (int)DepositKind.Gravium; k++) yield return (DepositKind)k;
     }
 
-    /// <summary>
-    /// The jump fuels a world holds, from what it is and nothing else: warp fuel (<see cref="DepositKind.WarpFuel"/>,
-    /// pentaxite) on an airless world (the moons and small bodies, the start's fuel moon always) or an icy one, hyperspace
-    /// fuel (the fold crystal's <see cref="DepositKind.Crystal"/>) on a dangerous high-gravity one. Neither is ever marked
-    /// on a map: it is found by going there.
-    /// </summary>
-    public static IEnumerable<DepositKind> FuelKinds(PlanetSpec spec)
-    {
-        if (HoldsWarpFuel(spec)) yield return DepositKind.WarpFuel;
-        if (spec.HighGravity) yield return DepositKind.Crystal;
-    }
+    /// <summary>The warp drive's fuel (pentaxite) and its metal (starsilver, for its warp coils): on every airless world.</summary>
+    public static readonly DepositKind[] WarpKinds = { DepositKind.WarpFuel, DepositKind.Starsilver };
 
-    /// <summary>Warp fuel lies on the moons and small bodies (airless) and on icy worlds (the design's resource table, section 10).</summary>
-    public static bool HoldsWarpFuel(PlanetSpec spec) => spec.Airless || spec.Archetype == Archetype.Ice;
+    /// <summary>The fold drive's fuel and its field emitters' crystal, both fold crystal: on every high-gravity world.</summary>
+    public static readonly DepositKind[] FoldKinds = { DepositKind.Crystal };
+
+    /// <summary>
+    /// The drives' fuels and materials a world holds, from what it is and nothing else (owner, 13 and 22 Nov: "warp fuel
+    /// and warp drive materials are found on vacuum worlds, fold fuel and fold drive materials on high-gravity worlds"):
+    /// <see cref="WarpKinds"/> on an airless world (the small bodies, the start's fuel moon always), <see cref="FoldKinds"/>
+    /// on a dangerous high-gravity one. A fuel is never marked on a map: it is found by going there.
+    /// </summary>
+    public static IEnumerable<DepositKind> DriveKinds(PlanetSpec spec) =>
+        (spec.Airless ? WarpKinds : Array.Empty<DepositKind>()).Concat(spec.HighGravity ? FoldKinds : Array.Empty<DepositKind>());
 
     /// <summary>The ores that are smaller and fewer than the commons.</summary>
     public static bool IsScarce(DepositKind kind) => kind >= DepositKind.Magnesium && kind <= DepositKind.Gravium;
@@ -130,9 +135,9 @@ public sealed class DepositField
         DepositKind signature = def.Signature;
         foreach (DepositKind kind in EveryPlanet()) Lay(kind, Ores[kind].Every / def.DepositCount, Ores[kind].Size * def.DepositSize, kind == signature);
         if ((int)signature > (int)DepositKind.Burnstone) Lay(signature, SignatureEvery / def.DepositCount, Ores[signature].Size * def.DepositSize, false, 0x516);
-        foreach (DepositKind kind in FuelKinds(map.Spec))
+        foreach (DepositKind kind in DriveKinds(map.Spec))
             if (kind != signature) Lay(kind, SignatureEvery / def.DepositCount, Ores[kind].Size * def.DepositSize, false, 0x517);
-        foreach (DepositKind kind in EveryPlanet().Concat(FuelKinds(map.Spec)))
+        foreach (DepositKind kind in EveryPlanet().Concat(DriveKinds(map.Spec)))
             if (!_cells.Any(c => c.Exists(d => d.Kind == kind))) AddMissing(kind);
         Promise(Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5));
         Count = _cells.Sum(c => c.Count);

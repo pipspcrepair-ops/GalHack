@@ -56,6 +56,7 @@ public sealed partial class Staging
     {
         _pilot = new Pilot(_game, _drive);
         _game.Said += (text, _) => _said = text;
+        if (_args.ContainsKey("time")) _game.Zone.Sky.TimeOfDay = Num("time", 0.5); // the same moment for a before-and-after pair
         foreach (int x in Build(half: false)) yield return x;
         Vessel v = Skiff;
         foreach (int x in _pilot.Board(v)) yield return x;
@@ -199,14 +200,15 @@ public sealed partial class Staging
     /// --yaws, degrees from north, and with --straight=1 one more straight down, from under the
     /// hull). --body=1 stops the clock at a moment with the biggest body well up, and every frame
     /// looks one way, at it; --side=1 or -1 picks a moment with the eye on that side of its ring plane,
-    /// 0 one nearly in the plane. --down=1 flies back down through them. Prints what each frame cost to draw.
+    /// 0 one nearly in the plane. --down=1 flies back down through them, and --across=1 forward too while in the band (a way across
+    /// it, as a descent comes in from far round the globe). Prints what each frame cost to draw.
     /// </summary>
     IEnumerable<int> ClimbView()
     {
         foreach (int x in Seated()) yield return x;
+        if (_args.TryGetValue("weather", out string kind)) _game.Zone.Weather.Sim.Snap(Enum.Parse<Weather.Model.WeatherKind>(kind)); // --weather=Clouds: a deck to climb through
         Vessel v = Skiff;
         _game.Visor.Visible = false;
-        if (_args.TryGetValue("time", out string clock)) _game.Zone.Sky.TimeOfDay = double.Parse(clock, System.Globalization.CultureInfo.InvariantCulture);
         bool cabin = _args.GetValueOrDefault("cam", "cabin") == "cabin";
         float pitch = (float)Num("pitch", 8) * Mathf.Pi / 180f;
         float[] yaws = _args.GetValueOrDefault("yaws", "0").Split(',').Select(y => float.Parse(y, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
@@ -273,7 +275,7 @@ public sealed partial class Staging
                 string name = float.IsNaN(yaw) ? $"{tag}-down" : yaws.Length > 1 || !cabin ? $"{tag}-y{yaw:0}" : tag;
                 Snap(name);
                 if (_game.InOrbit && _game.Surface.Planet.StarSystem.Home.Rings) GD.Print($"(ring fit {name}: {_game.Orbit.Globe.RingFit.Off:F1} m off the sheet's centre, inner edge {_game.Orbit.Globe.RingFit.Inner:F2} radii of the sheet)");
-                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, shroud {_game.Spaceflight.Shrouded:F2}, screen {(_game.InOrbit ? "orbit" : "surface")})");
+                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, screen {(_game.InOrbit ? "orbit" : "surface")})");
             }
         }
         float[] heights = _args.GetValueOrDefault("heights", "500,700,850,950,1000,1040,1058,1062,1100,1160,1250,1405,1600,1800,2100,2600,3300,4300,5600,7500")
@@ -305,9 +307,11 @@ public sealed partial class Staging
             Hurry(height > 1900 || height < 950 ? 3 : 1);
             for (int i = 0; i < 60 * 90 && Up() > height; i++)
             {
+                _game.Controls.Hold(Key.W, _args.GetValueOrDefault("across") == "1" && _game.InOrbit && Up() < _game.Orbit.Anchor.Ceiling + _game.Orbit.Rules.Crossing.Band);
                 Look(yaws[0] * Mathf.Pi / 180f);
                 yield return 0;
             }
+            _game.Controls.Hold(Key.W, false);
             Hurry(1);
             foreach (int x in Frames($"dn{height:0}")) yield return x;
             GD.Print($"(descent at {height:0}: {(_game.InOrbit ? "orbit" : "surface")})");
@@ -597,5 +601,10 @@ public sealed partial class Staging
         eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 2f;
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 1.5f - eye, Vector3.Up), eye);
         for (int i = 0; i < 4; i++) yield return 0;
+        // Back on the ground, the surface's sun alone draws shadows (a dark disc after a return was the orbit's sun or a ring still in the shadow map).
+        var casting = _game.GetTree().Root.FindChildren("*", nameof(DirectionalLight3D), true, false).Cast<DirectionalLight3D>()
+            .Where(l => l.IsVisibleInTree() && l.ShadowEnabled && l.GetViewport() is not SubViewport).Select(l => $"{l.GetParent().Name}/{l.Name} energy {l.LightEnergy:F2}").ToList();
+        var rings = _game.GetTree().Root.FindChildren("Ring*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>().Count(m => m.IsVisibleInTree() && m.CastShadow != GeometryInstance3D.ShadowCastingSetting.Off);
+        GD.Print($"LANDED shadow-casting suns: {casting.Count} ({string.Join(", ", casting)}); rings casting shadows: {rings}");
     }
 }

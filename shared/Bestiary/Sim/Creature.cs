@@ -65,6 +65,8 @@ public sealed class Creature
     public int HerdSlot;
     /// <summary>Its place among the bodies kept apart this step (<see cref="WildSim.Spaced"/>), -1 for none.</summary>
     public int Spaced = -1;
+    /// <summary>Which way there is room from others inside the distance it keeps (<see cref="Brain.Keep"/>), as last kept apart.</summary>
+    public Vector3 Room;
     public Rng Rng;
 
     // Motion. Position is the ground point under the body (or the body itself for fliers).
@@ -274,6 +276,9 @@ public sealed class Creature
 
     /// <summary>Rig update interval in frames, set by the view by distance (1 near, more far away).</summary>
     public int RigInterval = 1;
+    /// <summary>Stepped once in so many frames, with the time it missed (the view sets it: out of sight and off a way, it needs no more); mid-attack, every frame.</summary>
+    public int StepEvery = 1;
+    public float StepPending;
     /// <summary>How many times less often it thinks while calm, by how far off it is (the view sets it): far off, the same creature, only slower to decide.</summary>
     public float ThinkScale = 1f;
     /// <summary>Asleep where it is: too far from anyone to matter, so it isn't stepped at all (a large place's far rooms).</summary>
@@ -299,6 +304,13 @@ public sealed class Creature
     public bool Falling;
     /// <summary>Coming down from a drop: it goes all the way to the floor, and catches no wall on the way.</summary>
     public bool Dropping;
+    /// <summary>Falling because what it stood on went (not a leap or a drop of its own): the landing hurts and frightens it.</summary>
+    public bool Unfloored;
+    /// <summary>In water over its depth: the bank it makes for (sim frame; null: none found yet), when it last looked for one, and how far (each look further than the last).</summary>
+    public Vector3? Shoreward;
+    public float ShorewardAt = -999f, ShorewardReach;
+    /// <summary>When it last came down from such a fall (sim time).</summary>
+    public float FellAt = -999f;
     /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
     public Vector3 LastFirm;
     public Vector3 LastFirmNormal = Vector3.Up;
@@ -356,6 +368,8 @@ public sealed class Creature
     /// <summary>Where it last knew a player, or a loud noise, to be.</summary>
     public Vector3 LastSeen;
     public float HeardAt = -999f;
+    /// <summary>The last loud sound it has listened for (<see cref="WildSim.NoiseSeq"/>): each is weighed once.</summary>
+    public int Listened;
     /// <summary>0..1: eyes opening, a lurker waking (the view brightens its eyes).</summary>
     public float Wake;
     // Domestic animals: the pen or town area they keep to, and (pets) who they follow.

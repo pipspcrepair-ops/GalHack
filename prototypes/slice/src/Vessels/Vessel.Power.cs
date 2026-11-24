@@ -1,3 +1,4 @@
+using GalHack.Physics.Engine;
 using GalHack.Items.Bridge;
 using GalHack.Items.Production;
 using GalHack.Structures;
@@ -41,12 +42,17 @@ public sealed partial class Vessel
         }
     }
 
-    /// <summary>The share of full sun on its panels: the sun's height here (day, night and latitude), less what the cloud takes.</summary>
+    /// <summary>
+    /// The share of full sun on its panels: the sun's height here (day, night and latitude), less what the cloud over it
+    /// takes, or the weather's own cut there where that is deeper (a dust storm's murk, only inside the storm).
+    /// </summary>
     double SunOnPanels()
     {
         if (Power.SolarMW <= 0 || Zone.Sky == null) return 0;
-        double cloud = Zone.Weather?.Sim?.Current.CloudCover ?? 0;
-        return System.Math.Clamp(Zone.Sky.ToSun.Y, 0, 1) * (1 - Power.Rules.SolarCloudCut * System.Math.Clamp(cloud, 0, 1));
+        double sun = System.Math.Clamp(Zone.Sky.ToSun.Y, 0, 1);
+        if (Zone.Weather?.Sim is not { } sim) return sun;
+        Weather.Model.Conditions air = Slice.Surface.SurfaceWeather.AirAt(sim, Body.WorldPosition.ToGodot());
+        return sun * System.Math.Min(1 - Power.Rules.SolarCloudCut * System.Math.Clamp(air.CloudCover, 0, 1), System.Math.Clamp(air.Solar, 0, 1));
     }
 
     /// <summary>Flying under its own power: on the flight model and not landed.</summary>

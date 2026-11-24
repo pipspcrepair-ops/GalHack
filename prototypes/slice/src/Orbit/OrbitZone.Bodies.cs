@@ -106,7 +106,8 @@ public partial class OrbitZone
                 c.World = w;
                 var rules = Rules.Globe;
                 bool clear = w.Sky.Density < SurfaceWeather.NoAir;
-                c.Painting = Task.Run(() => GlobePaint.Make(w.Spec, w.Map, rules, clear ? (_, _) => 0f : null, (x, z) => w.Palette.FarGround(x, z, 64f)));
+                c.Painting = Task.Factory.StartNew(() => GlobePaint.Make(w.Spec, w.Map, rules, clear ? (_, _) => 0f : null, (x, z) => w.Palette.FarGround(x, z, 64f)),
+                    System.Threading.CancellationToken.None, TaskCreationOptions.None, PlanetSurface.Skies.BodySurfaces.Painters); // in play: a share of the cores
                 continue;
             }
             if (!c.Painting.IsCompleted) continue;

@@ -46,7 +46,7 @@ public sealed partial class Town
     {
         Memory.Standing = Math.Clamp(Memory.Standing + by, StandingMin, StandingMax);
         StandingChanged?.Invoke(why, by);
-        if (_place != null) MoodOf(why);
+        if (_view != null) MoodOf(why);
         if (Memory.Standing <= StandingHostile && Memory.Mood != Mood.Hostile) Provoked();
     }
 
@@ -57,10 +57,10 @@ public sealed partial class Town
     /// <summary>The person you could rob now: one with their hands up to you, close enough to take from.</summary>
     public Person Robbable(Vector3 world, float reach = 2.6f)
     {
-        if (_place == null) return null;
-        Vector3 at = _place.FromWorld(world);
+        if (_view == null) return null;
+        Vector3 at = Local(world);
         foreach (Person p in People)
-            if (!p.Dead && !p.Gone && !p.Indoors && !p.Away && !p.Robbed && p.Act is BodyAct.HandsUp or BodyAct.Cower && (p.Pos - at).Length() < reach) return p;
+            if (!p.Dead && !p.Gone && !p.Robbed && p.Act is BodyAct.HandsUp or BodyAct.Cower && (p.Pos - at).Length() < reach) return p;
         return null;
     }
 
@@ -74,12 +74,14 @@ public sealed partial class Town
         Bind(p);
         p.Feel.Hit(MoodEvent.Robbed);
         Robberies++;
-        Did(Deed.Rob);
         p.ScaredFor = 8f;
+        // Out on a run: what they carried home is yours, and the town hears of it when they get there (Town.Runs).
+        if (p.Run != null) { (p.Run.Robbed, p.Run.Carrying) = (true, false); Unload(p); return; }
+        Did(Deed.Rob);
         Learn(p);
         Vector3 at = p.Pos;
         foreach (Person q in People)
-            if (q != p && !q.Dead && !q.Indoors && !q.Away && ((q.Pos - at).Length() < 14f || q.Role == "guard" && (q.Pos - at).Length() < 40f)) Learn(q); // the guards keep an eye on the streets
+            if (q != p && !q.Dead && ((q.Pos - at).Length() < 14f || q.Role == "guard" && (q.Pos - at).Length() < 40f)) Learn(q); // the guards keep an eye on the streets
     }
 
     void Learn(Person q)
@@ -99,9 +101,9 @@ public sealed partial class Town
         var told = new List<Person>();
         foreach (Person k in _knows)
         {
-            if (k.Dead || k.Indoors || k.Away) continue;
+            if (k.Dead) continue;
             foreach (Person q in People)
-                if (!_knows.Contains(q) && !q.Dead && !q.Indoors && !q.Away && (q.Pos - k.Pos).Length() < 6f && _rng.NextDouble() < 0.35) told.Add(q);
+                if (!_knows.Contains(q) && !q.Dead && (q.Pos - k.Pos).Length() < 6f && _rng.NextDouble() < 0.35) told.Add(q);
         }
         foreach (Person q in told) Learn(q);
     }

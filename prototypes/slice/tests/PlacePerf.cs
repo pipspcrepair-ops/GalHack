@@ -20,7 +20,7 @@ namespace Slice.Tests;
 /// it takes.
 ///   godot --path prototypes/slice res://tests/PlacePerf.tscn -- --family=sewage_works [--seed=N] [--planet=temperate] [--variant=0]
 /// --as=airport: the forced family planned as that type. --fly=1: a typed place (an airfield) is held back from the builder until a craft at top speed flies in from where it
-/// first comes into view; --compare-force=1: then the same world without it, over the same routes.
+/// first comes into view; --compare-force=1: then the same world without it, over the same routes. --fire=1: guns fired at each stop inside (PlacePerf.Fire).
 /// One PERF line per stage: far off, riding in from a kilometre out, at the gate, inside. Prints each
 /// frame's visible time (average, 95th, 99th, worst), the renderer's own CPU and GPU time, and what
 /// was drawn.
@@ -344,7 +344,7 @@ public partial class PlacePerf : Node
         {
             int over = t.Count(x => x > Budget * 1.5);
             bool ok = t.Average() <= Budget * 1.05 && over <= t.Count / 100;
-            GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {(ok ? "ok" : "FAIL")} budget {stage}: avg {t.Average():F1} ms, {over} of {t.Count} frames over {Budget * 1.5:F0} ms"));
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {(ok ? "ok" : "FAIL")} budget {stage}: avg {t.Average():F1} ms, {over} of {t.Count} frames over {Budget * 1.5:F0} ms ({t.Count(x => x > Budget + 1)} over {Budget:F1} ms by a millisecond or more)"));
             if (!ok) _failed = true;
         }
         string line = string.Create(CultureInfo.InvariantCulture,
@@ -611,6 +611,7 @@ public partial class PlacePerf : Node
             foreach (int x in _drive.Wait(30)) yield return x;
             GD.Print($"PERF {stage} at {cell.Y - entryY:+0;-0} m from the way in ({levels.Count} levels, {levels.FirstOrDefault() - entryY} to {levels.LastOrDefault() - entryY} m)");
             foreach (int x in Turn(stage)) yield return x;
+            foreach (int x in Fire(stage)) yield return x;
             if (!_args.ContainsKey("ab")) continue;
             PoiGenerator.BlockMaterials.Detail(false);
             foreach (int x in Turn(stage + " plain")) yield return x;

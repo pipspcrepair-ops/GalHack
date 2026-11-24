@@ -65,9 +65,9 @@ public sealed partial class Town
         _barricadeFor = Mathf.Max(0f, _barricadeFor - dt);
         if ((_senseIn -= dt) > 0f) return;
         _senseIn = SenseEvery;
-        Kennel();
         Slice.Surface.WildlifePatch patch = _places.Zone.Wildlife;
-        if (patch.Sim == null) return;
+        if (patch.Sim == null) return; // (the open ground's sim is made as its patch streams in: nothing to sense or keep beasts from until then)
+        Kennel();
         // Stock are worked by the place's farmers, once there are any.
         if (!_handlers)
         {
@@ -82,6 +82,7 @@ public sealed partial class Town
         float reach = Data.AreaRadius + 30f;
         Creature harmer = _harmedBy is { Dead: false, Removed: false } && _clock - _harmedAt < HarmMemory ? _harmedBy : null;
         _round.Clear();
+        GatherOut();
         // The open country's creatures and those of every place standing (their own place's among them): where each is in the world.
         for (int si = -1; si < patch.Sites.Count; si++)
         {
@@ -91,7 +92,7 @@ public sealed partial class Town
             {
                 if (c.Removed || c.Dead || c.InWalls || c.Keeper == this) continue;
                 Vector3 at = c.Position + origin;
-                if (c == harmer || WildSim.Flat(at - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c))) _round.Add((c, at));
+                if (c == harmer || (WildSim.Flat(at - centre).Length() < reach || OnTheirWay(at)) && (!CrossReactions.People(c.Species) || Foe(c))) _round.Add((c, at));
             }
         }
         Sensed = _round.Count;
@@ -99,7 +100,7 @@ public sealed partial class Town
         // (Each is looked at even with nothing round: what they dealt with that went off, or is no longer in this sim, is let go.)
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null) continue;
+            if (p.Dead || p.Gone || p.Looks == null) continue;
             Response best = Response.None;
             Creature what = null;
             float near = float.MaxValue;
@@ -128,7 +129,7 @@ public sealed partial class Town
                 case Response.Flee:
                     if (p.ScaredFor <= 0f) FledFrom++;
                     p.ScaredFor = 10f;
-                    p.FleeFrom = _place != null ? _place.FromWorld(_places.Zone.Wildlife.WorldOf(what)) : p.Pos;
+                    p.FleeFrom = Local(_places.Zone.Wildlife.WorldOf(what));
                     p.FleeAt = _clock;
                     break;
                 case Response.Avoid:
@@ -195,7 +196,7 @@ public sealed partial class Town
         {
             Did(Deed.Harm);
             Provoked();
-            Alert(_place.FromWorld(patch.PlayerWorld()));
+            Alert(Local(patch.PlayerWorld()));
         }
     }
 
@@ -207,7 +208,7 @@ public sealed partial class Town
         for (int i = 0; i < People.Count; i++)
         {
             Person p = People[(beast.Id + i) % People.Count];
-            if (!p.Dead && !p.Gone && !p.Away) return w == patch.Sim ? p : patch.SiteOf(w)?.FrameOf(p);
+            if (!p.Dead && !p.Gone) return w == patch.Sim ? p : patch.SiteOf(w)?.FrameOf(p);
         }
         return null;
     }

@@ -79,6 +79,25 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         People = new SimArms(this);
     }
 
+    bool _warmed;
+
+    /// <summary>
+    /// The first shot's first-time work done on the first tick, unseen and unheard, far over the world: the aim's ray, a round
+    /// spawned and drawn (gone a moment later), the flash and impacts, the report and the noise. The first shot then costs what the rest do.
+    /// </summary>
+    void Warm()
+    {
+        _warmed = true;
+        WeaponDef d = Table.All.First(w => w.Delivery == Delivery.Bolt && w.Item != null);
+        var far = new Vector3(0f, 20000f, 0f); // (far over everything: nothing there for the round to meet, past every far plane)
+        AimPoint();
+        int slot = Pool.Spawn(d, 0, far.ToNumerics(), (Vector3.Up * d.Speed).ToNumerics(), 0f);
+        if (slot >= 0) Pool.Shots[slot].Life = 0.1f;
+        Game.Shots.Warm(d.Feel, far);
+        Sounds.Warm(d, far);
+        Zone.Wildlife.Noise(far, 0f);
+    }
+
     /// <summary>The weapons of the wildlife sims' people and machines.</summary>
     public SimArms People { get; private set; }
 
@@ -89,6 +108,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     public override void _PhysicsProcess(double delta)
     {
         if (Game?.Survivor == null || Zone?.Planet == null) return;
+        if (!_warmed) Warm();
         float dt = (float)delta;
         SyncExceptions(); // before the step: the step itself touches nothing but the shots and the world
         long bytes = GC.GetAllocatedBytesForCurrentThread();
@@ -394,12 +414,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         }
         PoiPlaces places = Game.Places;
         if (places != null)
-            foreach (Place pl in places.Standing)
+            foreach (Town t in places.Towns)
             {
-                if (pl.Memory.Town is not Town t) continue;
                 foreach (Town.Person p in t.People)
                 {
-                    if (p.Dead || p.Indoors || p == ignore) continue;
+                    if (p.Dead || p == ignore) continue;
                     Vector3 at = t.World(p.Pos) + Vector3.Up;
                     if (!ShotPool.InCone(o, nd, cos, cone.Range, at.ToNumerics()) || SolidBetween(origin, at)) continue;
                     ConeHits++;
@@ -455,7 +474,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
 
     // ---- What a shot meets ----------------------------------------------------------------------
 
-    public N.Vector3 Gravity(N.Vector3 at) => new(0f, -Zone.Data.Rules.Planet.Gravity, 0f);
+    public N.Vector3 Gravity(N.Vector3 at) => Zone.Physics.Zone.At(at);
 
     /// <summary>
     /// The nearest thing along a segment: the colliders of the world (ground, places, hulls, trees),
@@ -1031,9 +1050,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         }
         PoiPlaces places = Game.Places;
         if (places != null)
-            foreach (Place pl in places.Standing)
+            foreach (Town t in places.Towns)
             {
-                if (pl.Memory.Town is not Town t) continue;
                 foreach (Town.Person person in t.People)
                 {
                     if (person.Dead) continue;

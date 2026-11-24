@@ -149,26 +149,59 @@ public partial class PersonView : Node3D
     readonly DrawSmoother _smooth = new();
     readonly PoseBlend _blend = new();
     Transform3D _root;
+    double _synced = double.MinValue;
+
+    /// <summary>Trace (tests): what moved the body, counted: poses, frames a carried pose was posed on, and the smoother's and blend's own.</summary>
+    internal int Poses, Carries;
+    internal float Gap;
+    internal DrawSmoother Smoother => _smooth;
+    internal PoseBlend Blend => _blend;
+
+    /// <summary>
+    /// The longest span between poses carried across the frames between them, s: a body posed every tick on a screen faster than
+    /// the ticks. One posed less often is far off and small, and a 60 Hz screen draws each pose of a near one: nothing to carry.
+    /// </summary>
+    const float CarriedSpan = 1f / 40f;
+
+    /// <summary>
+    /// Posed again after longer than this, s (held out of sight, or the machine held up): the pose drawn last blends into the new
+    /// one as a change of action does, never popped to it. A far body's every few frames are well under it.
+    /// </summary>
+    const float StaleAfter = 0.15f;
 
     /// <summary>
     /// Every piece where the rig has it, eased: the body glides from where it was drawn to where the sim has it now, and a
-    /// change of what they are doing (<paramref name="key"/>) blends the pose, as a creature's does.
+    /// change of what they are doing (<paramref name="key"/>) blends the pose, as a creature's does. Posed less often than
+    /// drawn (a fast screen, a body a little way off), the pose is carried from the last to this across the frames between, as
+    /// the body glides: a planted foot stays planted.
     /// </summary>
     public void Sync(Vector3 feet, float yaw, float speed, int key)
     {
         double now = DrawSmoother.Clock();
+        Poses++;
         _smooth.Note(feet, yaw, speed, now);
         _root = new Transform3D(new Basis(Vector3.Up, yaw), feet);
-        Write(_blend.Frame(_rig.Pose, _root, key, 0f, _rig.Species.Figure?.Height ?? 1.8f, now));
-        Glide();
+        float since = Gap = (float)(now - _synced), span = since > 1.5 * GetProcessDeltaTime() && since <= CarriedSpan ? since : 0f;
+        _synced = now;
+        Write(_blend.Frame(_rig.Pose, _root, key, span, _rig.Species.Figure?.Height ?? 1.8f, now, since > StaleAfter));
+        Place(now);
     }
 
     bool _placed;
 
-    /// <summary>Every frame: the body eases on towards where the sim has it (a pose blends as they are posed).</summary>
-    public void Glide()
+    /// <summary>Every frame: the body eases on towards where the sim has it, and a pose being carried is posed a step on. True if the pose moved.</summary>
+    public bool Glide()
     {
         double now = DrawSmoother.Clock();
+        Place(now);
+        if (!_blend.Carrying(now)) return false;
+        Carries++;
+        Write(_blend.Apply(_rig.Pose, _root, now));
+        return true;
+    }
+
+    void Place(double now)
+    {
         if (_smooth.Easing(now))
         {
             Transform = _smooth.Placement(now);

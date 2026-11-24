@@ -130,9 +130,26 @@ public partial class SurfaceZone : Node3D
     double _valleyTimer;
     float _valleyFloor;
 
+    /// <summary>
+    /// The zone itself never moves, so it isn't interpolated: a zone parked or woken (a pause) then resets nothing under it,
+    /// where the reset walked every node of the zone (20-30 ms for the orbit's). What hangs from it is, as it was by inheriting.
+    /// </summary>
+    protected void StandStill()
+    {
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        foreach (Node c in GetChildren()) Interpolated(c);
+        ChildEnteredTree += Interpolated;
+    }
+
+    static void Interpolated(Node c)
+    {
+        if (c.PhysicsInterpolationMode == PhysicsInterpolationModeEnum.Inherit) c.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.On;
+    }
+
     public override void _Ready()
     {
         ProcessPhysicsPriority = 50; // after the physics host (-10) and game logic (0): frame shifts see where things ended up
+        StandStill();
         Data ??= GameData.Shared;
         SliceRules.PlanetRules p = Data.Rules.Planet;
         // A zone made without a world (a tool, a probe): the world the slice's tests are tuned on.
@@ -160,7 +177,7 @@ public partial class SurfaceZone : Node3D
         AddChild(Sfx);
 
         Physics = new PhysicsWorld(Data.Physics);
-        Physics.Zone.Strength = p.Gravity;
+        Physics.Zone.Strength = p.Gravity * Spec.GravityScale; // the start world's 1 g, scaled by this world's size (PlanetSpec.Gravities)
         Physics.Zone.Ceiling = p.Ceiling;
         Host = new PhysicsHost(Physics);
         AddChild(Host);
@@ -248,6 +265,7 @@ public partial class SurfaceZone : Node3D
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
         Edits.Edited += edit => DugDry(edit.Removed);
+        Edits.Edited += edit => Wildlife?.Dug(edit.Removed); // what stood over it falls in
         Edits.Edited += _ => Light.Touch();
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
@@ -270,7 +288,6 @@ public partial class SurfaceZone : Node3D
         Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
         yield return "weather";
-        if (Planet.Sky.Density < SurfaceWeather.NoAir) yield break; // no air, no life: nothing to work out for it
         Wildlife.SetWorld(Planet, landing);
         yield return "wildlife";
     }

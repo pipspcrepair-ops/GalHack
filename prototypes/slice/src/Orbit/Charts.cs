@@ -173,7 +173,7 @@ public sealed class Charts
         return shown.ToList();
     }
 
-    /// <summary>A star and its real neighbours within one hyperdrive jump, nearest first, read from the catalogue and the sky seen from there.</summary>
+    /// <summary>A star and its real neighbours within one fold drive jump, nearest first, read from the catalogue and the sky seen from there.</summary>
     public static List<StarEntry> Stars(Galaxy galaxy, SkyView sky, int here)
     {
         Star home = galaxy.Stars[here];

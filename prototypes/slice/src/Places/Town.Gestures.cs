@@ -21,16 +21,16 @@ public sealed partial class Town
 
     public void Heard(PlayerGesture g, Vector3 eyeWorld, Vector3 lookWorld)
     {
-        if (_place == null || !Rolled) return;
-        Vector3 eye = _place.FromWorld(eyeWorld);
-        Vector3 pointAt = _place.FromWorld(eyeWorld + lookWorld * 12f);
+        if (_view == null || !Rolled) return;
+        Vector3 eye = Local(eyeWorld);
+        Vector3 pointAt = Local(eyeWorld + lookWorld * 12f);
         bool hostile = Memory.Mood == Mood.Hostile;
         Stance stance = _temper?.Stance ?? Stance.Welcoming;
         LastHeard = g;
         int heard = 0;
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null) continue;
+            if (p.Dead || p.Gone || p.Asleep || p.Looks == null) continue;
             Vector3 d = eye - p.Pos;
             float away = new Vector2(d.X, d.Z).Length();
             if (away > SeeGesture) continue;

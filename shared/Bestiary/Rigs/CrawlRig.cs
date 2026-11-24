@@ -114,7 +114,7 @@ public sealed class CrawlRig : Rig
             return;
         }
 
-        float speed = c.Velocity.Length();
+        float speed = Pace.Velocity.Length();
         float walk = MathF.Max(0.2f, Species.Stats.WalkSpeed);
         bool airborne = c.Falling || c.Phase == AttackPhase.Lunge;
         _gait += speed * dt / MathF.Max(0.08f, _legLen * 0.8f);
@@ -236,7 +236,7 @@ public sealed class CrawlRig : Rig
     Vector3 FootTargetFrom(Creature c, Vector3 hip, Vector3 up, Vector3 fwd, Vector3 side, Leg leg)
     {
         Vector3 reach = (side * leg.Side * MathF.Cos(leg.Splay) + fwd * MathF.Sin(leg.Splay)) * _legLen * 0.78f;
-        Vector3 target = hip + reach - up * _clearance + WildSim.Flat(c.Velocity) * 0.08f;
+        Vector3 target = hip + reach - up * _clearance + WildSim.Flat(Pace.Velocity) * 0.08f;
         if (c.Space != null && SpaceMath.Project(c.Space, ref target, 0.02f, out _)) return target;
         return hip + reach - up * _clearance;
     }

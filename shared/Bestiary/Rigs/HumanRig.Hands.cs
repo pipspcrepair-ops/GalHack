@@ -18,8 +18,19 @@ public readonly record struct HandSpec(Vector3 Palm, HandShape Shape, Vector3 Fi
     {
         if (t <= 0f) return a;
         if (t >= 1f) return b;
-        Vector3 palm = a.Palm.Lerp(b.Palm, t);
-        return new(palm.LengthSquared() > 1e-4f ? palm.Normalized() : b.Palm, t < 0.5f ? a.Shape : b.Shape, a.Fingers.Lerp(b.Fingers, t), Mathf.Lerp(a.Bend, b.Bend, t));
+        return new(Turn(a.Palm, b.Palm, t), t < 0.5f ? a.Shape : b.Shape, a.Fingers.Lerp(b.Fingers, t), Mathf.Lerp(a.Bend, b.Bend, t));
+    }
+
+    /// <summary>
+    /// A palm's way turned from <paramref name="a"/> toward <paramref name="b"/> (unit, in the arm's frame) by <paramref name="t"/>, the
+    /// short way round: a palm up turning down turns over about the arm's ahead (or failing that its up), never through nothing.
+    /// </summary>
+    internal static Vector3 Turn(Vector3 a, Vector3 b, float t)
+    {
+        Vector3 axis = a.Cross(b);
+        if (axis.LengthSquared() < 1e-6f) axis = Vector3.Back - a * a.Z;
+        if (axis.LengthSquared() < 1e-6f) axis = Vector3.Up - a * a.Y;
+        return a.Rotated(axis.Normalized(), a.AngleTo(b) * t);
     }
 }
 
@@ -115,6 +126,7 @@ public sealed partial class HumanRig
     static Basis HandBasis(in HandSpec s, in Frame F, Vector3 fore)
     {
         Vector3 d = s.Bend > 0f ? fore.Lerp(F.Mix(s.Fingers).Normalized(), s.Bend).Normalized() : fore;
+        if (!d.IsNormalized()) d = fore; // (fingers asked back along the forearm, half bent: no way between them)
         Vector3 p = F.Mix(s.Palm), n = p - d * p.Dot(d);
         if (n.LengthSquared() < 1e-3f)
         {
@@ -127,48 +139,123 @@ public sealed partial class HumanRig
     }
 
     /// <summary>
+    /// How far each hand closed on something is turned round it from the knuckles along its axis to the other way (0 to 1), eased:
+    /// which way round suits the forearm and the palm is settled while the hand is barely on it, and on it, changed only when the
+    /// other way suits clearly better, the hand turning round it as a hand regrips (never in a frame).
+    /// </summary>
+    readonly float[] _gripTurn = new float[2];
+    readonly bool[] _gripOther = new bool[2];
+
+    /// <summary>A hand's grip turned the way that suits it (<see cref="_gripTurn"/>), this frame.</summary>
+    void TurnGrip(int i, float gripW, Vector3 axis, Vector3 fore, in Frame F, in HandSpec spec)
+    {
+        if (gripW <= 0f) return;
+        Grip(i, axis.Normalized(), fore, F.Ahead, -F.Out, F.Mix(spec.Palm), 0f, out float lean);
+        if (gripW < 0.1f || MathF.Abs(lean) > 0.3f) _gripOther[i] = lean < 0f;
+        _gripTurn[i] = gripW < 0.1f ? (_gripOther[i] ? 1f : 0f) : Ease(_gripTurn[i], _gripOther[i] ? 1f : 0f, 7f);
+    }
+
+    /// <summary>
     /// A hand round something it grips, a pole along <paramref name="axis"/>: the knuckles run along it and the
     /// palm faces as near the way <paramref name="palm"/> says as that allows, the fingers going the forearm's way
     /// (the wrist bends to make up the difference). A bow's hands go the forearm's way first, the palm second:
     /// the archer's arm points where the torso does not; the string hand has no such lead, only its palm to the face.
+    /// Turned round the axis by <paramref name="turn"/> (<see cref="_gripTurn"/>), or below 0 whichever way suits.
     /// </summary>
-    Basis HandGrip(int arm, Vector3 axis, Vector3 fore, Vector3 across, Vector3 otherwise, Vector3 palm)
+    Basis HandGrip(int arm, Vector3 axis, Vector3 fore, Vector3 across, Vector3 otherwise, Vector3 palm, float turn = -1f) => Grip(arm, axis, fore, across, otherwise, palm, turn, out _);
+
+    /// <summary><see cref="HandGrip"/>, and how far the knuckles along the axis as given suit it (below 0: the other way suits).</summary>
+    Basis Grip(int arm, Vector3 axis, Vector3 fore, Vector3 across, Vector3 otherwise, Vector3 palm, float turn, out float lean)
     {
-        Vector3 facing = palm - axis * palm.Dot(axis);
-        if (!(_bowman && arm == 0) && facing.LengthSquared() > 0.25f)
-        {
-            Vector3 face = facing.Normalized(), knuckles = axis, fingers = face.Cross(knuckles);
-            if (fingers.Dot(fore) < 0f) (knuckles, fingers) = (-knuckles, -fingers);
-            return new Basis(knuckles, fingers, face);
-        }
+        // Led by the forearm: the fingers its way round the axis, the palm to the side the palm asks.
         Vector3 hint = across - axis * across.Dot(axis);
         if (hint.LengthSquared() < 0.1f) hint = otherwise - axis * otherwise.Dot(axis); // the axis runs the way they would go
         Vector3 along = fore - axis * fore.Dot(axis);
         float w = MathF.Min(1f, along.Length() * 1.5f);
         Vector3 d = hint.Normalized() * (1f - w) + (w > 0f ? along.Normalized() * w : Vector3.Zero);
         d = d.LengthSquared() > 1e-4f ? d.Normalized() : hint.Normalized();
-        Vector3 x = axis, n = x.Cross(d);
-        if (n.Dot(palm) < 0f)
+        Vector3 n = axis.Cross(d);
+        (Basis one, Basis other, lean) = (new Basis(axis, d, n), new Basis(-axis, d, -n), n.Dot(palm));
+        // Led by the palm, as far as it has a way to face across the axis (all of it once it clearly has).
+        Vector3 facing = palm - axis * palm.Dot(axis);
+        float led = _bowman && arm == 0 ? 0f : Mathf.SmoothStep(0.15f, 0.35f, facing.LengthSquared());
+        if (led > 0f)
         {
-            x = -x;
-            n = -n;
+            Vector3 face = facing.Normalized(), fingers = face.Cross(axis);
+            (Basis one1, Basis other1) = (new Basis(axis, fingers, face), new Basis(-axis, -fingers, face));
+            (one, other) = led >= 1f ? (one1, other1) : (Between(one, one1, led), Between(other, other1, led));
+            if (led >= 0.5f) lean = fingers.Dot(fore);
         }
-        return new Basis(x, d, n);
+        if (turn < 0f) return lean < 0f ? other : one;
+        return turn <= 0f ? one : turn >= 1f ? other : Regrip(one, other, turn * turn * (3f - 2f * turn));
+    }
+
+    /// <summary>
+    /// A hand turning round what it grips from one way to the other, <paramref name="t"/> of the way (0 to 1). The two are half a turn
+    /// apart, where the short way round is no way at all (either way is as short, and which a slerp takes swaps with the smallest
+    /// change: the hand jumps): it always turns the way that leads with its fingers and palm.
+    /// </summary>
+    static Basis Regrip(Basis a, Basis b, float t)
+    {
+        Quaternion qa = Turn(a), qb = Turn(b);
+        if (!qa.IsNormalized() || !qb.IsNormalized()) return qa.IsNormalized() ? a : b; // (a frame with no turn: the other)
+        Quaternion rel = (qa.Inverse() * qb).Normalized();
+        if (rel.W < 0f) rel = -rel;
+        Vector3 u = new(rel.X, rel.Y, rel.Z);
+        float sin = u.Length();
+        if (sin < 1e-5f) return a;
+        u /= sin;
+        float angle = 2f * MathF.Atan2(sin, rel.W);
+        if (u.Y + u.Z < 0f) (u, angle) = (-u, MathF.Tau - angle);
+        return a * new Basis(u, angle * t);
     }
 
     /// <summary>The frame a hand takes: from its spec on the forearm, closed round what it grips as far as it grips.</summary>
     Basis HandFrame(int arm, in HandSpec spec, in Frame F, Vector3 axis, float gripW, Vector3 fore, Vector3 gripFore)
     {
         Basis open = HandBasis(spec, F, fore);
-        return gripW > 0f ? Between(open, HandGrip(arm, axis.Normalized(), gripFore, F.Ahead, -F.Out, F.Mix(spec.Palm)), Math.Min(1f, gripW)) : open;
+        return gripW > 0f ? Between(open, HandGrip(arm, axis.Normalized(), gripFore, F.Ahead, -F.Out, F.Mix(spec.Palm), _gripTurn[arm]), Math.Min(1f, gripW)) : open;
+    }
+
+    /// <summary>Each hand's turn about its wrist as last posed, in the body's frame (zero: not yet).</summary>
+    readonly Quaternion[] _wristTurn = new Quaternion[2];
+
+    /// <summary>How fast a hand turns about its wrist, radians a second.</summary>
+    const float WristTurn = 20f;
+
+    /// <summary>
+    /// A hand's frame, turned from the last as far as a wrist turns in the time: where the palm's way flips over (asked along the
+    /// fingers, where it has no side to face) the hand turns over, never in a frame.
+    /// </summary>
+    Basis Wrist(int i, Basis want)
+    {
+        Basis torso = Pose[_body].Basis;
+        Quaternion q = Turn(torso.Inverse() * want), was = _wristTurn[i];
+        if (!q.IsNormalized()) q = was.IsNormalized() ? was : Quaternion.Identity; // (asked a frame with no turn: held as it was)
+        if (_dt > 0f && was.LengthSquared() > 0.5f)
+        {
+            float a = was.AngleTo(q), most = WristTurn * _dt;
+            if (a > most) q = was.Slerp(q, most / a);
+        }
+        _wristTurn[i] = q;
+        return torso * new Basis(q);
     }
 
     /// <summary>Between two frames, turned the short way (t 0 the first).</summary>
-    static Basis Between(Basis a, Basis b, float t) => new(a.GetRotationQuaternion().Slerp(b.GetRotationQuaternion(), t));
+    static Basis Between(Basis a, Basis b, float t)
+    {
+        Quaternion qa = Turn(a), qb = Turn(b);
+        // (A frame with no turn of its own, its axes run together: the other, whole.)
+        return new(!qa.IsNormalized() ? qb.IsNormalized() ? qb : Quaternion.Identity : !qb.IsNormalized() ? qa : qa.Slerp(qb, t));
+    }
+
+    /// <summary>A frame's turn, unit length: a float frame's own can be off by more than a slerp allows (it throws, and the sim step with it).</summary>
+    static Quaternion Turn(Basis b) => b.GetRotationQuaternion().Normalized();
 
     /// <summary>
     /// A weapon held out of the way of the fists on it: where they would be in the torso or the head (a thick
-    /// coat, a drawn string hand), the whole weapon and both hands go the way the worst of them is pushed.
+    /// coat, a drawn string hand), the whole weapon and both hands go the way the worst of them is pushed, a fist's
+    /// push counting as far as it is on its grip (one coming to it or leaving it moves the weapon by degrees).
     /// </summary>
     void KeepFistsClear(ref Hold h, HoldKind kind, Basis torso)
     {
@@ -177,24 +264,33 @@ public sealed partial class HumanRig
             Vector3 shift = Vector3.Zero, pulled = Vector3.Zero;
             for (int i = 0; i < 2; i++)
             {
-                if ((i == 1 ? h.RW : h.LW) < 0.05f) continue;
+                float on = i == 1 ? h.RW : h.LW;
+                if (on <= 0f) continue;
                 var F = new Frame(torso, i == 0 ? -1f : 1f);
                 Vector3 grip = i == 1 ? h.R : h.L, shoulder = Pose[_body].Origin + torso.Y * _f.Torso * 0.9f + F.Out * _f.ShoulderW * 0.94f;
                 Vector3 push = Vector3.Zero;
                 for (int flip = 1; flip >= (kind == HoldKind.Bow ? 1 : -1); flip -= 2) // (the fingers go on from the forearm, which the arm settles later: clear of the fist whichever way round it ends; the string hand's palm is the whole of its frame)
                 {
-                    Basis frame = HandGrip(i, (i == 1 ? h.RAxis : h.LAxis).Normalized(), (grip - shoulder).Normalized() * flip, F.Ahead, -F.Out, F.Mix((i == 1 ? h.RHand : h.LHand).Palm));
-                    Vector3 p = HandClear(new Transform3D(frame, grip - frame * (HandMake.Fist * _handSize[i])), HandShape.Fist, i, 0.03f);
-                    if (p.LengthSquared() > push.LengthSquared()) push = p;
+                    // (Turned round the grip as the hand is, not whichever way suits: that swaps in a frame.)
+                    Basis frame = HandGrip(i, (i == 1 ? h.RAxis : h.LAxis).Normalized(), (grip - shoulder).Normalized() * flip, F.Ahead, -F.Out, F.Mix((i == 1 ? h.RHand : h.LHand).Palm), _gripTurn[i]);
+                    push = Worse(push, HandClear(new Transform3D(frame, grip - frame * (HandMake.Fist * _handSize[i])), HandShape.Fist, i, 0.03f) * on);
                 }
                 if (kind == HoldKind.Bow && i == 1) pulled = push; // (the string hand is not on the bow: it alone goes)
-                else if (push.LengthSquared() > shift.LengthSquared()) shift = push;
+                else shift = Worse(shift, push);
             }
             if (shift.LengthSquared() < 1e-6f && pulled.LengthSquared() < 1e-6f) return;
             h.R += shift + pulled;
             h.L += shift;
             h.Prop.Origin += shift;
         }
+    }
+
+    /// <summary>The worse of two pushes, near enough: each weighted by its length to the fourth, so the longer wins and one overtaking the other never swaps in a frame.</summary>
+    static Vector3 Worse(Vector3 a, Vector3 b)
+    {
+        float wa = a.LengthSquared(), wb = b.LengthSquared();
+        (wa, wb) = (wa * wa, wb * wb);
+        return wa + wb > 1e-20f ? (a * wa + b * wb) / (wa + wb) : Vector3.Zero;
     }
 
     /// <summary>

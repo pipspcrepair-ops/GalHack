@@ -23,7 +23,7 @@ public partial class ItemsTest : TestBase
 
     // The deposit kinds the planet generator places today (Planets.Gen.DepositKind), and the commons
     // it guarantees on every planet near any start.
-    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone", "Magnesium", "Cobalt", "Neodymium", "Gold", "Gravium", "Crystal", "Resin", "WarpFuel" };
+    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone", "Magnesium", "Cobalt", "Neodymium", "Gold", "Gravium", "Crystal", "Resin", "WarpFuel", "Starsilver" };
     static readonly string[] EveryPlanet = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone" };
 
     protected override void RunAll()
@@ -148,7 +148,7 @@ public partial class ItemsTest : TestBase
             Check(!smallFab.Knows(_items.BlockItem(id)) && large.Knows(_items.BlockItem(id)), $"{_items.BlockItem(id).Name} needs Fabricator T2");
         Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Id == "pentaxite") && _items.Item("pentaxite").IsGathered && _items.Current("warp-fuel-ore") == "pentaxite",
             "warp cells are refined from pentaxite, a mined ore (the old warp fuel ore reads as it), never made from common materials");
-        Check(_items.Item("fold-crystal").Uses.Contains("Hyperdrive") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is hyperdrive fuel and still feeds shields");
+        Check(_items.Item("fold-crystal").Uses.Contains("Fold fuel") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is fold fuel and still feeds shields");
     }
 
     void TestDecoItems()
@@ -203,9 +203,9 @@ public partial class ItemsTest : TestBase
         // Raw rarity follows the design table.
         Check(_items.Item("iron-ore").Rarity == Rarity.Common && _items.Item("cobalt-ore").Rarity == Rarity.Uncommon
             && _items.Item("fold-crystal-raw").Rarity == Rarity.Rare && _items.Item("voidglass-shard").Rarity == Rarity.Exotic
-            && _items.Item("lattice-core").Rarity == Rarity.Unique, "ore rarities follow the design's ladder");
+            && _items.Item("echo-shard").Rarity == Rarity.Unique, "ore rarities follow the design's ladder");
         // Rarity reaches all the way up: an item made from an exotic is exotic, from a unique is unique.
-        Check(_items.Item("voidglass-lens").Rarity == Rarity.Exotic && _items.Item("lattice-processor").Rarity == Rarity.Unique, "rarity carries up the tree");
+        Check(_items.Item("voidglass-lens").Rarity == Rarity.Exotic && _items.Item("charge-plating").Rarity == Rarity.Unique, "rarity carries up the tree");
     }
 
     void TestBlocksHavePaths()
@@ -249,7 +249,7 @@ public partial class ItemsTest : TestBase
     void TestUniques()
     {
         var uniques = _items.InCategory(ItemCategory.Unique).ToList();
-        Check(uniques.Count >= 4, $"the design's unique finds are in ({string.Join(", ", uniques.Select(u => u.Name))})");
+        Check(uniques.Count >= 2, $"the design's unique finds are in ({string.Join(", ", uniques.Select(u => u.Name))})");
         Check(uniques.All(u => u.Recipe == null && u.Source == ItemSource.Found && u.DepositKind == null), "unique finds have no recipe, no deposit, and come from exploring");
         Check(!_items.Items.Any(i => i.IsGathered && i.Rarity == Rarity.Unique), "nothing gathered from the ground is unique");
         Check(!_items.Recipes.Any(r => r.Output.IsUnique), "no recipe makes a unique find");

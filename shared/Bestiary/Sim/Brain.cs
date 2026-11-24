@@ -13,6 +13,9 @@ namespace Wildlife;
 /// </summary>
 public static partial class Brain
 {
+    /// <summary>How long a fall's landing frightens it into running, s.</summary>
+    public const float FellFright = 2.5f;
+
     /// <summary>Seconds until a creature next thinks: quickly with something to deal with, slowly otherwise, a little different for each.</summary>
     public static float Interval(Creature c)
     {
@@ -42,15 +45,16 @@ public static partial class Brain
             return;
         }
 
-        // Giving way to one met face to face in a narrow way (Unstick): it backs off out of their way a moment, then goes on.
-        if (w.Time < c.GiveWayUntil && c.GiveWayTo is { Dead: false, Removed: false } other)
+        // Giving way to one met face to face in a narrow way (Unstick): it backs off out of their way a moment, then goes on. (A
+        // settlement's animal only as far as the edge of where it is kept: held up by a herd-mate, it never backs out of its pen.)
+        if (w.Time < c.GiveWayUntil && c.GiveWayTo is { Dead: false, Removed: false } other && !(c.Species.Domestic != DomesticKind.None && c.Keeper == null && Strayed(c)))
         {
             Back(w, c, other.Position, c.Stats.WalkSpeed);
             return;
         }
 
-        // Fire: whatever it is and whatever it wanted, it runs until the fright wears off.
-        if (w.Time < c.ScaredUntil && c.Space == null)
+        // Fire (or a fall, in a cave or a place too): whatever it is and whatever it wanted, it runs until the fright wears off.
+        if (w.Time < c.ScaredUntil && (c.Space == null || w.Time - c.FellAt < FellFright))
         {
             Flee(w, c, c.ScaredFrom);
             return;
@@ -183,22 +187,16 @@ public static partial class Brain
     {
         float n = Math.Max(1, h.Members.Count);
         float angle = c.HerdSlot * 2.39996f;
-        float r = h.Spread * MathF.Sqrt((c.HerdSlot + 0.5f) / n);
+        // Grazing they spread out loosely; alarmed they bunch up and run together.
+        float spread = h.Spread * (alarmed ? 0.8f : 1.25f), r = spread * MathF.Sqrt((c.HerdSlot + 0.5f) / n);
         Vector3 slot = h.Goal + new Vector3(MathF.Cos(angle) * r, 0f, MathF.Sin(angle) * r);
         // Strayed far from the middle: back to it first (by its way, as to anywhere).
-        if (WildSim.Flat(h.Center - c.Position).Length() > h.Spread * 1.4f) slot = h.Center;
+        if (WildSim.Flat(h.Center - c.Position).Length() > spread * 1.4f) slot = h.Center;
         float speed = alarmed ? c.Stats.RunSpeed : WildSim.Flat(slot - c.Position).Length() > 2.5f ? c.Stats.WalkSpeed : 0f;
         if (speed > 0f) Go(w, c, slot, speed);
         else c.Desired = Vector3.Zero;
-        Vector3 separation = Vector3.Zero;
-        foreach (Creature m in h.Members)
-        {
-            if (m == c || m.Dead) continue;
-            Vector3 away = WildSim.Flat(c.Position - m.Position);
-            float d = away.Length(), keep = (c.Radius + m.Radius) * 1.3f;
-            if (d < keep && d > 0.001f) separation += away / d * (keep - d) / keep;
-        }
-        c.Desired += separation * c.Stats.WalkSpeed * 1.5f;
+        // Off from any inside the distance it keeps, before they touch (PersonalSpace).
+        c.Desired += c.Room * c.Stats.WalkSpeed * 1.5f;
         if (alarmed) c.Desired += WildSim.Flat(h.Velocity) * 0.3f; // alignment: run with the herd
 
         // Two edges, not one, so a member on the line between grazing and moving doesn't flicker.
@@ -212,6 +210,18 @@ public static partial class Brain
             c.WantGraze = Mathf.PosMod(c.Age * 0.13f + c.HerdSlot * 0.37f, 1f) < 0.6f ? 1f : 0f;
         }
     }
+
+    /// <summary>
+    /// The distance a body keeps from others past touching, m (<see cref="PersonalSpace"/>): a band of people about an arm's
+    /// length, close in a fright; a grazing herd loose (a body and more apart), a frightened one bunched; others none of their own
+    /// (a pack keeps its own spacing).
+    /// </summary>
+    public static float Keep(Creature c) => c.Herd is not { } h ? 0f
+        : c.Species.Behaviour == Behaviour.Folk ? (h.Alarmed ? 0.1f : PersonalSpace.ArmsLength)
+        : h.Alarmed ? c.Radius * 0.4f : GrazeKeep(c.Radius);
+
+    /// <summary>The distance a grazing herd animal keeps past touching, m: a body and more.</summary>
+    public static float GrazeKeep(float radius) => radius * 2.5f;
 
     /// <summary>Herd-wide state, updated once per step by whichever member gets there first.</summary>
     static void UpdateHerd(WildSim w, Herd h, float dt)

@@ -83,7 +83,7 @@ public partial class SpaceSky : Node3D
         """;
 
     /// <summary>A world or moon: bands on a giant, a plain rock otherwise, lit exactly as the sky's shader lights them.</summary>
-    const string BodySource = $$"""
+    static readonly string BodySource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, unshaded, blend_mix, depth_draw_always, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
@@ -131,7 +131,7 @@ public partial class SpaceSky : Node3D
                 vec2 uv = vec2(atan(dot(n, cross(axis, zero)), dot(n, zero)) / 6.2831853, acos(clamp(dot(n, axis), -1.0, 1.0)) / 3.1415927);
                 // By the normal's own change across the pixel: the longitude jumps a turn at its seam.
                 float across = length(fwidth(n));
-                vec4 own = textureLod(surfaces, vec3(uv, float(layer)), log2(max(across * 40.7, 1.0)));
+                vec4 own = textureLod(surfaces, vec3(uv, float(layer)), log2(max(across * {{BodySurfaces.Width}}.0 / 6.2831853, 1.0)));
                 surface = own.rgb;
                 glows = own.a;
             }
@@ -204,12 +204,8 @@ public partial class SpaceSky : Node3D
         Rgb star = system.StarColor;
         var colour = new Color(star.R, star.G, star.B);
         SunEnergy = rules.SunEnergy;
-        Sun = new DirectionalLight3D
-        {
-            Name = "Sun", LightColor = colour, LightEnergy = 0f, ShadowEnabled = true,
-            DirectionalShadowMaxDistance = 320f, DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits,
-            SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly,
-        };
+        Sun = SunShadows.Light("Sun", true);
+        (Sun.LightColor, Sun.LightEnergy, Sun.SkyMode, Sun.Visible) = (colour, 0f, DirectionalLight3D.SkyModeEnum.LightOnly, false); // shown with its share of the light (Light)
         AddChild(Sun);
         _skySun = new DirectionalLight3D { Name = "SkySun", LightColor = colour, SkyMode = DirectionalLight3D.SkyModeEnum.SkyOnly, Visible = false };
         AddChild(_skySun);
@@ -417,6 +413,8 @@ public partial class SpaceSky : Node3D
     {
         _share = share;
         Sun.LightEnergy = SunEnergy * share * SunLit;
+        // Out of the scene while it gives no light: a dark light still drew its shadows, and took half the shadow map from the surface's sun.
+        Sun.Visible = share > 0f;
     }
 
     float _share;
