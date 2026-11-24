@@ -26,6 +26,7 @@ public partial class OccupantTest
         var crawl = new CrawlWatch(_data);
         var perWorld = new List<string>();
         var none = new List<string>();
+        int small = 0, poorBig = 0, richBig = 0, richBugs = 0;
         foreach (Archetype a in Enum.GetValues<Archetype>())
             for (int k = 0; k < 2; k++)
             {
@@ -39,6 +40,7 @@ public partial class OccupantTest
                 // As the game: an airless world has no creatures at all.
                 PlaceFauna.Deep deep = w.Vacuum ? null : new PlaceFauna.Deep(Bestiary.Roll(_data, w), null, 1f);
                 int here = 0, n = 0;
+                var lengths = new List<float>();
                 foreach (FamilyDef f in flavour.OrderBy(_ => _rng.Next()).Take(4))
                     foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Active })
                     {
@@ -58,13 +60,19 @@ public partial class OccupantTest
                         if (deep.Fauna.InsectsDefend || planned.Rooms.Rooms.Count == 0) continue;
                         keptPlaces++;
                         crawlers += bugs.Count;
+                        lengths.AddRange(bugs.Select(s => s.Species.Body.Size));
                         if (bugs.Count > 0) keptWith++;
                         else none.Add($"{f.Id} ({planned.Rooms.Rooms.Count} rooms)");
                         if (bugs.Count > 0 && crawl.Places < 6) crawl.Run(inst, pop);
                         if (bugs.Count > 0 && settled < 40) floating += Floating(inst, planned, ref settled);
                     }
                 if (!w.Insects) forbiddenWorlds++;
-                perWorld.Add($"{a}{(w.Vacuum ? " airless" : "")}{(deep?.Fauna.InsectsDefend == true ? " swarm" : "")} {w.Climate} density {w.Density:F2}: {here} in {n} ({(w.Insects ? "insects" : "none allowed")})");
+                int big = lengths.Count(l => l > 0.151f);
+                small += lengths.Count - big;
+                if (w.Rich < 0.6f) poorBig += big;
+                if (w.Rich >= 1.1f) { richBig += big; richBugs += lengths.Count; }
+                string sizes = lengths.Count == 0 ? "" : $"; air {w.Thickness:F2} thick, {w.Oxygen:F0}% oxygen (rich {w.Rich:F2}): {lengths.Count - big} small, {big} big, {lengths.Min() * 100f:F0} cm to {lengths.Max() * 100f:F0} cm";
+                perWorld.Add($"{a}{(w.Vacuum ? " airless" : "")}{(deep?.Fauna.InsectsDefend == true ? " swarm" : "")} {w.Climate} density {w.Density:F2}: {here} in {n} ({(w.Insects ? "insects" : "none allowed")}){sizes}");
             }
         foreach (string s in perWorld) GD.Print("    " + s);
         GD.Print($"    {crawlers} crawlers in {keptPlaces} places where insects live; ruins {ruined / Math.Max(1, ruinedN):F1} a place, lived-in {active / Math.Max(1, activeN):F1}");
@@ -74,6 +82,7 @@ public partial class OccupantTest
         Check(ruined / Math.Max(1, ruinedN) > active / Math.Max(1, activeN), "a ruin has more crawlers than a lived-in place");
         Check(harmful == 0, $"every crawler is harmless ({harmful} that hunt)");
         Check(crawl.Insects > 10 && crawl.Inside == 0, $"crawlers crawl on their faces, never in them: {crawl.Insects} in {crawl.Places} places, {crawl.Inside} points inside a block (worst {crawl.Worst:F2} m){crawl.Example}");
+        Check(small >= crawlers * 0.6f && poorBig == 0 && (richBugs < 15 || richBig > 0), $"sizes follow the air: {small} of {crawlers} small (7 to 15 cm), {poorBig} big in poor air, {richBig} big of {richBugs} in rich air");
         Check(settled > 10 && floating == 0, $"nothing hangs in the air: {floating} of {settled} crawlers off any face");
     }
 
@@ -92,7 +101,7 @@ public partial class OccupantTest
         {
             if (c.Removed || c.Dead || c.InWalls) continue;
             settled++;
-            if (c.Falling || space.Density(Crawl.Center(c)) < -(c.Clearance + 0.3f)) off++;
+            if (c.Falling || space.Density(Crawl.Center(c)) < -(c.Clearance + 0.1f)) off++;
         }
         return off;
     }

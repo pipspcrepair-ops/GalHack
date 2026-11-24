@@ -267,6 +267,18 @@ public sealed class DeepFauna
         return young;
     }
 
+    /// <summary>The same kind at a body length (to the centimetre), m: a small bug of a big crawler's kind. Once each.</summary>
+    public Species Sized(Species s, float length)
+    {
+        float k = MathF.Round(length * 100f) / 100f / MathF.Max(0.01f, s.Body.Size);
+        if (MathF.Abs(k - 1f) < 0.01f) return s;
+        string key = $"{s.Id}/{s.Depth}/{s.Corrupted}/len{length:F2}";
+        if (_fitted.TryGetValue(key, out Species found)) return found;
+        Species c = s.Copy();
+        Size(c, k);
+        c.Stats.Damage = MathF.Round(s.Stats.Damage * k, 1);
+        return _fitted[key] = c;
+    }
     /// <summary>The height range of whatever comes at you indoors and underground: between a child's and a grown person's, m.</summary>
     public const float IndoorMin = 1.1f, IndoorMax = 1.9f;
     readonly Dictionary<string, Species> _indoor = new();

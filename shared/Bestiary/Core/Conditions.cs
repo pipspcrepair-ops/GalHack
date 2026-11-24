@@ -24,6 +24,8 @@ public sealed class WorldConditions
     public float TempC = 15f;
     /// <summary>Oxygen in the air, percent.</summary>
     public float Oxygen = 21f;
+    /// <summary>How thick the air is: 0 in vacuum, 0.5 thin to 2 dense (the world's size sets it).</summary>
+    public float Thickness = 1f;
     /// <summary>No air to speak of: nothing that breathes lives out in it.</summary>
     public bool Vacuum;
     /// <summary>Background radiation, RAD (the suit warns above 3).</summary>
@@ -63,6 +65,9 @@ public sealed class WorldConditions
     /// <summary>Insects get by here: air to breathe, not frozen, and not a world where next to nothing lives (sterile).</summary>
     public bool Insects => !Vacuum && Climate != ClimateBand.Frozen && Density > 0.2f;
 
+    /// <summary>How much oxygen the air holds against Earth's (its thickness and share): insects grow big only in rich air.</summary>
+    public float Rich => Thickness * Oxygen / 21f;
+
     /// <summary>The air won't keep anyone alive for long: a mask outdoors, or a suit.</summary>
     public bool BadAir => Vacuum || Oxygen < 15f;
 
@@ -92,6 +97,7 @@ public sealed class WorldConditions
             Radiation = RadiationOf(spec.Archetype),
             // Cratered rock with nothing but the sky above it holds no air.
             Vacuum = spec.Airless,
+            Thickness = spec.AirThickness,
         };
         if (w.Vacuum) w.Oxygen = 0f;
         w.Backdrop = w.Climate == ClimateBand.Frozen ? new Color(0.86f, 0.88f, 0.9f) : spec.Archetype switch
