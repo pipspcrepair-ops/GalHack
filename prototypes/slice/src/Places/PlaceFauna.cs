@@ -79,6 +79,8 @@ public sealed class PlaceFauna
             Derelict = ship,
             Livable = deep.Livable,
             Danger = (int)inst.Rarity / 4f * 0.6f + inst.State switch { PoiState.Infested => 0.4f, PoiState.Ruined => 0.15f, _ => 0f },
+            // A place nobody marked (a roadside house, a farmstead, a shed: the flavour_* families) has its crawlers where the world keeps insects.
+            Crawlers = inst.Family.Id.StartsWith("flavour_", StringComparison.Ordinal) && deep.Life.World.Insects,
         };
         // The Turned (code HSK) hold it, alone or sharing it with others: a Husk den. Where the Husks'
         // warping (WRP) holds it, a light one: the wrongness, a few of them far in.

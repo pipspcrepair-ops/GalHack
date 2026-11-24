@@ -60,6 +60,9 @@ public sealed class WorldConditions
         _ => ClimateBand.Scorching,
     };
 
+    /// <summary>Insects get by here: air to breathe, not frozen, and not a world where next to nothing lives (sterile).</summary>
+    public bool Insects => !Vacuum && Climate != ClimateBand.Frozen && Density > 0.2f;
+
     /// <summary>The air won't keep anyone alive for long: a mask outdoors, or a suit.</summary>
     public bool BadAir => Vacuum || Oxygen < 15f;
 
