@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -165,8 +165,7 @@ public sealed class PoiPopulation
 
 /// <summary>
 /// Where small things come back from: a subsister species keeps its numbers up in a place by
-/// emerging from its cracks, or with no cracks (none are made for now: see the wildlife README)
-/// by walking in from a spot in its own rooms nobody can see, so a place's food chain keeps going.
+/// emerging from its cracks, so a place's food chain keeps going.
 /// </summary>
 public sealed class Colony
 {
@@ -175,8 +174,6 @@ public sealed class Colony
     public int Target;
     public Vector3 Home;
     public readonly List<Crack> Sources = new();
-    /// <summary>Where its members were first put down (point and surface up): where new ones come from when it has no cracks.</summary>
-    public readonly List<(Vector3 At, Vector3 Up)> Spots = new();
     public float Timer, Wait = RefillSeconds;
     const float RefillSeconds = 90f;
 
@@ -190,25 +187,16 @@ public sealed class Colony
             int alive = 0;
             foreach (Creature c in w.Creatures)
                 if (c.Species == col.Species && c.Alive && !c.Removed && c.Space == col.Space) alive++;
-            if (alive >= col.Target || col.Sources.Count + col.Spots.Count == 0)
+            if (alive >= col.Target || col.Sources.Count == 0)
             {
                 col.Wait = RefillSeconds;
                 continue;
             }
             col.Wait -= 5f;
             if (col.Wait > 0f) continue;
-            // Nothing comes out under your nose: only by a crack, or at a spot, nobody is near or looking at.
-            if (col.Sources.Count == 0)
-            {
-                var (at, up) = col.Spots[(int)(w.Frame % col.Spots.Count)];
-                if (Overlooked(w, col, at, at + up * 0.3f)) continue;
-                col.Wait = RefillSeconds;
-                Creature walker = w.SpawnIn(col.Species, col.Space, at, up);
-                if (!walker.Removed) walker.Home = col.Home;
-                continue;
-            }
+            // Nothing comes out under your nose: only by a crack nobody is near or looking down.
             Crack from = col.Sources[(int)(w.Frame % col.Sources.Count)];
-            if (Overlooked(w, col, from.Position, from.Position + from.Normal * 0.3f)) continue;
+            if (Overlooked(w, col, from)) continue;
             col.Wait = RefillSeconds;
             Creature n = w.SpawnIn(col.Species, col.Space, from.Position + from.Normal * 0.3f, from.Normal);
             n.Home = col.Home;
@@ -220,12 +208,13 @@ public sealed class Colony
         }
     }
 
-    static bool Overlooked(WildSim w, Colony col, Vector3 at, Vector3 mouth)
+    static bool Overlooked(WildSim w, Colony col, Crack k)
     {
         SpawnRules r = w.Data.Spawning;
+        Vector3 mouth = k.Position + k.Normal * 0.3f;
         foreach (ITarget t in w.Targets)
         {
-            float d = (t.Position - at).Length();
+            float d = (t.Position - k.Position).Length();
             if (d < r.ColonyClearance) return true;
             if (d < r.ViewDistance && SpaceMath.Clear(col.Space, t.Position + Vector3.Up * 1.4f, mouth, 0f)) return true;
         }
@@ -1069,8 +1058,7 @@ public static partial class PoiFauna
                 continue;
             }
             made.Add(c);
-            // Its small things (subsisters and insects) keep their numbers up.
-            if (s.Species.Role == DeepRole.Subsister || s.Species.Passive)
+            if (s.Species.Role == DeepRole.Subsister)
             {
                 if (!colonies.TryGetValue(s.Species, out Colony col))
                 {
@@ -1080,7 +1068,6 @@ public static partial class PoiFauna
                     sim.Colonies.Add(col);
                 }
                 col.Target++;
-                if (!c.Removed) col.Spots.Add((c.Position, c.Facing.Y));
             }
         }
         return made;

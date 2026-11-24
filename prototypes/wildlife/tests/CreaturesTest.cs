@@ -1099,6 +1099,7 @@ public partial class CreaturesTest : Node
 
     // ---- The food chain ---------------------------------------------------------------------
 
+
     void FoodChain()
     {
         var fauna = new DeepFauna(_data, 2024, 0.5f);
@@ -1113,15 +1114,17 @@ public partial class CreaturesTest : Node
             new() { Position = new Vector3(33f, 9f, 9f), Kind = grub.Diet }, new() { Position = new Vector3(35.5f, 9f, 6.5f), Kind = grub.Diet }, new() { Position = new Vector3(32f, 9f, 11f), Kind = grub.Diet },
         };
         sim.Food.AddRange(moss);
+        sim.Cracks.Add(new Crack { Id = 0, Kind = CrackKind.Crack, Position = new Vector3(28.02f, 9.3f, 10f), Normal = Vector3.Right, Network = 1 });
+        sim.Cracks.Add(new Crack { Id = 1, Kind = CrackKind.Crack, Position = new Vector3(36.98f, 9.3f, 5f), Normal = Vector3.Left, Network = 1 });
         Creature hunter = sim.SpawnIn(lurker, space, new Vector3(35f, 9.2f, 10.5f));
         hunter.Hunger = 0.8f;
         var col = new Colony { Species = grub, Space = space, Home = moss[0].Position, Target = 5 };
+        col.Sources.AddRange(sim.Cracks);
         sim.Colonies.Add(col);
         for (int i = 0; i < 5; i++)
         {
             Creature g = sim.SpawnIn(grub, space, moss[i % 3].Position + new Vector3(0.4f * i, 0.3f, 0.3f));
             g.Home = moss[i % 3].Position;
-            col.Spots.Add((g.Position, g.Facing.Y));
         }
         // A player crouched in the corridor's mouth, watching.
         var watcher = new DummyTarget { Name = "Watcher", Position = new Vector3(26.5f, 9f, 6f), ThreatScale = 0.6f, Health = new Health(1e6f) };
@@ -1146,7 +1149,7 @@ public partial class CreaturesTest : Node
         var fed = new HashSet<Creature>();
         for (float t = 0f; t < 720f; t += Dt)
         {
-            // Nothing walks back in under a watcher's nose: it takes their going for the colony to come back.
+            // Nothing comes out of a crack under a watcher's nose: it takes their going for the colony to come back.
             if (t < 300f)
             {
                 int now = sim.Creatures.Count(c => c.Alive && c.Species == grub);
@@ -1164,8 +1167,8 @@ public partial class CreaturesTest : Node
         ate = fed.Count;
         Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= _data.Combat.TellLeast - 1e-3f,
             $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 12 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
-        Check(slipped == 0 && cameBack >= 2,
-            $"subsisters run from the hunters in the open ({slipped} slipped into the walls) and their colony walks back in once the watcher has gone ({grazing} left as they went, {cameBack} came back)");
+        Check(slipped >= 1 && cameBack >= 2,
+            $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony comes back once the watcher has gone ({grazing} left as they went, {cameBack} came back)");
         Check(watcherHits == 0 && ate >= 1 && colonyShut, $"the hunters feed on their kills ({ate} fed) and leave the still watcher alone ({watcherHits} hits); nothing came out beside them meanwhile");
     }
 
