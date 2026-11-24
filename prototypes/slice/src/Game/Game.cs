@@ -114,6 +114,9 @@ public partial class Game : Node3D
     /// <summary>Chase camera instead of first person.</summary>
     public bool ThirdPerson;
 
+    /// <summary>The seat the camera last switched for: sitting at a vessel's controls goes to the chase view, standing up back to first person (owner, 24 Nov); V still toggles in between.</summary>
+    Vessel _viewSeat;
+
     /// <summary>Screenshots: the camera stays here.</summary>
     public Transform3D? FixedCamera;
 
@@ -449,6 +452,7 @@ public partial class Game : Node3D
         if (c.KeyWasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
         if (Menu.IsOpen && c.KeyWasPressed(Key.A) && c.ModifierHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
         if (Menu.IsOpen) Menu.Input(c);
+        if (Survivor?.Seated != _viewSeat) ThirdPerson = (_viewSeat = Survivor?.Seated) != null;
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
         StepOrbit(c, (float)delta);
         if (c.WasPressed(Key.L)) ToggleTorch();
