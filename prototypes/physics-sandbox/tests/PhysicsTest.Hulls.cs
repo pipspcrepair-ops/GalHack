@@ -59,7 +59,12 @@ public partial class PhysicsTest
                     var at = new N.Vector3(ground.X, surface + 0.5f - depth, ground.Z);
                     Ship ship = Ship.SpawnVessel(_w, s, at, 0f, landed: false);
                     ship.Binding.Teleport();
-                    for (int t = 0; t < 180; t++) yield return 0;
+                    for (int t = 0; t < 180; t++)
+                    {
+                        yield return 0;
+                        if (size == "large" && where.Contains("30") && (t % 15 == 0 || t < 4))
+                            GD.Print($"DBG hull t{t} d{depth}: at {at} pushes {(ship.Binding as HullBinding)?.Pushes} last {(ship.Binding as HullBinding)?.LastPush} rescues {_rescues.Count} pos {ship.Body.Position} v {ship.Body.Velocity} contacts {(ship.Binding as HullBinding)?.Contacts} floor {ship.Body.OnFloor} asleep {ship.Body.Asleep} frozen {ship.Vessel.Frozen} lift {ship.Stats.CanLiftOff} tossed {ship.Body.Tossed:F2} gd {ship.Vessel.GroundDistance:F2}");
+                    }
                     placed++;
                     // How far the ground's surface stands over the keel, under every bottom cell.
                     float sunk = 0f;

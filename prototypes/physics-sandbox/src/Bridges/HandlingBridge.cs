@@ -17,6 +17,9 @@ public sealed class HandlingFlight : IFlightRules
     public readonly Tunables Tunables;
     public readonly IVesselStructure Structure;
 
+    /// <summary>A Base-mode structure flown as a hull: nobody flies a falling base, so unmanned it never holds a course (the slice's rule).</summary>
+    public bool Base;
+
     /// <summary>The pilot's controls, set every tick by whoever flies it.</summary>
     public PilotInput Input = PilotInput.Autopilot;
 
@@ -93,9 +96,10 @@ public sealed class HandlingFlight : IFlightRules
         // about. A parked vessel, though, or one nearly stopped, must not drift off: holding
         // "course" would let the wind blow a parked rover away at wind speed, or a rammed ship sail
         // off at the speed it was knocked to. With nobody at the controls it holds station instead,
-        // braking like a pilot who has let go of the stick.
+        // braking like a pilot who has let go of the stick. A base always does: one dropped onto a slope
+        // held "course" down it at the speed it landed with, forever.
         PilotInput input = Input;
-        if (!input.Seated && (motion.Parked || motion.Velocity.Length() < ParkingSpeed)) input = PilotInput.Station;
+        if (!input.Seated && (Base || motion.Parked || motion.Velocity.Length() < ParkingSpeed)) input = PilotInput.Station;
         if (_livePower <= 0f)
         {
             // Dead: nothing pushes, brakes, holds or turns. It falls (hover plates let it down themselves), holding its attitude.
