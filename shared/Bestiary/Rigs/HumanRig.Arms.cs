@@ -426,10 +426,15 @@ public sealed partial class HumanRig
             return from + new Basis(Vector3.Up, heading + _yaw) * new Vector3(0f, MathF.Sin(_pitch), -MathF.Cos(_pitch)) * _far;
         }
 
+        /// <summary>
+        /// The swing over the step, solved, not stepped: a body posed seldom (far off, a tenth of a second apart) overshot further
+        /// each step until it was infinite, and the arms and hands with it.
+        /// </summary>
         static void Follow(ref float x, ref float v, float target, float dt)
         {
-            v += (Quick * Quick * (target - x) - 2f * Quick * v) * dt;
-            x += v * dt;
+            float e = x - target, c = v + Quick * e, k = MathF.Exp(-Quick * dt);
+            x = target + (e + c * dt) * k;
+            v = (v - Quick * c * dt) * k;
         }
     }
 
