@@ -129,12 +129,12 @@ public partial class ForecastTest : Node
         foreach (int x in drive.Wait(20)) yield return x;
     }
 
-    /// <summary>A fresh lightning strike beside the survivor and an attack on them, and a few ticks for the visor's alerts to read them.</summary>
+    /// <summary>A fresh tornado near the survivor and an attack on them, and a few ticks for the visor's alerts to read them.</summary>
     static IEnumerable<int> Hazard(Game.Game game, Driver drive)
     {
         WeatherSim sim = game.Zone.Weather.Sim;
-        sim.ClearHazards();
-        sim.Strike(HazardKind.Lightning, game.Survivor.WorldFeet + new Vector3(20f, 0f, 0f));
+        sim.ClearTornadoes();
+        sim.SpawnTornado(game.Survivor.WorldFeet + new Vector3(0f, 0f, 220f), game.Survivor.WorldFeet); // hits are never warned: only the funnel is
         game.Alerts.Attack("wildlife", game.Survivor.WorldFeet + new Vector3(10f, 0f, 0f));
         foreach (int x in drive.Wait(4)) yield return x;
     }
