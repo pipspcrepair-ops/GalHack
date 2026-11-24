@@ -201,7 +201,8 @@ public sealed class GroundPalette
     readonly float[] _glow;
     readonly Fractal _jitter, _tone;
 
-    public GroundPalette(WorldMap map, PlanetFlora flora = null)
+    /// <param name="colours">the world's natural colours (its sky's palette)</param>
+    public GroundPalette(WorldMap map, WorldPalette colours, PlanetFlora flora = null)
     {
         Map = map;
         Flora = flora;
@@ -213,92 +214,30 @@ public sealed class GroundPalette
         for (int k = 0; k < map.Count; k++)
         {
             var biome = (Biome)map.Biome[k];
-            _cells[k] = Soil(biome);
-            // Green country takes the green of whatever grows on it: russet under russet trees.
-            if (verdure is GalHack.Plants.Tone v) _cells[k] = Rgb.Lerp(_cells[k], new Rgb(v.R, v.G, v.B), Verdant(biome));
+            // The soil the cell's own climate weathers from the world's rock (or the mineral the biome is), under the
+            // colour of whatever grows on it: russet under russet trees, bare where nothing grows.
+            float warm = map.Temperature[k], wet = map.Humidity[k];
+            _cells[k] = verdure is GalHack.Plants.Tone v ? colours.Land(biome, warm, wet, new Rgb(v.R, v.G, v.B)) : colours.Ground(biome, warm, wet);
             _glow[k] = biome switch { Biome.LavaField => 1f, Biome.HotSpring => 0.12f, Biome.GlowMoss => 0.1f, _ => 0f };
         }
         _cells = ColorMap.Soften(map, _cells);
 
-        (Rock, Strata) = (map.Def.Archetype, map.Def.Variant) switch
+        // The rock is the world's own mineral, alien worlds' too (their soils keep their own chemistry).
+        Rock = colours.Bedrock;
+        Strata = (map.Def.Archetype, map.Def.Variant) switch
         {
-            (Archetype.Temperate, _) => (Rgb.Hex("726b61"), 0.25f),
-            (Archetype.Arid, 0) => (Rgb.Hex("a2725a"), 0.55f),
-            (Archetype.Arid, _) => (Rgb.Hex("9c5436"), 0.9f),
-            (Archetype.Ice, _) => (Rgb.Hex("5d646e"), 0.3f),
-            (Archetype.Lava, _) => (Rgb.Hex("2f2a2b"), 0.35f),
-            (Archetype.Alien, 0) => (Rgb.Hex("6f6185"), 0.5f),
-            (Archetype.Barren, _) => (Rgb.Hex("505050"), 0.15f), // impact-shattered rock: neutral deep grey, barely bedded
-            _ => (Rgb.Hex("6b5a52"), 0.3f),
+            (Archetype.Arid, 0) => 0.55f, (Archetype.Arid, _) => 0.9f, (Archetype.Lava, _) => 0.35f, (Archetype.Alien, 0) => 0.5f,
+            (Archetype.Temperate, _) => 0.25f, (Archetype.Barren, _) => 0.15f, _ => 0.3f, // barren: impact-shattered, barely bedded
         };
         DeepRock = Rock * 0.72f;
         Bedrock = Rgb.Hex("26262b");
-        Seabed = Rgb.Lerp(Rock, Rgb.Hex("b0a48a"), 0.45f) * 0.85f;
-        RiverBed = Rgb.Lerp(Rock, Rgb.Hex("4a4034"), 0.6f);
-        BareSoil = Rgb.Lerp(Rock, Rgb.Hex("7a5e44"), 0.45f);
-        Snow = Rgb.Hex("eef2f6");
+        // Under water the rock's own sand; in a river's bed its fines darkened wet; worn bare, the rock's dust (the hand tables'
+        // worlds, today's look and airless bodies: the hand mixes).
+        (Seabed, RiverBed, BareSoil) = colours.Hand
+            ? (Rgb.Lerp(Rock, Rgb.Hex("b0a48a"), 0.45f) * 0.85f, Rgb.Lerp(Rock, Rgb.Hex("4a4034"), 0.6f), Rgb.Lerp(Rock, Rgb.Hex("7a5e44"), 0.45f))
+            : (Rgb.Lerp(Rock, colours.Sand, 0.55f) * 0.85f, Rgb.Lerp(Rock, colours.Dust * 0.5f, 0.6f), Rgb.Lerp(Rock, colours.Dust * 0.8f, 0.55f));
+        Snow = colours.Snow;
     }
-
-    /// <summary>How much of a biome's topsoil is what grows on it.</summary>
-    static float Verdant(Biome b) => b switch
-    {
-        Biome.Grassland or Biome.Meadow => 0.55f,
-        Biome.Forest or Biome.Jungle or Biome.Rainforest or Biome.Riverbank or Biome.Oasis => 0.5f,
-        Biome.PineForest or Biome.CloudForest => 0.45f,
-        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => 0.35f,
-        Biome.Tundra or Biome.Scrub or Biome.HotSpring => 0.22f,
-        _ => 0f,
-    };
-
-    /// <summary>A grounded colour for each biome's topsoil, sand, ash or snow.</summary>
-    public static Rgb Soil(Biome b) => b switch
-    {
-        Biome.Beach => Rgb.Hex("c8b386"),
-        Biome.Grassland => Rgb.Hex("5b7838"),
-        Biome.Meadow => Rgb.Hex("76863c"),
-        Biome.Forest => Rgb.Hex("40592c"),
-        Biome.PineForest => Rgb.Hex("3e4e34"),
-        Biome.Tundra => Rgb.Hex("7d7a5c"),
-        Biome.Snow => Rgb.Hex("e4e9ee"),
-        Biome.Cliff => Rgb.Hex("6e675e"),
-        Biome.Riverbank => Rgb.Hex("4d6c33"),
-        Biome.Jungle => Rgb.Hex("3b6829"),
-        Biome.Rainforest => Rgb.Hex("345d2b"),
-        Biome.Swamp => Rgb.Hex("4f5a31"),
-        Biome.CloudForest => Rgb.Hex("486848"),
-        Biome.Dunes => Rgb.Hex("c99860"),
-        Biome.Erg => Rgb.Hex("d6ad76"),
-        Biome.SaltFlat => Rgb.Hex("dcd4c2"),
-        Biome.Scrub => Rgb.Hex("998a56"),
-        Biome.RedRock => Rgb.Hex("9c5638"),
-        Biome.Badlands => Rgb.Hex("ad6e47"),
-        Biome.MesaTop => Rgb.Hex("b78a5a"),
-        Biome.Oasis => Rgb.Hex("55783a"),
-        Biome.Glacier => Rgb.Hex("dde7ef"),
-        Biome.Snowfield => Rgb.Hex("edf1f5"),
-        Biome.IceTundra => Rgb.Hex("888e96"),
-        Biome.BlueIce => Rgb.Hex("9dc1da"),
-        Biome.HotSpring => Rgb.Hex("6aa59c"),
-        Biome.Sinter => Rgb.Hex("bf8f5e"),
-        Biome.Basalt => Rgb.Hex("3a3436"),
-        Biome.Ash => Rgb.Hex("5b5553"),
-        Biome.LavaField => Rgb.Hex("2e2220"),
-        Biome.Obsidian => Rgb.Hex("201b24"),
-        Biome.Sulfur => Rgb.Hex("c2ae4a"),
-        Biome.CrystalPlain => Rgb.Hex("6c5c86"),
-        Biome.CrystalSpires => Rgb.Hex("8a6ca6"),
-        Biome.Chalk => Rgb.Hex("d2c6d0"),
-        Biome.GlowMoss => Rgb.Hex("3a8676"),
-        Biome.FungalForest => Rgb.Hex("874a3c"),
-        Biome.SporeMarsh => Rgb.Hex("5e6a35"),
-        Biome.Mycelium => Rgb.Hex("cbbfa4"),
-        Biome.Regolith => Rgb.Hex("5c5c5c"),
-        Biome.Mare => Rgb.Hex("3a3a3b"),
-        Biome.Highland => Rgb.Hex("7c7c7c"),
-        Biome.Ironstone => Rgb.Hex("4a4848"),
-        Biome.Frost => Rgb.Hex("cdd1d6"),
-        _ => Rgb.Hex("6a6a5a"),
-    };
 
     /// <summary>Blended soil colour at a point (canonical metres) and how much it glows (lava fields, glow moss).</summary>
     public Rgb SoilAt(double x, double z, out float glow)
@@ -363,20 +302,24 @@ public sealed class GroundPalette
         {
             case CellMaterial.Ore:
             {
-                // Ore shows in the rock as speckle and streaks of its colour, not a flat stain: a
-                // texture over the rock, read by its pattern first, and only a faint glow.
+                // Ore shows as speckle and streaks of its colour over a dark matrix of the same ore, not a flat stain: read
+                // by its pattern first, and only a faint glow. Its colours are its own on every world (DepositLook), never
+                // the world's rock, and the shader keeps the palette off it (flags.Y below 0: how much is the ore's own).
                 Rgb oreColour = DepositLook.Color(ore);
                 float speck = SmoothStep(0.55f, 0.85f, ValueNoise(x * 1.7, z * 1.7 + height * 0.9, 41));
                 float streak = MathF.Abs(ValueNoise(x * 0.45 + height * 0.3, z * 0.45, 43) - 0.5f) < 0.1f ? 1f : 0f;
-                c = Rgb.Lerp(Rock, oreColour, 0.14f + 0.26f * speck + 0.18f * streak);
+                c = Rgb.Lerp(oreColour * 0.62f, oreColour * 1.18f, 0.2f + 0.55f * speck + 0.25f * streak);
                 flags.X = DepositLook.Glow(ore) * 0.12f;
+                flags.Y = -1f;
                 rock = 0.8f;
-                // Where a body breaks the surface it shows through the soil in broken patches, never a slab of its own.
+                // Where a body breaks the surface it shows through the soil in broken patches, never a slab of its own; the soil
+                // round them gives way where it would hide them.
                 if (Map.Sample(Map.Elevation, x, z) - height < 2.5f)
                 {
-                    float showing = SmoothStep(0.45f, 0.68f, ValueNoise(x * 0.33, z * 0.33, 53));
-                    c = Rgb.Lerp(SoilAt(x, z, out _), c, showing * 0.8f);
+                    float showing = SmoothStep(0.52f, 0.6f, ValueNoise(x * 0.33, z * 0.33, 53)); // crisp: ore or ground, little between
+                    c = Rgb.Lerp(DepositLook.Around(SoilAt(x, z, out _), ore), c, showing);
                     rock *= showing;
+                    flags.Y = -showing;
                 }
                 break;
             }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Plants;
@@ -322,12 +322,17 @@ public partial class FloraTest : Node
         foreach (var (name, a, v) in new[] { ("temperate", Archetype.Temperate, 0), ("rainforest", Archetype.Temperate, 1), ("dunes", Archetype.Arid, 0), ("canyon", Archetype.Arid, 1), ("glacier", Archetype.Ice, 0), ("hotspring", Archetype.Ice, 1), ("volcanic", Archetype.Lava, 0), ("crystal", Archetype.Alien, 0), ("fungal", Archetype.Alien, 1) })
         {
             var bands = new Dictionary<string, int>();
-            int species = 0, green = 0;
+            int species = 0, green = 0, yellow = 0, yellowGreen = 0;
+            var value = new Dictionary<StarClass, List<float>>();
             for (int i = 0; i < 20; i++)
             {
-                Herbarium book = Roll(Fresh(), a, v).flora.Book;
+                var (_, sky, flora) = Roll(Fresh(), a, v);
+                Herbarium book = flora.Book;
                 string band = Band(HueOf(book.Style.Leaves[0]));
                 bands[band] = bands.GetValueOrDefault(band) + 1;
+                if (sky.Star == StarClass.Yellow) { yellow++; if (band == "green") yellowGreen++; }
+                GalHack.Plants.Tone l = book.Style.Leaves[0];
+                (value.TryGetValue(sky.Star, out var vs) ? vs : value[sky.Star] = new List<float>()).Add(MathF.Max(l.R, MathF.Max(l.G, l.B)));
                 foreach (Plant p in book.Plants.Where(p => p.Family is PlantFamily.Conifer or PlantFamily.Broadleaf or PlantFamily.Jungle or PlantFamily.Grass))
                 {
                     species++;
@@ -335,7 +340,15 @@ public partial class FloraTest : Node
                 }
             }
             GD.Print($"SPREAD {name}: {string.Join(", ", bands.OrderByDescending(b => b.Value).Select(b => $"{b.Key} {b.Value}"))} of 20 worlds; {(species == 0 ? 0 : green * 100 / species)}% of tree and grass species green");
-            if (a == Archetype.Temperate) Check(bands.GetValueOrDefault("green") >= 14 && bands.GetValueOrDefault("russet") <= 4, $"{name} worlds are mostly green: {bands.GetValueOrDefault("green")} of 20 green, {bands.GetValueOrDefault("russet")} russet");
+            // Leaves follow the light their plants evolved under (owner, 22 Nov): darker under a red dwarf, where photons are
+            // scarce; and green is one colour among many, not the default, even under a yellow star (owner, 23 Nov: "blue grass").
+            if (a == Archetype.Temperate)
+            {
+                float Mean(StarClass s) => value.TryGetValue(s, out var vs) ? vs.Average() : float.NaN;
+                bool darker = !value.ContainsKey(StarClass.RedDwarf) || !value.ContainsKey(StarClass.Yellow) || Mean(StarClass.RedDwarf) < Mean(StarClass.Yellow);
+                Check(darker && bands.Count >= 3,
+                    $"{name} leaves follow their star: red dwarfs' {Mean(StarClass.RedDwarf):F2} against yellow's {Mean(StarClass.Yellow):F2} bright, {bands.Count} colours ({yellowGreen} of {yellow} under yellow stars green)");
+            }
         }
     }
 
@@ -392,7 +405,7 @@ public partial class FloraTest : Node
             var (m, s, _) = Roll(seed, a, v);
             PlanetFlora none = PlanetFlora.For(m, s, vacuum: true);
             Check(none.Book.Barren && none.Book.Verdure == null, $"a vacuum {a} world rolls no species");
-            var pal = new GroundPalette(m, none);
+            var pal = new GroundPalette(m, s.Palette, none);
             var source = new GalHack.Terrain.PlanetTerrainSource(m);
             int plants = 0, cover = 0;
             var rng = new Rng(Fresh());

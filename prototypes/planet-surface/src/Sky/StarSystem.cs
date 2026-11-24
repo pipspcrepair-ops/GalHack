@@ -682,16 +682,17 @@ public sealed class StarSystem
         {
             float tone = next();
             double t = TemperatureAt(h);
-            Rgb color = giant ? (ice ? Rgb.Lerp(Rgb.Hex("8fb4d8"), Rgb.Hex("86c4b4"), tone) : Rgb.Lerp(Rgb.Hex("d6ab78"), Rgb.Hex("e3cd96"), tone))
-                : t > 330 ? Rgb.Lerp(Rgb.Hex("a07058"), Rgb.Hex("d8c8a8"), tone)
+            // A rocky world's plain look until its own surface is painted (BodySurfaces): scorched, temperate or frozen.
+            (Rgb color, Rgb band) = giant ? SkySystem.Giant(tone, ice) : Plain(t > 330 ? Rgb.Lerp(Rgb.Hex("a07058"), Rgb.Hex("d8c8a8"), tone)
                 : t > 210 ? Rgb.Lerp(Rgb.Hex("b89a80"), Rgb.Hex("7898b8"), tone)
-                : Rgb.Lerp(Rgb.Hex("c8d8e8"), Rgb.Hex("9098a8"), tone);
+                : Rgb.Lerp(Rgb.Hex("c8d8e8"), Rgb.Hex("9098a8"), tone));
+            static (Rgb, Rgb) Plain(Rgb c) => (c, Rgb.Lerp(c, Rgb.Hex("5a4a3a"), 0.45f));
             var plane = planetPlane(h);
             var w = new Orbiter
             {
                 Name = $"world {++number}", Kind = giant ? OrbiterKind.GasGiant : OrbiterKind.Planet, Parent = star, Habitable = h, Orbit = chart(h), Period = year(h),
                 Radius = giant ? GiantRadius(homeRadius, next()) : 0.0, DayLength = giant ? 0.4 + 0.3 * next() : 0.7 + 2.0 * next(),
-                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Temperature = t, Zone = ZoneAt(h), Color = color, Band = Rgb.Lerp(color, Rgb.Hex("5a4a3a"), 0.45f),
+                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Temperature = t, Zone = ZoneAt(h), Color = color, Band = band,
                 Rings = giant && next() < 0.45f,
             };
             return giant ? add(w) : ground(w, PlanetSpec.RollWidthKm(upcoming()));

@@ -133,7 +133,8 @@ public sealed class BodySurfaces
     {
         WorldMap map = Coarse(spec);
         ArchetypeLook look = ArchetypeLook.For(spec);
-        var palette = new Terrain.GroundPalette(map, Terrain.PlanetFlora.For(map, SkySystem.For(spec)));
+        SkySystem sky = SkySystem.For(spec);
+        var palette = new Terrain.GroundPalette(map, sky.Palette, Terrain.PlanetFlora.For(map, sky));
         ColorMap colors = ColorMap.Build(map, look, Width, (x, z) => palette.FarGround(x, z, 64f));
         byte[] clouds = spec.Airless ? new byte[Width * Height * 4] : CloudMap.Build(spec, look, Width, out _);
         var pixels = new byte[Width * Height * 4];

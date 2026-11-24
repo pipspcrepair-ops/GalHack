@@ -3,9 +3,11 @@ using Planets.Gen;
 namespace Planets.Look;
 
 /// <summary>
-/// Everything about how an archetype variant looks that isn't a biome: its liquid, its sky from the
-/// ground, its atmosphere and clouds from orbit, and the space behind it. Visual-only modifiers
-/// (ringed sky, perpetual storm, glowing nights) are applied here and nowhere else.
+/// Everything about how a world looks that isn't a biome: its liquid, its sky from the ground, its
+/// atmosphere and clouds from orbit, and the space behind it. Natural colours (seas, sky, sunlight, air,
+/// clouds) are the world's palette's (<see cref="WorldPalette"/>); lava, glow, moons and the space behind
+/// are the type's own, and a world in today's look keeps all the type's hand colours below. Visual-only
+/// modifiers (ringed sky, perpetual storm, glowing nights) are applied here and nowhere else.
 /// </summary>
 public sealed record ArchetypeLook
 {
@@ -39,6 +41,14 @@ public sealed record ArchetypeLook
     public static ArchetypeLook For(PlanetSpec spec)
     {
         ArchetypeLook look = Base(spec.Archetype, spec.Variant);
+        WorldPalette p = WorldPalette.Of(spec);
+        if (!p.Today)
+            look = look with
+            {
+                SkyTop = p.Zenith, SkyHorizon = p.Horizon, SunColor = p.Star, Atmosphere = p.Limb, CloudColor = p.CloudTint, FrozenSea = p.Ice,
+                // Lava seas are the type's own fire; water is the palette's.
+                DeepSea = look.LiquidGlow > 0f ? look.DeepSea : p.Deep, ShallowSea = look.LiquidGlow > 0f ? look.ShallowSea : p.Shallow,
+            };
         if (spec.Has(Modifier.RingedSky)) look = look with { Ring = true };
         if (spec.Has(Modifier.PerpetualStorm))
         {
@@ -69,7 +79,7 @@ public sealed record ArchetypeLook
         ? FrozenSea
         : Rgb.Lerp(ShallowSea, DeepSea, Mathx.Smooth(2f, 90f, depth));
 
-    static ArchetypeLook Base(Archetype archetype, int variant) => (archetype, variant) switch
+    internal static ArchetypeLook Base(Archetype archetype, int variant) => (archetype, variant) switch
     {
         (Archetype.Temperate, 0) => new()
         {

@@ -64,8 +64,9 @@ public sealed partial class PlanetWorld
         HomeStar = of.Star;
         Depth = of.Depth;
         _system = of.System.SeenFrom(body);
-        // Its sky's star is the system's; with no air to scatter it, the sky is black space by day too.
-        Sky = Spec.Airless ? SkySystem.Vacuum(of.Light) : Sky with { Star = of.Light.Star, StarColor = of.Light.StarColor, SunEnergy = of.Light.SunEnergy, Bodies = of.Light.Bodies, DayMinutes = of.Light.DayMinutes };
+        // Its sky's star is the system's, and its air scatters that star's light; with no air, the sky is black space by day too.
+        SkySystem own = SkySystem.For(Spec, of.Light.Star) with { Bodies = of.Light.Bodies, DayMinutes = of.Light.DayMinutes, Nebula = of.Light.Nebula, NebulaA = of.Light.NebulaA, NebulaB = of.Light.NebulaB };
+        Sky = Spec.Airless ? SkySystem.Vacuum(own) : own;
     }
 
     partial void SystemSeedOf(ref ulong seed)

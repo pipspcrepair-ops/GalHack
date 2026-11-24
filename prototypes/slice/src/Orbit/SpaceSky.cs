@@ -192,15 +192,13 @@ public partial class SpaceSky : Node3D
             AmbientLightColor = new Color(rules.Ambient[0], rules.Ambient[1], rules.Ambient[2]),
             AmbientLightEnergy = 1f,
             ReflectedLightSource = Godot.Environment.ReflectionSource.Disabled,
-            // The surface's own tone mapping and glow (planet-surface's SkyRig).
-            TonemapMode = Godot.Environment.ToneMapper.Filmic,
-            TonemapWhite = 6f,
-            TonemapExposure = 1f,
+            // The surface's own glow (planet-surface's SkyRig), and its tone mapping and grade.
             GlowEnabled = true,
             GlowIntensity = 0.5f,
             GlowBloom = 0.02f,
             GlowHdrThreshold = 2f,
         };
+        Grade.Apply(Environment);
         World = new WorldEnvironment { Name = "Space" }; // no environment until space is what you see
         AddChild(World);
         yield return 0; // a new system's sky is set up a piece a tick, under a fold's tunnel

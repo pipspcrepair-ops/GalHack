@@ -12,24 +12,71 @@ public enum Flora { Conifer, Broadleaf, JungleTree, Palm, Shrub, Rock, Cactus, C
 public readonly record struct FloraRule(Flora Kind, float Density, Rgb Color);
 
 /// <summary>
-/// The colour and flora of every biome. Palettes are bold and saturated, in the spirit of 1970s
-/// paperback covers: few colours per world, strong contrast between land, liquid and sky. Scatter is
+/// The flora of every biome, and the hand colours of today's look: each biome's ground and its colour on
+/// the globe (every other world's natural colours are its own: <see cref="WorldPalette"/>). Scatter is
 /// quieter than the land it stands on: it reads as things lying in a world, never as sweets on a lawn.
 /// </summary>
 public static class BiomeLook
 {
-    public static Rgb Color(Biome b) => Colors[(int)b];
     public static FloraRule[] FloraOf(Biome b) => FloraTable[(int)b];
 
-    /// <summary>Self-lit colour (lava cracks, glowing moss). Black for most biomes.</summary>
-    public static Rgb Glow(Biome b) => b switch
+    /// <summary>
+    /// The ground under each biome, as the surface shows it: its topsoil, sand, ash, ice, snow or barren rock. Today's look and
+    /// every airless body paint every biome's ground from this (<see cref="WorldPalette.Hand"/>); elsewhere only hot-spring sinter,
+    /// sulfur, obsidian, blue ice and the crystal and fungal grounds come from here, whose chemistry the world palette doesn't hold.
+    /// </summary>
+    public static Rgb Ground(Biome b) => b switch
     {
-        Biome.LavaField => Rgb.Hex("ff4a10") * 0.55f,
-        Biome.HotSpring => Rgb.Hex("40fff0") * 0.12f,
-        Biome.GlowMoss => Rgb.Hex("30ffc0") * 0.18f,
-        Biome.CrystalSpires => Rgb.Hex("e070ff") * 0.12f,
-        _ => default,
+        Biome.Beach => Rgb.Hex("c8b386"),
+        Biome.Grassland => Rgb.Hex("5b7838"),
+        Biome.Meadow => Rgb.Hex("76863c"),
+        Biome.Forest => Rgb.Hex("40592c"),
+        Biome.PineForest => Rgb.Hex("3e4e34"),
+        Biome.Tundra => Rgb.Hex("7d7a5c"),
+        Biome.Snow => Rgb.Hex("e4e9ee"),
+        Biome.Cliff => Rgb.Hex("6e675e"),
+        Biome.Riverbank => Rgb.Hex("4d6c33"),
+        Biome.Jungle => Rgb.Hex("3b6829"),
+        Biome.Rainforest => Rgb.Hex("345d2b"),
+        Biome.Swamp => Rgb.Hex("4f5a31"),
+        Biome.CloudForest => Rgb.Hex("486848"),
+        Biome.Dunes => Rgb.Hex("c99860"),
+        Biome.Erg => Rgb.Hex("d6ad76"),
+        Biome.SaltFlat => Rgb.Hex("dcd4c2"),
+        Biome.Scrub => Rgb.Hex("998a56"),
+        Biome.RedRock => Rgb.Hex("9c5638"),
+        Biome.Badlands => Rgb.Hex("ad6e47"),
+        Biome.MesaTop => Rgb.Hex("b78a5a"),
+        Biome.Oasis => Rgb.Hex("55783a"),
+        Biome.Glacier => Rgb.Hex("dde7ef"),
+        Biome.Snowfield => Rgb.Hex("edf1f5"),
+        Biome.IceTundra => Rgb.Hex("888e96"),
+        Biome.BlueIce => Rgb.Hex("9dc1da"),
+        Biome.HotSpring => Rgb.Hex("6aa59c"),
+        Biome.Sinter => Rgb.Hex("bf8f5e"),
+        Biome.Basalt => Rgb.Hex("3a3436"),
+        Biome.Ash => Rgb.Hex("5b5553"),
+        Biome.LavaField => Rgb.Hex("2e2220"),
+        Biome.Obsidian => Rgb.Hex("201b24"),
+        Biome.Sulfur => Rgb.Hex("c2ae4a"),
+        Biome.CrystalPlain => Rgb.Hex("6c5c86"),
+        Biome.CrystalSpires => Rgb.Hex("8a6ca6"),
+        Biome.Chalk => Rgb.Hex("d2c6d0"),
+        Biome.GlowMoss => Rgb.Hex("3a8676"),
+        Biome.FungalForest => Rgb.Hex("874a3c"),
+        Biome.SporeMarsh => Rgb.Hex("5e6a35"),
+        Biome.Mycelium => Rgb.Hex("cbbfa4"),
+        // Barren ground (proto/vacuum's albedos): deep greys, lit and shaded by the palette's light.
+        Biome.Regolith => Rgb.Hex("5c5c5c"),
+        Biome.Mare => Rgb.Hex("3a3a3b"),
+        Biome.Highland => Rgb.Hex("7c7c7c"),
+        Biome.Ironstone => Rgb.Hex("4a4848"),
+        Biome.Frost => Rgb.Hex("cdd1d6"),
+        _ => Rgb.Hex("6a6a5a"),
     };
+
+    /// <summary>Each biome's colour as today's look paints the globe: bold and few, land, liquid and sky set against each other.</summary>
+    public static Rgb Color(Biome b) => Colors[(int)b];
 
     static readonly Rgb[] Colors = Build();
 
@@ -37,7 +84,6 @@ public static class BiomeLook
     {
         var c = new Rgb[64];
         void Set(Biome b, string hex) => c[(int)b] = Rgb.Hex(hex);
-        // Sea biomes are recoloured per archetype by ArchetypeLook; these are fallbacks.
         Set(Biome.DeepSea, "0d3b66"); Set(Biome.ShallowSea, "1e8fa6"); Set(Biome.FrozenSea, "d6eaf6");
 
         Set(Biome.Beach, "ead7a0"); Set(Biome.Grassland, "6db33f"); Set(Biome.Meadow, "b4d443");
@@ -65,6 +111,16 @@ public static class BiomeLook
         Set(Biome.Ironstone, "4c4a4a"); Set(Biome.Frost, "d2d6da");
         return c;
     }
+
+    /// <summary>Self-lit colour (lava cracks, glowing moss). Black for most biomes.</summary>
+    public static Rgb Glow(Biome b) => b switch
+    {
+        Biome.LavaField => Rgb.Hex("ff4a10") * 0.55f,
+        Biome.HotSpring => Rgb.Hex("40fff0") * 0.12f,
+        Biome.GlowMoss => Rgb.Hex("30ffc0") * 0.18f,
+        Biome.CrystalSpires => Rgb.Hex("e070ff") * 0.12f,
+        _ => default,
+    };
 
     static readonly FloraRule[][] FloraTable = BuildFlora();
 

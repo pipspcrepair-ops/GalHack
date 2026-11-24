@@ -184,19 +184,21 @@ public sealed class ColorMap
     }
 
     /// <summary>
-    /// Base colour and glow of every cell: the biome's colour with a gentle large-scale tone drift,
-    /// which keeps big single-biome areas from looking like flat paint. Shared by the surface terrain.
+    /// Base colour and glow of every cell: the world palette's land for its biome and climate, with a gentle
+    /// large-scale tone drift, which keeps big single-biome areas from looking like flat paint. Shared by the
+    /// surface terrain.
     /// </summary>
     public static Rgb[] CellColors(WorldMap map, ArchetypeLook look, out Rgb[] glow)
     {
         var color = new Rgb[map.Count];
         var lit = new Rgb[map.Count];
         var tone = new Fractal(Hash.Of(map.Spec.Seed, 0x746F6E65), 900, 3);
+        WorldPalette palette = WorldPalette.Of(map.Spec);
         for (int k = 0; k < map.Count; k++)
         {
             int i = k % map.Width, j = k / map.Width;
             var biome = (Biome)map.Biome[k];
-            Rgb c = BiomeLook.Color(biome);
+            Rgb c = palette.Land(biome, map.Temperature[k], map.Humidity[k]);
             float drift = tone.Fbm(map.Model.Torus.At(map.CellX(i), map.CellY(j)), 64);
             color[k] = c * (1f + 0.07f * drift);
             lit[k] = BiomeLook.Glow(biome) * (look.GlowingNights ? 3f : 1f);

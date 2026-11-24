@@ -118,7 +118,7 @@ public partial class PopRoute : Node
         var zone = _game.Zone;
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
         DirectionalLight3D sun = zone.Sky.Sun;
-        GD.Print($"ROUTE applied: {FramePacing.Screens()}; window {DisplayServer.WindowGetSize()} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, fps cap {Engine.MaxFps}, render scale {GetViewport().Scaling3DScale}, fov {_game.Camera.Fov}, " +
+        GD.Print($"ROUTE applied: affinity 0x{Process.GetCurrentProcess().ProcessorAffinity:X}, {FramePacing.Screens()}; window {DisplayServer.WindowGetSize()} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, fps cap {Engine.MaxFps}, render scale {GetViewport().Scaling3DScale}, fov {_game.Camera.Fov}, " +
                  $"ground detail {zone.Streamer.VoxelRadius}, detail distance {DetailReach.Distance}, level-0 radius {TerrainStreamer.FarLod0Radius}, far radius {TerrainStreamer.FarRadius}, " +
                  $"sun shadows {sun.DirectionalShadowMaxDistance} m, splits {sun.DirectionalShadowSplit1 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit2 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit3 * sun.DirectionalShadowMaxDistance:F0}, normal bias {sun.ShadowNormalBias}, bias {sun.ShadowBias}, blend splits {sun.DirectionalShadowBlendSplits}, mode {sun.DirectionalShadowMode}");
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");

@@ -1,4 +1,5 @@
 using System;
+using PL = Planets.Look;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -15,7 +16,9 @@ namespace PlanetSurface;
 ///   godot --path prototypes/planet-surface res://tests/Screenshot.tscn -- --view=NAME --out=FILE.png
 /// Named views are in <see cref="Views"/>; "look" takes everything from arguments:
 ///   --archetype=0-4 --variant=0|1 --seed=N --x= --z= (metres) --up= (above ground) --heading= --pitch= (degrees)
-///   --time=0..1 --weather=Kind [--hud=1]
+///   --time=0..1 --weather=Kind [--hud=1] [--star=RedDwarf|Orange|Yellow|White|BlueWhite] [--coast=1] [--airless=1] [--tonemap=Agx] [--body=1]
+///   [--ore=Copper: up close to the nearest deposit of that ore breaking the surface]
+///   --batch=FILE: many "look" shots in one run, a line of these arguments for each
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -38,16 +41,37 @@ public partial class Screenshot : Node
     public sealed record Shot(string Name, Vector3 Pos, float Heading, float Pitch);
 
     List<Shot> _series;
-    int _shot, _gpuFrames;
+    int _shot, _gpuFrames, _moved;
     double _gpuSum, _gpuWorst;
 
-    public override void _Ready()
+    /// <summary>--batch=FILE: one "look" shot a line, each line its own arguments (--archetype=... --out=...), all in one run, the world changed between them.</summary>
+    readonly Queue<string> _batch = new();
+
+    void Read(IEnumerable<string> args)
     {
-        foreach (string arg in OS.GetCmdlineUserArgs())
+        foreach (string arg in args)
         {
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
+    }
+
+    /// <summary>The batch's next line in place of the last: its own arguments only, nothing forced carried over.</summary>
+    void NextInBatch()
+    {
+        foreach (string key in new[] { "star", "tonemap", "airless", "body", "out", "pitch", "inland", "ore" }) _args.Remove(key);
+        PlanetSurface.Skies.SkySystem.ForceStar = null;
+        Grade.Force = null;
+        Read(_batch.Dequeue().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        _out = _args.GetValueOrDefault("out", _out);
+        _spec = Look();
+    }
+
+    public override void _Ready()
+    {
+        Read(OS.GetCmdlineUserArgs());
+        if (_args.TryGetValue("batch", out string batch))
+            foreach (string line in System.IO.File.ReadAllLines(batch)) if (line.Trim().Length > 0) _batch.Enqueue(line.Trim());
         // A hung run quits on its own (--limit=SECONDS, 15 minutes by default), even if the main thread never returns.
         double limit = Num("limit", 900);
         _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(limit)).ContinueWith(_ =>
@@ -57,7 +81,8 @@ public partial class Screenshot : Node
         });
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
-        _spec = _view == "look" ? Look() : Views.Get(_view);
+        if (_batch.Count > 0) NextInBatch();
+        else _spec = _view == "look" ? Look() : Views.Get(_view);
         if (_spec == null)
         {
             GD.PrintErr($"no view '{_view}'");
@@ -73,8 +98,11 @@ public partial class Screenshot : Node
     ViewSpec Look()
     {
         int a = Int("archetype", 0), variant = Int("variant", 0);
+        if (_args.TryGetValue("star", out string star)) PlanetSurface.Skies.SkySystem.ForceStar = Enum.Parse<StarClass>(star); // --star=RedDwarf..BlueWhite: the same world under another star
         ulong seed = (ulong)Int("seed", 1);
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
+        if (_args.TryGetValue("tonemap", out string tone)) Grade.Force = Enum.Parse<Grade.Curve>(tone); // --tonemap=Filmic|Agx|Aces|Linear: to compare them
+        if (_args.ContainsKey("airless")) planet = planet with { Modifiers = planet.Modifiers | Modifier.Cratered }; // the same world as a barren body (arid, ice or lava)
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
         _args.TryGetValue("force", out string force);
         if (_args.TryGetValue("type", out string type)) (PlanetSurface.Poi.PoiSiting.ForceType, force) = (type, Main.Catalog.Library.Families.First(f => f.Types.Contains(type)).Id);
@@ -117,6 +145,8 @@ public partial class Screenshot : Node
                 var from = new Vector3(cx - Mathf.Sin(Mathf.DegToRad(turn)) * back, g0 + up, cz + Mathf.Cos(Mathf.DegToRad(turn)) * back);
                 return (from, turn, -Mathf.RadToDeg(Mathf.Atan2(up, back)));
             }
+            if (_args.TryGetValue("ore", out string ore) && OreView(m.World, Enum.Parse<DepositKind>(ore)) is { } o) return o;
+            if (_args.ContainsKey("coast")) { var c = CoastView(m.World, Num("inland", 150)); return (c.pos, c.heading, (float)Num("pitch", c.pitch)); } // --pitch= to look down at the water or up at the sky
             double x = Num("x", m.World.Landing.X), z = Num("z", m.World.Landing.Y);
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));
@@ -126,6 +156,120 @@ public partial class Screenshot : Node
                 : _args.TryGetValue("ground", out string groundView) ? m => GroundShots(m, groundView)
                 : _args.TryGetValue("shores", out string shoreView) ? m => ShoreShots(m, shoreView)
                 : cityView == null ? null : m => m.World.Infra.City is { Sites.Count: > 0 } city ? CityShots(m, city, cityView) : null);
+    }
+
+    /// <summary>--ore=KIND: 14 m from the deposit of that ore breaking the surface nearest the landing, 5 m up, looking down at it.</summary>
+    static (Vector3 pos, float heading, float pitch)? OreView(PlanetSurface.World.PlanetWorld w, DepositKind kind)
+    {
+        Planets.Gen.Deposit? near = null;
+        double best = double.MaxValue;
+        foreach (Planets.Gen.Deposit dep in w.Map.Deposits.All())
+        {
+            if (dep.Kind != kind || dep.Depth > 0.01f || w.Source.WaterSurfaceAt(Mathx.WrapX(dep.X, w.Width), Mathx.Wrap(dep.Y, w.Height), out _)) continue;
+            double dx = Mathx.WrapDelta(dep.X - w.Landing.X, w.Width), dz = Mathx.WrapDelta(dep.Y - w.Landing.Y, w.Height), dd = dx * dx + dz * dz;
+            if (dd < best) (best, near) = (dd, dep);
+        }
+        if (near is not Planets.Gen.Deposit found) { GD.PrintErr($"no {kind} deposit breaks the surface"); return null; }
+        float ground = w.GroundHeight(found.X, found.Y);
+        var at = new Vector3((float)found.X, ground, (float)found.Y);
+        Vector3 from = at + new Vector3(0f, 5f, 14f);
+        from.Y = Mathf.Max(from.Y, w.GroundHeight(from.X, from.Z) + 3f);
+        Vector3 d = at - from;
+        GD.Print($"{kind} deposit at {found.X:F0},{found.Y:F0}");
+        return (from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+    }
+
+    /// <summary>
+    /// The world's natural colours as the game holds them, part by part, to set one build beside another: its sky (zenith, horizon,
+    /// haze, sunset, the starlight), its ground (the soil over its land, its rock), its plants (their leaf) and its water.
+    /// </summary>
+    static string PartColours(PlanetSurface.World.PlanetWorld w)
+    {
+        static string C(PL.Rgb c) => $"{c.R:F3},{c.G:F3},{c.B:F3}";
+        WorldMap map = w.Map;
+        PL.Rgb soil = default;
+        int n = 0;
+        for (int k = 0; k < map.Count; k += 97)
+            if (map.Elevation[k] > 0f) { soil += w.Palette.SoilAt(map.CellX(k % map.Width), map.CellY(k / map.Width), out _); n++; }
+        soil *= 1f / Math.Max(n, 1);
+        PL.Rgb leaf = w.Flora.Book.Verdure is GalHack.Plants.Tone v ? new PL.Rgb(v.R, v.G, v.B) : default;
+        SkySystem s = w.Sky;
+        return $"sky {C(s.Zenith)} {C(s.Horizon)} {C(s.Haze)} {C(s.Sunset)} {C(s.StarColor)};ground {C(soil)} {C(w.Palette.Rock)};plants {C(leaf)};water {C(new PL.Rgb(w.Look.Shallow.R, w.Look.Shallow.G, w.Look.Shallow.B))} {C(new PL.Rgb(w.Look.Deep.R, w.Look.Deep.G, w.Look.Deep.B))}";
+    }
+
+    /// <summary>
+    /// A shot's label: how its world reads (earthy, today, vivid, candy, mixed) and what drove each part, earthy, vivid or deep.
+    /// </summary>
+    static string Label(PlanetSurface.World.PlanetWorld w)
+    {
+        PL.WorldPalette p = w.Sky.Palette;
+        if (p.Today) return "today";
+        string How(PL.Parts part) => p.VividParts.HasFlag(part) ? "vivid" : p.DeepParts.HasFlag(part) ? "deep" : "earthy";
+        var parts = new List<string>();
+        if (p.Has.HasFlag(PL.Parts.Sky)) parts.Add($"sky {(p.Gas != PL.Trace.None ? p.Gas.ToString() : p.Air.Particles == PL.Particles.Clean ? "clear" : p.Air.Particles.ToString())} {How(PL.Parts.Sky)}");
+        parts.Add($"ground {(p.Ore != PL.Stain.None ? p.Ore.ToString() : p.Iron > 0.5f ? "iron" : p.Rock.ToString())} {How(PL.Parts.Ground)}");
+        if (p.Has.HasFlag(PL.Parts.Plants)) parts.Add($"plants {(p.Silver ? "silver" : p.Kit.ToString())} {How(PL.Parts.Plants)}");
+        if (p.Has.HasFlag(PL.Parts.Water)) parts.Add($"water {p.Water} {How(PL.Parts.Water)}");
+        return $"{p.Kind.ToString().ToLowerInvariant()}: {string.Join(", ", parts).ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// How near the view runs into something solid (a trunk, a wall, a hill) across its frame, m; inside something, 0.
+    /// </summary>
+    static float Open(Main m)
+    {
+        PhysicsDirectSpaceState3D space = m.Camera.GetWorld3D().DirectSpaceState;
+        Vector3 eye = m.Camera.GlobalPosition;
+        var inside = new PhysicsShapeQueryParameters3D { Shape = new SphereShape3D { Radius = 2.5f }, Transform = new Transform3D(Basis.Identity, eye) };
+        if (space.IntersectShape(inside, 1).Count > 0) return 0f;
+        float nearest = float.MaxValue;
+        // Canopies have no colliders: the plants' own solids, canopy hulls too, inside or in front of the eye.
+        Vector3 fwd = -m.Camera.GlobalBasis.Z;
+        foreach (var (s, offset) in m.Streamer.SolidsNear(eye, 40f, canopies: true))
+        {
+            Vector3 to = s.Center + offset - eye;
+            float reach = Mathf.Max(s.Extents.X, Mathf.Max(s.Extents.Y, s.Extents.Z)) * Mathf.Max(1f, s.Scale), d = to.Length();
+            if (d < reach + 2f) return 0f;
+            if (to.Dot(fwd) > d * 0.8f) nearest = Mathf.Min(nearest, d - reach);
+        }
+        foreach (float yaw in new[] { -25f, -12f, 0f, 12f, 25f })
+            foreach (float pitch in new[] { -8f, 0f, 8f })
+            {
+                Vector3 dir = m.Camera.GlobalBasis * (new Basis(Vector3.Up, Mathf.DegToRad(yaw)) * new Basis(Vector3.Right, Mathf.DegToRad(pitch)) * Vector3.Forward);
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, eye + dir.Normalized() * 60f));
+                if (hit.Count > 0) nearest = Mathf.Min(nearest, eye.DistanceTo((Vector3)hit["position"]));
+            }
+        return nearest;
+    }
+
+    /// <summary>
+    /// One framing for every world (--coast=1): from the land 150 m back from the sea nearest the landing
+    /// (--inland=M; below 0 out over the water), 18 m up, looking out across the shore, so sky, water, ground
+    /// and plants share the frame alike.
+    /// </summary>
+    static (Vector3 pos, float heading, float pitch) CoastView(PlanetSurface.World.PlanetWorld w, double inland)
+    {
+        WorldMap map = w.Map;
+        double lx = w.Landing.X, lz = w.Landing.Y, best = double.MaxValue, sx = lx, sz = lz;
+        for (int k = 0; k < map.Count; k++)
+        {
+            if (map.SeaDepth[k] < 6f) continue;
+            double dx = Mathx.WrapDelta(map.CellX(k % map.Width) - lx, w.Width), dz = Mathx.WrapDelta(map.CellY(k / map.Width) - lz, w.Height);
+            double d = dx * dx + dz * dz;
+            if (d < best) (best, sx, sz) = (d, lx + dx, lz + dz);
+        }
+        // Back from the water along the line to the landing, to the first dry ground 150 m inland.
+        double ux = lx - sx, uz = lz - sz, len = Math.Max(1e-3, Math.Sqrt(ux * ux + uz * uz));
+        (ux, uz) = (ux / len, uz / len);
+        double t = 0;
+        while (t < len && w.Source.WaterSurfaceAt(Mathx.WrapX(sx + ux * t, w.Width), Mathx.Wrap(sz + uz * t, w.Height), out _)) t += 8;
+        double px = sx + ux * (t + inland), pz = sz + uz * (t + inland);
+        // High enough to see over everything between the eye and the water, 18 m over the ground at the least.
+        float eye = Mathf.Max(w.GroundHeight(Mathx.WrapX(px, w.Width), Mathx.Wrap(pz, w.Height)), 0f) + 18f;
+        for (double d = 0; d <= t + inland; d += 10)
+            eye = Mathf.Max(eye, w.GroundHeight(Mathx.WrapX(sx + ux * d, w.Width), Mathx.Wrap(sz + uz * d, w.Height)) + 14f);
+        GD.Print($"coast view from {px:F0},{pz:F0} toward the sea at {sx:F0},{sz:F0}");
+        return (new Vector3((float)px, eye, (float)pz), Mathf.RadToDeg(Mathf.Atan2((float)-ux, (float)uz)), -6f);
     }
 
     /// <summary>
@@ -557,6 +701,18 @@ public partial class Screenshot : Node
                 bool settled = _main.Streamer.Settled && _main.Pois.Built && _main.Infra.Built && (!PlanetSurface.Poi.PoiLayer.Tiered || !_main.Pois.MidPending);
                 _settled = settled ? _settled + 1 : 0;
                 if (_settled == SettleFrames - 12) _spec.BeforeCapture?.Invoke(_main);
+                // --coast=1: never inside a tree or against a wall: up and on toward the water until the view is open.
+                if (_settled == SettleFrames - 12 && _args.ContainsKey("coast") && !_args.ContainsKey("ore") && _moved < 6 && Open(_main) is float open && open < 40f)
+                {
+                    Vector3 eye = _main.Camera.GlobalPosition, fwd = -_main.Camera.GlobalBasis.Z, flat = new Vector3(fwd.X, 0f, fwd.Z).Normalized();
+                    GD.Print($"view blocked at {open:F0} m: moving clear");
+                    _main.Fly.Begin(eye + Vector3.Up * 10f + flat * 25f, -Mathf.Atan2(fwd.X, -fwd.Z), Mathf.Atan2(fwd.Y, new Vector2(fwd.X, fwd.Z).Length()));
+                    (_moved, _settled) = (_moved + 1, 0);
+                    return;
+                }
+                // --body=1: turned to the biggest body up in the sky (a giant, a moon), from where the view stands.
+                if (_settled == SettleFrames - 12 && _args.ContainsKey("body") && _main.Sky.Drawn.Where(b => b.Direction.Y > 0.03f).OrderByDescending(b => b.Angular).FirstOrDefault() is { Body: not null } big)
+                    _main.Fly.Begin(_main.Camera.GlobalPosition, -Mathf.Atan2(big.Direction.X, -big.Direction.Z), Mathf.Atan2(big.Direction.Y, new Vector2(big.Direction.X, big.Direction.Z).Length()));
                 if (_settled == SettleFrames - 12 && _args.TryGetValue("hide", out string hide))
                     foreach (Node n in _main.Pois.GetChildren())
                         foreach (Node c in n.GetChildren())
@@ -597,6 +753,10 @@ public partial class Screenshot : Node
         GD.Print($"time {_main.Sky.TimeOfDay:F3} · sun {_main.Sky.ToSun.X:F2}, {_main.Sky.ToSun.Y:F2}, {_main.Sky.ToSun.Z:F2} · facing {fwd.X:F2}, {fwd.Y:F2}, {fwd.Z:F2}");
         if (_main.Pois.DecoRooms > 0) GD.Print($"rooms dressed from the decorations library: {_main.Pois.DecoRooms}");
         GD.Print(result == Error.Ok ? $"saved {file}" : $"could not save {file}: {result}");
+        GD.Print($"LABEL {System.IO.Path.GetFileNameWithoutExtension(file)}|{Label(_main.World)}");
+        GD.Print($"PARTS {System.IO.Path.GetFileNameWithoutExtension(file)}|{PartColours(_main.World)}");
+        // The system the seed makes (its star, and each body's kind, seed, orbit and size): the palette must never change it.
+        GD.Print($"SYSTEM {System.IO.Path.GetFileNameWithoutExtension(file)}|{_main.World.Sky.Star} " + string.Join(" ", _main.World.StarSystem.Bodies.Select(b => $"{b.Kind}:{b.Seed % 1000000}:{b.Orbit:F4}:{b.Radius:F5}")));
         // A series: on to its next frame, the world kept.
         if (result == Error.Ok && _series != null && ++_shot < _series.Count)
         {
@@ -605,6 +765,14 @@ public partial class Screenshot : Node
             _elapsed = 0;
             _settled = 0;
             _stage = 1;
+            return;
+        }
+        // A batch: on to its next world.
+        if (_batch.Count > 0)
+        {
+            NextInBatch();
+            _main.Arrive(_spec.Planet);
+            (_elapsed, _settled, _stage, _series, _shot, _moved) = (0, 0, 0, null, 0, 0);
             return;
         }
         GalHack.Testing.Backstop.Quit(this, result == Error.Ok ? 0 : 1);

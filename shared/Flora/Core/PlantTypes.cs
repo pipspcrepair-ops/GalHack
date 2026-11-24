@@ -14,6 +14,14 @@ public readonly record struct Tone(float R, float G, float B)
         return new Tone(r + m, g + m, b + m);
     }
 
+    /// <summary>Hue in degrees, saturation and value, 0..1: <see cref="Hsv"/> undone.</summary>
+    public (float H, float S, float V) ToHsv()
+    {
+        float max = MathF.Max(R, MathF.Max(G, B)), c = max - MathF.Min(R, MathF.Min(G, B));
+        float h = c <= 0f ? 0f : max == R ? ((G - B) / c % 6f + 6f) % 6f : max == G ? (B - R) / c + 2f : (R - G) / c + 4f;
+        return (h * 60f, max > 0f ? c / max : 0f, max);
+    }
+
     public static Tone Lerp(Tone a, Tone b, float t) => new(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t);
     public static Tone operator *(Tone c, float k) => new(c.R * k, c.G * k, c.B * k);
     public float Luma => 0.299f * R + 0.587f * G + 0.114f * B;
@@ -76,10 +84,12 @@ public enum PlantForm
 
 /// <summary>
 /// What a world offers its plants. Warmth and Wetness run 0..1; Air 0 is vacuum, 1 Earth's, 2 thick;
-/// Light is the sunlight's colour; Alien 0..1 pulls forms from the familiar to the strange; Life 0..1
-/// is how much grows at all, and 0 means nothing does.
+/// Pigment is the leaf colour its starlight evolved (the planet's to work out); Alien 0..1 pulls forms
+/// from the familiar to the strange; Life 0..1 is how much grows at all, and 0 means nothing does. Light,
+/// on a world in today's look, is the sunlight's colour, and its plants' colours are picked from it as
+/// they were before the palette.
 /// </summary>
-public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Light, float Alien, float Life, FloraMood Mood = null)
+public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Pigment, float Alien, float Life, FloraMood Mood = null, Tone? Light = null)
 {
     /// <summary>What the world's history has done to its plants (none where nothing says).</summary>
     public FloraMood Moods => Mood ?? FloraMood.None;

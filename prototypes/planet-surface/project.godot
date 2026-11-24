@@ -48,6 +48,10 @@ weather_ground={
 "type": "vec4",
 "value": Vector4(0, 0, 0, 1)
 }
+shade_fill={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
 weather_flash={
 "type": "vec4",
 "value": Vector4(0, 1, 0, 0)

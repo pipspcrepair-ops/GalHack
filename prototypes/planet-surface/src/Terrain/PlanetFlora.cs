@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Plants;
@@ -112,17 +112,12 @@ public sealed class PlanetFlora
         if (land > 0) { meanWarm /= land; meanWet /= land; }
         bool airless = vacuum || Airless(spec);
         float air = airless ? 0f : sky.Density;
-        float life = airless ? 0f : spec.Archetype switch
-        {
-            Archetype.Temperate => 1f,
-            Archetype.Alien => 0.85f,
-            Archetype.Arid => 0.45f,
-            Archetype.Ice => 0.4f,
-            _ => 0.12f,
-        };
+        float life = airless ? 0f : WorldPalette.LifeOf(spec);
         float alien = StrangenessOf(spec, lean);
-        Rgb light = sky.StarColor;
-        var climate = new FloraClimate(Hash.Of(spec.Seed, 0x466C7261, (long)spec.Archetype, spec.Variant), meanWarm, meanWet, air, new Tone(light.R, light.G, light.B), alien, life, mood);
+        // The leaf pigment this world's starlight evolved: the palette's, which its water's plankton share.
+        Rgb leaf = sky.Palette.Leaf;
+        Tone? light = sky.Palette.Today ? new Tone(sky.StarColor.R, sky.StarColor.G, sky.StarColor.B) : null; // today's look: its plants from the starlight, as they were
+        var climate = new FloraClimate(Hash.Of(spec.Seed, 0x466C7261, (long)spec.Archetype, spec.Variant), meanWarm, meanWet, air, new Tone(leaf.R, leaf.G, leaf.B), alien, life, mood, light);
         return new PlanetFlora(map, Herbarium.Roll(climate, habitats), meanWet);
     }
 

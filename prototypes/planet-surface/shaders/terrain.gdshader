@@ -11,6 +11,7 @@ render_mode cull_back, diffuse_burley, specular_schlick_ggx, world_vertex_coords
 
 global uniform vec2 planet_size;
 global uniform vec4 weather_ground;   // wetness, settled snow, dust, solar
+global uniform vec3 shade_fill;       // the shade light's own colour, less its grey (SkyRig): taken back off a deposit
 
 uniform bool far_ring = false;
 uniform vec4 hole = vec4(0.0);        // x0, z0, x1, z1: where the finer level covers the ground
@@ -1000,6 +1001,10 @@ void fragment() {
 	vec3 rock = rock_face(COLOR.a > 0.5 ? base : base * 0.95, wpos, NORMAL, INV_VIEW_MATRIX, UV2, fine, grain * near, bare, soil, rock_bump) * (0.82 + 0.3 * fine);
 	NORMAL = rock_normal(NORMAL, rock_bump, bare, VIEW_MATRIX, INV_VIEW_MATRIX, wpos, CAMERA_POSITION_WORLD);
 	vec3 albedo = mix(soil, rock, bare);
+	// A deposit keeps its own colours on every world (GroundPalette.Vertex: UV.y below 0): none of the world's beds, varnish or
+	// growth over it, and the shade light's own colour taken back off it, so only the light's strength reaches it.
+	float pinned = clamp(-UV.y, 0.0, 1.0);
+	albedo = mix(albedo, base * (0.92 + 0.16 * fine), pinned);
 
 	// Bedrock: a faint grid, so players learn what can't be cut.
 	if (UV.y > 0.5) {
@@ -1076,10 +1081,11 @@ void fragment() {
 	ROUGHNESS = mix(mix(mix(0.93, made_rough, made_cover), road_rough, road_cover), 0.45, wet * (0.4 + 0.6 * max(bare, max(road_cover, made_cover))));
 	SPECULAR = (0.3 + wet * 0.3) * sheen;
 
+	EMISSION = -albedo * shade_fill * pinned;
 	if (UV.x > 0.01) {
 		// Glowing ground: lava cracks run in veins, glow moss and ore shine softly.
 		float vein = 1.0 - smoothstep(0.0, 0.05, abs(pnoise(wpos * 0.25, planet_size * 0.25) - 0.5));
 		// Soft glows only show once the light falls: at noon the moss is just moss.
-		EMISSION = UV.x > 0.6 ? glow_color * glow_strength * (vein + 0.05) : base * UV.x * 1.5 * (1.0 - weather_ground.w * 0.7);
+		EMISSION += UV.x > 0.6 ? glow_color * glow_strength * (vein + 0.05) : base * UV.x * 1.5 * (1.0 - weather_ground.w * 0.7);
 	}
 }

@@ -21,7 +21,7 @@ public partial class GenTest : Node
     public override void _Ready()
     {
         var total = Stopwatch.StartNew();
-        // -- --only=Relief,Distinctness runs just the named checks (handy while tuning).
+        // -- --only=Relief,TypesByForm runs just the named checks (handy while tuning).
         var only = new HashSet<string>();
         foreach (string arg in OS.GetCmdlineUserArgs())
             if (arg.StartsWith("--only=")) only.UnionWith(arg["--only=".Length..].Split(','));
@@ -41,7 +41,7 @@ public partial class GenTest : Node
         Run("StarterMaterials", StarterMaterials);
         Run("Relief", ReliefCheck);
         Run("Performance", Performance);
-        Run("Distinctness", Distinctness);
+        Run("TypesByForm", TypesByForm);
         Run("LandformDeterminism", LandformDeterminism);
         Run("LandformSeams", LandformSeams);
         Run("LandformVariety", LandformVariety);
@@ -570,34 +570,58 @@ public partial class GenTest : Node
     }
 
     /// <summary>
-    /// The blind test, automated: simple feature vectors from what a player sees (colour map) and
-    /// the terrain, then a nearest-centroid classifier trained on some seeds and scored on others.
+    /// Each type reads by its form and features, never by its colours (owner, 23 Nov: every element in a myriad of colours, so a
+    /// type has no colours of its own). Fresh worlds of every type with air, measured on the map and the globe's colour map:
+    /// lava glows (its self-lit share), ice is ice (white snow and ice cover), an arid world has no standing vegetation (the
+    /// cover of what grows) where a temperate one is grown over, an alien one stands in crystal and fungus.
+    /// Then the blind test on those features and the terrain's: a nearest-centroid classifier trained on some worlds and scored
+    /// on others names the type. Colour's check is variety: worlds of one type differ in their land's colour.
     /// </summary>
-    void Distinctness()
+    void TypesByForm()
     {
-        const int train = 12, test = 10;
+        const int train = 8, test = 6;
+        var rng = new Random();
         var trainSet = new List<(float[] f, int label, int variant)>();
         var testSet = new List<(float[] f, int label)>();
+        var landColours = new Dictionary<Archetype, List<Oklab>>();
+        var byType = new Dictionary<Archetype, List<float[]>>();
         foreach (var (a, v) in Variants())
-        {
             for (int s = 0; s < train + test; s++)
             {
-                ulong seed = (ulong)(s < train ? 20000 + s * 31 : 90000 + s * 17);
-                float[] f = Features(PlanetGenerator.Generate(PlanetSpec.Roll(seed, a, v, 8)));
+                PlanetSpec spec;
+                do spec = PlanetSpec.Roll((ulong)rng.NextInt64(1, long.MaxValue), a, v, 8);
+                while (spec.Airless);
+                float[] f = Form(PlanetGenerator.Generate(spec), out Oklab land);
                 if (s < train) trainSet.Add((f, (int)a, v));
                 else testSet.Add((f, (int)a));
+                // (Today's look paints every world of a type alike, by design: its variety is the rest's.)
+                if (!WorldPalette.IsToday(spec)) (landColours.TryGetValue(a, out var colours) ? colours : landColours[a] = new List<Oklab>()).Add(land);
+                (byType.TryGetValue(a, out var forms) ? forms : byType[a] = new List<float[]>()).Add(f);
             }
-        }
+        // Each feature's least on the worlds that should show it, and its most on those that shouldn't.
+        float Least(Archetype a, int d) => byType[a].Min(f => f[d]);
+        float Most(Func<Archetype, bool> which, int d) => byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Max(f => f[d]);
+        foreach (var (a, forms) in byType.OrderBy(k => k.Key))
+            GD.Print($"      {Archetypes.Names[(int)a],-10} self-lit {forms.Min(f => f[0]):P1}..{forms.Max(f => f[0]):P1}, white {forms.Min(f => f[1]):P0}..{forms.Max(f => f[1]):P0}, cover {forms.Min(f => f[2]):F2}..{forms.Max(f => f[2]):F2}, crystal and fungus {forms.Min(f => f[6]):P0}..{forms.Max(f => f[6]):P0}");
+        // Lava burns: every lava world shows fire, and lava worlds burn many times more than temperate, arid and ice worlds do on
+        // average (an ice world's hot springs may glow a little; some lava worlds hold little open lava).
+        float Mean(Func<Archetype, bool> which, int d) => byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Average(f => f[d]);
+        float lavaGlow = Mean(a => a == Archetype.Lava, 0), otherGlow = Mean(a => a is not (Archetype.Lava or Archetype.Alien), 0);
+        Check(Least(Archetype.Lava, 0) > 0f && lavaGlow >= 0.05f && lavaGlow >= 10f * otherGlow, $"lava glows: every lava world shows fire (least {Least(Archetype.Lava, 0):P1}), {lavaGlow:P1} of a lava world self-lit on average against {otherGlow:P2} of a temperate, arid or ice one");
+        float otherWhite = Most(a => a is not (Archetype.Ice or Archetype.Temperate), 1);
+        Check(Least(Archetype.Ice, 1) >= 0.4f && otherWhite < 0.15f, $"ice is ice: at least {Least(Archetype.Ice, 1):P0} of every ice world white with snow and ice, at most {otherWhite:P0} of an arid, lava or alien one");
+        float aridCover = Most(a => a == Archetype.Arid, 2);
+        Check(aridCover <= 0.25f && Least(Archetype.Temperate, 2) >= 0.35f, $"an arid world has no standing vegetation: its land at most {aridCover:F2} covered by what grows, a temperate world's at least {Least(Archetype.Temperate, 2):F2}");
+        float otherStrange = Most(a => a != Archetype.Alien, 6);
+        Check(Least(Archetype.Alien, 6) >= 0.3f && otherStrange == 0f, $"an alien world stands in crystal and fungus: at least {Least(Archetype.Alien, 6):P0} of every alien world's land, none of any other");
 
-        // Standardise every feature so none dominates by its units.
+        // The blind test on form alone: every feature standardised so none dominates by its units, one centroid per variant.
         int dims = trainSet[0].f.Length;
         var mean = new float[dims];
         var std = new float[dims];
         foreach (var t in trainSet) for (int d = 0; d < dims; d++) mean[d] += t.f[d] / trainSet.Count;
         foreach (var t in trainSet) for (int d = 0; d < dims; d++) std[d] += (t.f[d] - mean[d]) * (t.f[d] - mean[d]) / trainSet.Count;
         for (int d = 0; d < dims; d++) std[d] = MathF.Sqrt(std[d]) + 1e-6f;
-
-        // One centroid per archetype variant; a match on either variant names the archetype.
         var centroids = new float[10][];
         var labels = new int[10];
         for (int c = 0; c < 10; c++) centroids[c] = new float[dims];
@@ -607,31 +631,14 @@ public partial class GenTest : Node
             labels[c] = t.label;
             for (int d = 0; d < dims; d++) centroids[c][d] += (t.f[d] - mean[d]) / std[d] / train;
         }
-
         int correct = 0;
         var confusion = new int[5, 5];
         foreach (var t in testSet)
         {
-            int best = 0;
-            float bestDist = float.MaxValue;
-            for (int c = 0; c < 10; c++)
-            {
-                float dist = 0;
-                for (int d = 0; d < dims; d++)
-                {
-                    float z = (t.f[d] - mean[d]) / std[d] - centroids[c][d];
-                    dist += z * z;
-                }
-                if (dist < bestDist)
-                {
-                    bestDist = dist;
-                    best = c;
-                }
-            }
+            int best = Enumerable.Range(0, 10).MinBy(c => Enumerable.Range(0, dims).Sum(d => MathF.Pow((t.f[d] - mean[d]) / std[d] - centroids[c][d], 2f)));
             confusion[t.label, labels[best]]++;
             if (labels[best] == t.label) correct++;
         }
-        float accuracy = correct / (float)testSet.Count;
         var rows = new System.Text.StringBuilder("      confusion (rows = truth): T  A  I  L  X\n");
         for (int r = 0; r < 5; r++)
         {
@@ -640,35 +647,59 @@ public partial class GenTest : Node
             rows.Append('\n');
         }
         GD.Print(rows.ToString().TrimEnd());
-        Check(accuracy >= 0.95f, $"distinctness: nearest-centroid classifier names the archetype of {accuracy:P0} of {testSet.Count} unseen planets");
+        float accuracy = correct / (float)testSet.Count;
+        Check(accuracy >= 0.95f, $"each type reads by its form: a nearest-centroid classifier on form alone names the type of {accuracy:P0} of {testSet.Count} unseen worlds");
+
+        // Colour's check is variety: the land's colour differs between worlds of one type.
+        foreach (var (a, colours) in landColours.OrderBy(k => k.Key))
+        {
+            var gaps = new List<float>();
+            for (int i = 0; i < colours.Count; i++)
+                for (int j = i + 1; j < colours.Count; j++)
+                    gaps.Add(MathF.Sqrt(MathF.Pow(colours[i].L - colours[j].L, 2f) + MathF.Pow(colours[i].A - colours[j].A, 2f) + MathF.Pow(colours[i].B - colours[j].B, 2f)));
+            gaps.Sort();
+            Check(gaps[gaps.Count / 2] >= 0.05f, $"{Archetypes.Names[(int)a]} worlds' land colours vary: median Oklab gap between two of them {gaps[gaps.Count / 2]:F3} (at least 0.05)");
+        }
     }
 
-    static float[] Features(WorldMap map)
+    /// <summary>
+    /// What a world's form shows, measured: the share of its globe burning bright (lava), the share white with snow and ice,
+    /// how covered its land is by what grows (<see cref="WorldPalette.Cover"/>), its land fraction, mean slope, relief, and the
+    /// share of its land in crystal and fungus. <paramref name="land"/> is its land's mean colour away from snow, for variety.
+    /// </summary>
+    static float[] Form(WorldMap map, out Oklab land)
     {
-        var look = ArchetypeLook.For(map.Spec);
-        var colors = ColorMap.Build(map, look, 192);
-        double lr = 0, lg = 0, lb = 0, wr = 0, wg = 0, wb = 0, luma2 = 0, luma = 0;
-        int land = 0, liquid = 0;
-        for (int p = 0; p < colors.Width * colors.Height; p++)
+        var colors = ColorMap.Build(map, ArchetypeLook.For(map.Spec), 192);
+        int pixels = colors.Width * colors.Height, glowing = 0, white = 0, landPixels = 0;
+        float lr = 0f, lg = 0f, lb = 0f;
+        for (int p = 0; p < pixels; p++)
         {
             float r = colors.Albedo[p * 4] / 255f, g = colors.Albedo[p * 4 + 1] / 255f, b = colors.Albedo[p * 4 + 2] / 255f;
-            if (colors.Albedo[p * 4 + 3] > 0) { wr += r; wg += g; wb += b; liquid++; }
-            else
-            {
-                lr += r; lg += g; lb += b; land++;
-                float l = 0.3f * r + 0.59f * g + 0.11f * b;
-                luma += l;
-                luma2 += l * l;
-            }
+            // Fire, not a luminous night's faint glow over everything (GlowingNights) or alien seas' shimmer.
+            if (0.3f * colors.Glow[p * 3] + 0.59f * colors.Glow[p * 3 + 1] + 0.11f * colors.Glow[p * 3 + 2] > 0.2f * 255f) glowing++;
+            Oklab o = Oklab.Of(new Rgb(r, g, b));
+            // Snow, or ice pale and blue (today's look paints sea ice so).
+            float hue = (o.Hue * 180f / MathF.PI + 360f) % 360f;
+            bool snow = o.L > 0.85f && o.Chroma < 0.06f || o.L > 0.8f && o.Chroma < 0.06f && hue is > 220f and < 260f;
+            if (snow) white++;
+            // The land's own colour for variety: its ground and growth, not its snow (white on any world).
+            if (colors.Albedo[p * 4 + 3] > 0 || snow) continue;
+            (lr, lg, lb, landPixels) = (lr + r, lg + g, lb + b, landPixels + 1);
         }
-        land = Math.Max(land, 1);
-        liquid = Math.Max(liquid, 1);
-        double lumaMean = luma / land;
+        landPixels = Math.Max(landPixels, 1);
+        land = Oklab.Of(new Rgb(lr / landPixels, lg / landPixels, lb / landPixels));
 
-        double slope = 0, elev = 0, elev2 = 0;
-        int cells = 0;
+        double slope = 0, elev = 0, elev2 = 0, cover = 0;
+        int cells = 0, dry = 0, strange = 0;
         for (int k = 0; k < map.Count; k++)
         {
+            var biome = (Biome)map.Biome[k];
+            if (biome is not (Biome.DeepSea or Biome.ShallowSea or Biome.FrozenSea))
+            {
+                dry++;
+                cover += WorldPalette.Cover(biome);
+                if (biome is Biome.CrystalPlain or Biome.CrystalSpires or Biome.FungalForest or Biome.SporeMarsh or Biome.Mycelium or Biome.GlowMoss) strange++;
+            }
             if (map.Flags[k] != 0 && !map.Has(k, CellFlags.Riparian) && !map.Has(k, CellFlags.Coast)) continue;
             slope += map.Slope[k];
             elev += map.Elevation[k];
@@ -676,15 +707,12 @@ public partial class GenTest : Node
             cells++;
         }
         cells = Math.Max(cells, 1);
+        dry = Math.Max(dry, 1);
         double elevMean = elev / cells;
         return new[]
         {
-            (float)(lr / land), (float)(lg / land), (float)(lb / land),
-            (float)(wr / liquid), (float)(wg / liquid), (float)(wb / liquid),
-            map.LandFraction,
-            (float)(slope / cells),
-            (float)Math.Sqrt(Math.Max(0, elev2 / cells - elevMean * elevMean)) / 100f,
-            (float)Math.Sqrt(Math.Max(0, luma2 / land - lumaMean * lumaMean)),
+            glowing / (float)pixels, white / (float)pixels, (float)(cover / dry), map.LandFraction, (float)(slope / cells),
+            (float)Math.Sqrt(Math.Max(0, elev2 / cells - elevMean * elevMean)) / 100f, strange / (float)dry,
         };
     }
 

@@ -242,9 +242,6 @@ public partial class SkyRig : Node3D
             Sky = new Sky { SkyMaterial = _sky, RadianceSize = Sky.RadianceSizeEnum.Size64, ProcessMode = Sky.ProcessModeEnum.Incremental },
             AmbientLightSource = Godot.Environment.AmbientSource.Sky,
             ReflectedLightSource = Godot.Environment.ReflectionSource.Sky,
-            TonemapMode = Godot.Environment.ToneMapper.Filmic,
-            TonemapWhite = 6f,
-            TonemapExposure = 1.0f,
             FogEnabled = true,
             FogMode = Godot.Environment.FogModeEnum.Exponential,
             FogAerialPerspective = 0.35f,
@@ -274,6 +271,12 @@ public partial class SkyRig : Node3D
         SkySystem s = System;
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_day"), C(s.Zenith));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("horizon_day"), C(s.Horizon));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("band_day"), C(s.Palette?.Band ?? s.Horizon));
+        // Today's look keeps its sky as it was, with no band of its own; a vivid sky brings its deep zenith down toward the horizon,
+        // so its grading reads in a level view; an earthy one's pale horizon reaches well up.
+        bool today = s.Palette?.Today ?? false, vivid = s.Palette?.VividParts.HasFlag(Planets.Look.Parts.Sky) ?? false;
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("band_share"), today ? 0f : 0.8f);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_curve"), today ? 0.42f : vivid ? 0.45f : 0.75f);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_night"), C(s.NightZenith));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sunset"), C(s.Sunset));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("haze"), C(s.Haze));
@@ -304,6 +307,7 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring"), world.StarSystem.Home.Rings);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_color"), C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
+        Grade.Apply(Environment);
     }
 
     // ---- Lamps under the clouds ---------------------------------------------------------------------
@@ -633,19 +637,23 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast"), air.Overcast);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("stratus"), air.Stratus);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cirrus"), air.Cirrus);
-        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.7f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
+        // Overcast keeps the air's own hue under its cloud: it changes the sky's colour, never drains it (today's look greys
+        // it, its clouds and its haze as it did, and keeps its grade's saturation).
+        bool today = s.Palette?.Today ?? false;
+        float greyed = today ? 0.7f : 0.35f;
+        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), greyed), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast_color"), C(grey));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lit"), C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));
         // Ash over lava glows red from underneath, more so as daylight fades.
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_underglow"), s.Air == AirKind.Ash ? new Color(0.55f, 0.16f, 0.05f) * (0.35f + 0.65f * (1f - day)) : new Color(0, 0, 0));
-        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_shade"), C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), 0.6f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_shade"), C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), today ? 0.6f : 0.35f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
 
         // Fog: the air's haze colour, lit by the sun, greyed by overcast, dark at night. It is lit
         // as the ground is: by a sun that has climbed clear of the horizon's air, so haze and
         // valley fog under a low sun are dim and warm, never a white wall. The glow toward the sun
         // (sun scatter) is kept modest: a low sun shines through the haze, it doesn't blind.
         float fogLight = Smooth(-0.16f, 0.25f, toSun.Y);
-        Rgb fog = Rgb.Lerp(s.Haze, grey, air.Overcast * 0.8f) * (0.08f + 0.92f * fogLight);
+        Rgb fog = Rgb.Lerp(s.Haze, grey, (today ? air.Overcast : Smooth(0.5f, 1f, air.Overcast)) * 0.8f) * (0.08f + 0.92f * fogLight); // the haze keeps its air's colour until the sky is really overcast
         fog = Rgb.Lerp(fog, s.Sunset * (0.8f * fogLight), low * day * 0.35f);
         Environment.FogLightColor = C(fog);
         Environment.FogDensity = air.FogDensity;
@@ -658,20 +666,35 @@ public partial class SkyRig : Node3D
         // Ash worlds are lit as much by their lava as their sun: never quite black.
         float floor = s.Air == AirKind.Ash ? 0.45f : 0.25f;
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
-        Environment.AdjustmentSaturation = air.Saturation;
-        // No air, no sky light: a vacuum sky's radiance is black space, its stars and the bodies in it (the planet
-        // overhead lighting the shade). What else reaches a shadow is the sunlit ground's bounce, in the ground's own colour.
-        Environment.AmbientLightSkyContribution = vacuum ? VacuumSkyShare : 1f;
+        // The shade's own colour goes with the daylight, as the sky's light does: night keeps its dark.
+        Environment.AmbientLightColor = C(s.Shade * (0.06f + 0.94f * day));
+        Environment.AdjustmentSaturation = today ? air.Saturation : 1f;
+        // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey; today's look
+        // keeps all its shade light the sky's. No air, no sky light: a vacuum sky's radiance is black space, its stars and the bodies
+        // in it (the planet overhead lighting the shade); what else reaches a shadow is the sunlit ground's bounce, as strong as its
+        // grey rock throws back, in the shade's own colour opposite the star (owner: "deep grey moons, but saturated").
+        Environment.AmbientLightSkyContribution = vacuum ? VacuumSkyShare : today ? 1f : 0.5f;
         if (vacuum && _world != null)
         {
-            Color ground = _world.Look.Dust.SrgbToLinear();
+            Color ground = _world.Look.Dust.SrgbToLinear(), shade = C(s.Shade).SrgbToLinear();
             float bounce = GroundBounce * Sun.LightEnergy * Math.Max(0f, toSun.Y) / ((1f - VacuumSkyShare) * Math.Max(0.05f, Environment.AmbientLightEnergy));
-            Environment.AmbientLightColor = new Color(ground.R * light.R * bounce, ground.G * light.G * bounce, ground.B * light.B * bounce).LinearToSrgb();
+            float thrown = (0.2126f * ground.R * light.R + 0.7152f * ground.G * light.G + 0.0722f * ground.B * light.B) * bounce * VacuumShadeLift;
+            Environment.AmbientLightColor = (shade * (thrown / Math.Max(1e-4f, 0.2126f * shade.R + 0.7152f * shade.G + 0.0722f * shade.B))).LinearToSrgb();
         }
+        // A deposit keeps its colour: the terrain shader takes the shade light's own colour back off its ore (its grey stays).
+        Color fill = Environment.AmbientLightColor.SrgbToLinear() * Environment.AmbientLightEnergy * (1f - Environment.AmbientLightSkyContribution);
+        float luma = 0.2126f * fill.R + 0.7152f * fill.G + 0.0722f * fill.B;
+        RenderingServer.GlobalShaderParameterSet("shade_fill", new Vector3(fill.R - luma, fill.G - luma, fill.B - luma));
     }
 
     /// <summary>The share of a vacuum world's shade light its sky's radiance gives (the planet overhead), the rest the ground's bounce.</summary>
     const float VacuumSkyShare = 0.5f;
+
+    /// <summary>
+    /// How much brighter than the ground's bounce a vacuum world's shade is drawn: enough that its colour opposite the star shows (deep
+    /// violet, blue or magenta shadows on grey rock: owner, 23 Nov, "deep grey moons, but saturated"), the shade still deep.
+    /// </summary>
+    const float VacuumShadeLift = 3f;
 
     /// <summary>How much of the sunlight on the ground comes back up into a shadow: a dim fill, the shade still near black.</summary>
     const float GroundBounce = 0.08f;
@@ -723,7 +746,8 @@ public partial class SkyRig : Node3D
     public static void ShowSun(ShaderMaterial sky, StarSystem model, SkySystem system)
     {
         sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_radius"), model.SunAngular);
-        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_disc_light"), new Vector3(system.StarColor.R, system.StarColor.G, system.StarColor.B) * system.SunEnergy * DiscEnergy);
+        Rgb disc = system.Palette?.Disc ?? system.StarColor; // the disc in its own colour: the eye adapts to its light, not to it
+        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_disc_light"), new Vector3(disc.R, disc.G, disc.B) * system.SunEnergy * DiscEnergy);
         sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_rim"), RimOf(system.Star));
         sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_heat"), model.SunHeat);
     }
