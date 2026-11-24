@@ -54,7 +54,7 @@ public sealed class Ship
         if (body.Kind == BodyKind.Vessel)
         {
             Spec = new StructureVessel(structure, world.Handling);
-            Flight = new HandlingFlight(Spec, world.Handling);
+            Flight = new HandlingFlight(Spec, world.Handling) { Base = structure.Mode == CoreMode.Base };
         }
         Seat = StructureBridge.SeatOf(structure);
     }

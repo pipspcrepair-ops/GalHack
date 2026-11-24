@@ -277,13 +277,16 @@ public partial class PhysicsTest : Node
         // One block edited: only its chunk's colliders are rebuilt (hull and cabin), never the whole body.
         Ship scratch = _w.SpawnVessel(SandboxWorld.Shuttle, new N.Vector3(90f, 150f, 90f), 0f, landed: false);
         int chunks = scratch.Structure.Chunks.Count, shapesBefore = scratch.HullShapes.ShapeCount;
-        var cell = new SInt3(0, 4, 3); // on the roof
-        Building.Place(scratch.Structure, cell, Building.Make(scratch.Structure, scratch.Structure.Catalogue.Type("iron-plated")));
+        // On the roof: the cell over the highest block amidships (a cell already taken would be refused and edit nothing).
+        int roof = scratch.Structure.Bounds().max.Y;
+        while (!scratch.Structure.TryGet(new SInt3(0, roof, 0), out _)) roof--;
+        var cell = new SInt3(0, roof + 1, 0);
+        PlaceError placed = Building.Place(scratch.Structure, cell, Building.Make(scratch.Structure, scratch.Structure.Catalogue.Type("iron-plated")));
         var watch = Stopwatch.StartNew();
         scratch.ApplyEdits();
         double ms = watch.Elapsed.TotalMilliseconds;
-        Check(scratch.HullShapes.LastRebuilt == 1 && chunks >= 4 && scratch.HullShapes.ShapeCount >= shapesBefore,
-            $"collider strategy: placing one block rebuilds the shapes of {scratch.HullShapes.LastRebuilt} of the structure's {chunks} chunks " +
+        Check(placed == PlaceError.None && scratch.HullShapes.LastRebuilt == 1 && chunks >= 4 && scratch.HullShapes.ShapeCount >= shapesBefore,
+            $"collider strategy: placing one block ({placed}) rebuilds the shapes of {scratch.HullShapes.LastRebuilt} of the structure's {chunks} chunks " +
             $"(hull and cabin together, mass and centre of mass refreshed) in {ms:F2} ms; the other chunks keep their shapes");
         _w.Remove(scratch);
     }
@@ -513,6 +516,9 @@ public partial class PhysicsTest : Node
         int craterCount = _craters.Count;
         Ship dive = _w.SpawnVessel(SandboxWorld.Shuttle, spot + new N.Vector3(0, 40f, 0), 0f, landed: false);
         dive.Body.Velocity = new N.Vector3(0f, -100f, 0f);
+        // The flight model holds it to the air speed (about one hull's worth of damage at the ground), so it comes down
+        // already 60% gone: the dive does far more than it has left, and every bit of it counts.
+        float worn = _w.Physics.Hurt(dive.Body, 0.6f * dive.Body.Integrity);
         int logBefore = _w.Terrain.Log.CellCount;
         _impacts.Clear();
         for (int i = 0; i < 60 && _craters.Count == craterCount; i++) yield return 0;
@@ -520,8 +526,10 @@ public partial class PhysicsTest : Node
         CraterInfo crater = _craters.Count > craterCount ? _craters[^1] : null;
         float formula = hit == null ? 0f : Impacts.Damage(dive.Body.Mass, hit.Speed, _w.Rules.Contacts);
         float uncappedRadius = hit == null ? 0f : 2f * MathF.Cbrt(Impacts.EnergyMJ(dive.Body.Mass, hit.Speed));
-        Check(hit != null && MathF.Abs(hit.Damage - formula) < 1e-4f && dive.Body.Damage >= formula - 1e-4f && dive.Body.Damage > 1.5f * dive.Body.Integrity,
-            $"a {hit?.Speed:F0} m/s dive does {hit?.Damage:F1} damage, {dive.Body.Damage / dive.Body.Integrity:F1}× the hull: never capped at what it had left");
+        Check(hit != null && MathF.Abs(hit.Damage - formula) < 1e-4f && hit.Damage > 2f * (dive.Body.Integrity - worn)
+              && dive.Body.Damage >= worn + formula - 1e-3f && dive.Body.Damage > 1.5f * dive.Body.Integrity,
+            $"a {hit?.Speed:F0} m/s dive on a hull {worn / dive.Body.Integrity:P0} gone does {hit?.Damage:F1} damage, {hit?.Damage / (dive.Body.Integrity - worn):F1}× what it had left, " +
+            $"and the hull counts all of it ({dive.Body.Damage / dive.Body.Integrity:F1}× the hull): never capped at what it had left");
 
         bool logged = crater != null;
         int inLog = 0, inStore = 0;
@@ -1350,7 +1358,9 @@ public partial class PhysicsTest : Node
             yield return 0;
         }
         _impacts.Clear();
-        var crawl = PilotInput.Hands(new Vector3(0f, 0f, -0.15f));
+        // A crawl is a speed (3 m/s), not a share of the stick: 0.15 of Hover Mode's 50 m/s was 7.5 m/s, and let go at the
+        // middle the rover eased to a stop well up the far side.
+        var crawl = PilotInput.Hands(new Vector3(0f, 0f, -3f / rover.Stats.TopSpeed));
         float Pitch() => Units.Degrees(MathF.Asin(Math.Clamp(MathX.Forward(rover.Body.Rotation).Y, -1f, 1f)));
 
         // In, until the hole's middle is under it, then hands off: it stops at the bottom.
@@ -1738,7 +1748,9 @@ public partial class PhysicsTest : Node
         watched.Add(diver.Body);
         float descent = 0f;
         int dived = 0;
-        while (dived++ < 900 && diver.Body.Position.Y > level - 6f)
+        // Down till its roof is a metre under (the Shuttle stands over 6 m tall: at a fixed 6 m down its roof broke the surface).
+        float roof = (diver.Structure.Bounds().max.Y + 0.5f) * diver.Structure.Grid.CellSize;
+        while (dived++ < 900 && diver.Body.Position.Y > level - roof - 1f)
         {
             diver.Flight.Input = PilotInput.Hands(new Vector3(0f, -1f, 0f));
             yield return 0;
