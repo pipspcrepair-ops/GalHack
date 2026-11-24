@@ -70,6 +70,7 @@ uniform vec3 ring_normal = vec3(0.0, 1.0, 0.0);
 uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
 uniform float cloud_cover = 0.4;
 uniform float cloud_dark = 0.0;
+uniform float clouds_shown = 1.0;  // the sky's own clouds: 1 from the ground, gone by the cap as the globe's sheet and its clouds come over the land (Spaceflight)
 uniform float cloud_base = 1600.0;
 uniform float cloud_thick = 900.0;
 uniform vec2 cloud_scale = vec2(8000.0, 8000.0);   // world metres per noise tile: divides the planet both ways
@@ -542,7 +543,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 	hide = 0.0;
 	bool fronted = front_shape.x > 0.001;
 	bool stormy = tower_count > 0 || fronted;
-	if (cloud_cover < 0.02 && !fronted) return vec4(sky, 0.0);
+	if ((cloud_cover < 0.02 && !fronted) || clouds_shown <= 0.0) return vec4(sky, 0.0);
 	float base = cloud_base - (fronted ? 330.0 : tower_count > 0 ? 280.0 : 0.0), top = cloud_base + cloud_thick * (stormy ? 4.0 : 1.0);
 	float t0, t1;
 	if (abs(rd.y) < 1e-3) {
@@ -798,6 +799,11 @@ void sky() {
 			cover = clamp(QUARTER_RES_COLOR.r, 0.0, 1.0);
 			laid = clamp(QUARTER_RES_COLOR.g, 0.0, 1.0);
 		}
+		// As the globe's sheet comes over the land its clouds take over from these, by height alone: over the cap they are all
+		// the clouds there are, lying on the globe, and none of the sky's is left (no flat deck spread past its limb).
+		cover *= clouds_shown;
+		laid *= clouds_shown;
+		clouded = mix(plain, clouded, clouds_shown);
 		float through_clouds = 1.0 - cover;
 		// The night backdrop (stars, nebulae, the core, the galaxy's band) goes by the cube of what gets through,
 		// its sharp points by the fifth power: it is many times brighter than white, so dimmed only by the
@@ -815,11 +821,10 @@ void sky() {
 			r += (textureLod(cloud_noise, q * 0.3 + 0.6, 0.0).rg - 0.5) * 0.7;
 			float s = textureLod(cloud_noise, r * vec2(0.14, 0.42), 0.0).r * 0.7 + textureLod(cloud_noise, r * vec2(0.34, 1.1) + 0.2, 0.0).r * 0.3;
 			float patch = smoothstep(0.35, 0.6, textureLod(cloud_noise, q * 0.12 + 0.3, 0.0).r);
-			float wisps = smoothstep(0.5, 0.78, s) * patch * smoothstep(0.02, 0.22, dir.y) * (1.0 - cover);
+			float wisps = smoothstep(0.5, 0.78, s) * patch * smoothstep(0.02, 0.22, dir.y) * (1.0 - cover) * clouds_shown;
 			vec3 lit = mix(sunset * 1.4, cloud_lit, smoothstep(0.02, 0.32, sun.y)) * (0.08 + 0.92 * day);
 			col = mix(col, lit, wisps * cirrus * 0.5);
 		}
-		if (debug_view == 1) col = vec3(cover);
 		if (debug_view == 3) col = night_sky(dir, true) * 6.0;
 		if (debug_view == 2) col = HALF_RES_COLOR.rgb * HALF_RES_COLOR.rgb * 4.0;
 		// Overcast greys the whole sky. By night its flat grey is the night light's and takes less of it, so the
@@ -845,6 +850,7 @@ void sky() {
 			// over a wide reach of the sky, so the sky darkens into space with no line across it.
 			col = mix(col, behind, space_under * smoothstep(0.35, -0.04, dir.y));
 		}
+		if (debug_view == 1) col = vec3(cover); // last, so it is the cover alone wherever the eye is (OrbitTest reads it over the cap)
 		COLOR = col;
 	}
 }

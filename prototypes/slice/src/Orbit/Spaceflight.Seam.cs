@@ -237,8 +237,10 @@ public partial class Spaceflight
         env.FogSunScatter = _fogScatter * (1f - gone);
         env.FogSkyAffect = _fogSky * (1f - gone) * (1f - outside);
         env.AmbientLightEnergy = _ambient * (1f - gone) + Rules.Space.Ambient[1] * gone;
-        // The surface's flat cloud deck goes as the sheet comes over the land, and in orbit there is none: the clouds are the globe's.
-        s.Sky.CloudDeckFade = Game.InOrbit ? 0f : (1f - gone) * (1f - OverLand(y));
+        // The sky's clouds and the flat deck go as the sheet and its globe's clouds come over the land, by height alone, the same both
+        // ways: over the cap the clouds are the globe's, and none spread out past its limb (owner, 24 Nov).
+        _sky.SetShaderParameter("clouds_shown", SkyClouds(y));
+        s.Sky.CloudDeckFade = (1f - gone) * SkyClouds(y);
     }
 
     // ---- The crossing ---------------------------------------------------------------------------
@@ -412,6 +414,9 @@ public partial class Spaceflight
     /// <summary>The sheet over the land (0 to 1): complete at the cap, the land still there under it until then.</summary>
     float OverLand(float y) => Smooth((y - Rules.Crossing.SwapFrom) / (Ceiling - Rules.Crossing.SwapFrom));
 
+    /// <summary>How much of the sky's own clouds (and the flat deck) shows at a height: all of them under the swap, none over the cap.</summary>
+    float SkyClouds(float y) => 1f - OverLand(y);
+
     /// <summary>How far the world below is seen from outside, 0 to 1: its rim of air shows, and the sky over you is space, over the first 600 m past the cap.</summary>
     float SeenFromOutside(float y) => Smooth((y - Ceiling) / 600f);
 
@@ -557,7 +562,7 @@ public partial class Spaceflight
         o.Space.Show(false, 0f);
         SkyTurn();
         Lap("space sky");
-        s.Sky.CloudDeckFade = 0f; // in orbit there is none, whatever it was when this surface was last seen
+        s.Sky.CloudDeckFade = (1f - AirGone) * SkyClouds(y); // before it is placed: a surface not seen yet has its deck at full
         s.Sky.PlaceCloudDeck(at); // it sets the height fog, so it goes before the air is thinned
         Lap("cloud deck");
         SetSurfaceAir(AirGone, y);

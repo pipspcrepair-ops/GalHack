@@ -117,6 +117,114 @@ public partial class OrbitTest
         Check(_skySizeWorst < 0.02, $"and at the size its distance gives: {_skySizeWorst:P1} off at worst");
     }
 
+    // ---- The sky's clouds hand over to the globe's ----------------------------------------------------
+
+    int _overCapTicks, _skyCloudsOverCap, _cloudPops, _coverPixels = -1, _underCapPixels;
+    float _lastShown = -1f;
+    string _firstOverCap, _firstPop, _shot;
+    int _shotTick;
+    bool _shotOverCap;
+    uint _cullMask;
+    List<CanvasLayer> _hud;
+    readonly List<string> _shots = new();
+    readonly string _keep = Array.Find(OS.GetCmdlineUserArgs(), a => a.StartsWith("--keep="))?["--keep=".Length..]; // shots, run in a window
+
+    /// <summary>
+    /// Every tick: over the cap the sky draws none of its own clouds (owner, 24 Nov: a flat deck spread past the globe's limb
+    /// at 1,309 m): the globe's are all there are. Up and down they go with height and never step.
+    /// </summary>
+    void WatchCloudHandOver()
+    {
+        if (_game?.Spaceflight?.Below?.Sky?.Environment?.Sky?.SkyMaterial is not ShaderMaterial sky) return;
+        Vector3 eye = _game.Camera.GlobalPosition;
+        float height = _game.InOrbit && _game.Orbit?.Anchor is { } here ? here.Height(eye) : eye.Y;
+        Variant set = sky.GetShaderParameter("clouds_shown");
+        float shown = set.VariantType == Variant.Type.Nil ? 1f : (float)set, cap = _game.Spaceflight.Below.Physics.Zone.Ceiling;
+        if (_lastShown >= 0f && MathF.Abs(shown - _lastShown) > 0.1f)
+        {
+            _cloudPops++;
+            _firstPop ??= $"from {_lastShown:P0} to {shown:P0} in a tick at {height:F0} m";
+        }
+        _lastShown = shown;
+        if (height >= cap + 10f && _game.Spaceflight.Band < 1f)
+        {
+            _overCapTicks++;
+            if (shown > 0f)
+            {
+                _skyCloudsOverCap++;
+                _firstOverCap ??= $"{shown:P0} of them at {height:F0} m";
+            }
+        }
+        if (_keep != null) LimbShots(sky, height, cap, _skiff?.Body.Velocity.Y < 0f);
+    }
+
+    /// <summary>
+    /// Run in a window (--keep=DIR): a picture at 1,000, 1,100 and 1,300 m each way, and the sky's cloud cover alone in the same
+    /// view (its debug view, nothing else drawn): over the cap no cloud at all, anywhere outside the globe's disc.
+    /// </summary>
+    void LimbShots(ShaderMaterial sky, float height, float cap, bool down)
+    {
+        Camera3D cam = _game.Camera;
+        if (_shot == null)
+        {
+            foreach (float at in new[] { 1000f, 1100f, 1300f })
+            {
+                string name = $"{(down ? "down" : "up")}-{at:F0}m";
+                if (MathF.Abs(height - at) < 30f && !_shots.Contains(name)) _shot = name;
+            }
+            if (_shot == null) return;
+            _shots.Add(_shot);
+            _shotTick = 0;
+            _shotOverCap = height > cap + 10f;
+        }
+        string file = System.IO.Path.Combine(_keep, $"orbitclouds-{_shot}");
+        switch (_shotTick++)
+        {
+            case 0:
+                System.IO.Directory.CreateDirectory(_keep);
+                cam.GetViewport().GetTexture().GetImage().SavePng(file + ".png");
+                (_cullMask, cam.CullMask) = (cam.CullMask, 0u);
+                _hud = GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false).OfType<CanvasLayer>().Where(c => c.Visible).ToList();
+                _hud.ForEach(c => c.Visible = false);
+                sky.SetShaderParameter("debug_view", 1);
+                break;
+            case 4:
+                Image cover = cam.GetViewport().GetTexture().GetImage();
+                cover.SavePng(file + "-cover.png");
+                cover.Convert(Image.Format.Rgb8);
+                byte[] px = cover.GetData();
+                // Over the frame's floor (no cloud is not quite black once the frame is graded): its darkest but for a stray few.
+                int[] counts = new int[256];
+                for (int i = 0; i < px.Length; i += 3) counts[px[i]]++;
+                int least = 0;
+                for (int seen = 0; (seen += counts[least]) < px.Length / 300; least++) { }
+                // The pilot's figure in its seat still draws (posed every frame, apart from the camera's layers): its spot is left out.
+                int w = cover.GetWidth(), clouded = 0;
+                Vector2 pilot = _game.Figure != null && !cam.IsPositionBehind(_game.Figure.GlobalPosition) ? cam.UnprojectPosition(_game.Figure.GlobalPosition) : new Vector2(-1e4f, -1e4f);
+                for (int i = 0; i < px.Length; i += 3)
+                    if (px[i] > least + 24 && MathF.Max(MathF.Abs(i / 3 % w - pilot.X), MathF.Abs(i / 3 / w - pilot.Y)) > 60f) clouded++;
+                if (_shotOverCap) _coverPixels = Math.Max(_coverPixels, clouded);
+                else _underCapPixels = Math.Max(_underCapPixels, clouded);
+                GD.Print($"  ({_shot}: {height:F0} m, {clouded} pixels of the sky's own cloud; {file}.png)");
+                cam.CullMask = _cullMask;
+                _hud.ForEach(c => c.Visible = true);
+                sky.SetShaderParameter("debug_view", 0);
+                _shot = null;
+                break;
+        }
+    }
+
+    void TheCloudsHandedOver()
+    {
+        Check(_overCapTicks > 0 && _skyCloudsOverCap == 0, $"over the cap the sky draws none of its own clouds, up and down: only the globe's ({_skyCloudsOverCap} of {_overCapTicks} ticks wrong{(_firstOverCap != null ? ": " + _firstOverCap : "")})");
+        Check(_cloudPops == 0, $"the sky's clouds hand over to the globe's with height, never a step ({_cloudPops} steps{(_firstPop != null ? ": " + _firstPop : "")})");
+        if (_keep != null)
+        {
+            Check(_shots.Count(n => !n.EndsWith("1000m")) >= 3 && _coverPixels == 0, $"in the pictures from orbit ({string.Join(", ", _shots)}) no pixel of the sky's own cloud, outside the globe's disc or anywhere: {_coverPixels} at most");
+            GD.Print($"  (under the cap the same reading finds {_underCapPixels} pixels of the sky's cloud)");
+        }
+    }
+
     /// <summary>Back on the ground, after the zone has been re-aligned and crossed both ways: the sky still agrees, and the clock ran on up there.</summary>
     void TheSkyCameBack()
     {
