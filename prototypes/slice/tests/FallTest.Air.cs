@@ -32,18 +32,15 @@ public partial class FallTest
     {
         OxygenRules o = _game.Suit.Sim.Data.Vitals.Oxygen;
         // A closed room to step back into: a spot of the place's whose air the place holds.
-        Vector3? room = null;
-        int spots = 0, closed = 0;
-        foreach (var s in town.Spots)
+        // (Looked for again when it's wanted: doors open and shut as people go through.)
+        Vector3? Room()
         {
-            Vector3 local = new(s.Cell.X + 0.5f, s.Cell.Y, s.Cell.Z + 0.5f);
-            spots++;
-            if (!place.Closed(town.World(local))) continue;
-            closed++;
-            room ??= local;
+            foreach (var s in town.Spots)
+                if (new Vector3(s.Cell.X + 0.5f, s.Cell.Y, s.Cell.Z + 0.5f) is var local && place.Closed(town.World(local))) return local;
+            return null;
         }
-        GD.Print($"  ({closed} of {spots} of its spots stand in closed rooms)");
-        if (room == null) { GD.Print("  (no closed room here: another world)"); yield break; }
+        GD.Print($"  ({town.Spots.Count(s => place.Closed(town.World(new Vector3(s.Cell.X + 0.5f, s.Cell.Y, s.Cell.Z + 0.5f))))} of {town.Spots.Count} of its spots stand in closed rooms)");
+        if (Room() == null) { GD.Print("  (no closed room here: another world)"); yield break; }
         Check(_game.Suit.InVacuum, "the sleeper, out of doors by the settlement, is in vacuum");
 
         // Five of them, out by the sleeper in the open, each in a body of their own (a place of copies shares one).
@@ -70,30 +67,32 @@ public partial class FallTest
         float dies = (float)(o.HoldBreathSeconds + _game.Suit.Sim.Data.Vitals.Health.Max / o.SuffocationDamagePerSecond);
         ulong from = Engine.GetPhysicsFrames();
         float Seconds() => Frame(from) * Tick;
-        float diedAt = -1f, backHealth = -1f, panicAt = -1f;
+        float diedAt = -1f, backHealth = -1f, panicAt = -1f, movedAt = -1f, movedHealth = -1f;
         bool backIn = false, wasOut = false;
         while (Seconds() < dies + 15f)
         {
             TopUp();
             yield return 0;
             float t = Seconds();
-            if (t > 1f && !wasOut) { wasOut = true; Check(who.All(p => !p.InAir), $"all five are out of the air ({string.Join(", ", who.Select(p => p.InAir ? "air" : "none"))})"); }
+            if (t > 1f && !wasOut) { wasOut = true; Check(who.All(p => p == machine || !p.InAir), $"all four that breathe are out of the air ({string.Join(", ", who.Where(p => p != machine).Select(p => p.InAir ? "air" : "none"))})"); }
             if (bare.Dead && diedAt < 0f) diedAt = t;
+            if (backIn && backHealth < 0f && back.InAir) (backHealth, movedAt) = (back.Health.Current, t - movedAt); // (its next look at the air)
             if (panicAt < 0f && free.Fleeing && t > o.HoldBreathSeconds - 1f) panicAt = t;
             // Into a closed room once it has started to suffocate: no more harm from there.
-            if (!backIn && t > o.HoldBreathSeconds + 8f)
+            if (!backIn && t > o.HoldBreathSeconds + 8f && Room() is { } room)
             {
                 backIn = true;
-                back.Pos = room.Value;
-                backHealth = back.Health.Current;
-                Check(backHealth < back.Health.Max, $"out of the air past the hold, it suffocates ({backHealth:F1} of {back.Health.Max:F0})");
+                back.Pos = room;
+                (movedAt, movedHealth) = (t, back.Health.Current);
+                Check(movedHealth < back.Health.Max, $"out of the air past the hold, it suffocates ({movedHealth:F1} of {back.Health.Max:F0})");
             }
         }
         Check(diedAt > 0f && MathF.Abs(diedAt - dies) < 3f, $"unsuited, it dies of it in {diedAt:F1} s (the sleeper's {dies:F1} s: a {o.HoldBreathSeconds:F0} s hold, then {o.SuffocationDamagePerSecond / _game.Suit.Sim.Data.Vitals.Health.Max:P1} of health a second)");
         float drained = (float)o.Max - suited.Tank;
         Check(!suited.Dead && suited.Health.Current >= suited.Health.Max && MathF.Abs(drained - Seconds() * (float)o.DrainPerSecond) < 3f,
             $"in a sealed suit it lives on past that, unharmed, on its tank ({suited.Tank:F0} of {o.Max:F0} left after {Seconds():F0} s)");
-        Check(back.InAir && !back.Dead && back.Health.Current >= backHealth - 0.01f, $"back in a closed room it breathes and loses no more ({back.Health.Current:F1} from {backHealth:F1})");
+        Check(backHealth > 0f && movedAt <= 0.5f && back.InAir && !back.Dead && back.Health.Current >= backHealth - 0.01f,
+            $"back in a closed room it breathes ({movedAt:F2} s to its next look at the air, {movedHealth - backHealth:F2} lost meanwhile) and loses no more ({back.Health.Current:F1} from {backHealth:F1})");
         Check(!machine.Dead && machine.Health.Current >= machine.Health.Max, $"a machine doesn't breathe: unharmed ({machine.Health.Current:F0} of {machine.Health.Max:F0})");
         Check(panicAt > 0f, $"one left free runs for air once its breath is out ({(panicAt > 0f ? $"at {panicAt:F1} s" : "never")}; {(free.Dead ? "dead" : free.InAir ? "in the air" : "still out")} at the end, refuge spot {free.Refuge})");
         _airShown = true;
