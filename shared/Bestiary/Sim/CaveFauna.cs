@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -51,7 +51,6 @@ public static class CaveFauna
             food.Add(patch);
         }
         var colony = new Colony { Species = grazer, Space = space, Home = food[0].Position };
-        foreach (Crack k in sim.Cracks) if (k.Network == 10 + (int)(seed % 1000)) colony.Sources.Add(k);
         for (int i = 0; i < subsisters; i++)
         {
             FoodPatch at = food[i % food.Count];
@@ -59,6 +58,7 @@ public static class CaveFauna
             c.Home = at.Position;
             made.Add(c);
             colony.Target++;
+            if (!c.Removed) colony.Spots.Add((c.Position, c.Facing.Y));
         }
         sim.Colonies.Add(colony);
         Species crawler = fauna.For(DeepRole.Crawler, PoiTheme.Natural, depth);
