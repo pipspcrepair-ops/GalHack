@@ -88,6 +88,19 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         for (int i = 0; i < 5; i++) yield return 0;
 
+        if (OS.GetCmdlineUserArgs().Contains("--perf"))
+        {
+            foreach (int x in Performance()) yield return x;
+            yield break;
+        }
+        if (OS.GetCmdlineUserArgs().Contains("--hover"))
+        {
+            GD.Print("-- hover rover: trench, holes, water --");
+            foreach (int x in RoverTrench()) yield return x;
+            foreach (int x in HoverHoles()) yield return x;
+            foreach (int x in HoverOnWater()) yield return x;
+            yield break;
+        }
         if (OS.GetCmdlineUserArgs().Contains("--hulls"))
         {
             GD.Print("-- hulls set into the ground --");
@@ -126,6 +139,7 @@ public partial class PhysicsTest : Node
         foreach (int x in GearOnUnevenGround()) yield return x;
         foreach (int x in WindRules()) yield return x;
         foreach (int x in WaterVolume()) yield return x;
+        foreach (int x in HoverOnWater()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
         foreach (int x in StuckSafety()) yield return x;
         GD.Print("-- standing on built shapes --");
@@ -1278,7 +1292,7 @@ public partial class PhysicsTest : Node
     sealed class HoleRun
     {
         public string Name;
-        public float Depth, Seconds, NoseDown, NoseUp, Bottom, Steepest, Slowest = float.PositiveInfinity;
+        public float Depth, Seconds, NoseDown, NoseUp, Bottom, Steepest, Slew, Slowest = float.PositiveInfinity;
         public bool Bottomed, Out;
         public int Contacts, Refused;
     }
@@ -1296,12 +1310,22 @@ public partial class PhysicsTest : Node
         rover.Binding.Teleport();
         rover.Flight.Input = PilotInput.LetGo;
 
-        // A pit dug with the survival tool's 1.4 m balls: 10 m along the lane, 7 m across, two balls deep.
-        N.Vector3 pit = _w.Ground(-18f, laneZ);
-        for (float dx = -5f; dx <= 5.01f; dx += 1.25f)
-            for (float dz = -3f; dz <= 3.01f; dz += 1.5f)
-                for (int layer = 0; layer < 2; layer++)
-                    _w.Terrain.Dig(TInt3.Floor(new N.Vector3(pit.X + dx, pit.Y - 0.5f - layer * 1.3f, pit.Z + dz)), 1.4f);
+        // A pit dug to drive a hover vessel into: 3 m deep, a 12 m floor (the rover is 9 m long), 10 m across (it is 7),
+        // and a ramp at each end dropping a metre every 2 m (27°), dug cell by cell into the lane's own ground.
+        N.Vector3 pit = _w.Ground(-20f, laneZ);
+        // (1 m in 1 m, at the 45° limit, the rover scraped its nose and barely crept out at 0.1 m/s.)
+        const int PitDepth = 3, Run = 2;
+        const float HalfFloor = 6f, Edge = HalfFloor + PitDepth * Run;
+        int rimTop = _w.Store.TopSolid((int)MathF.Floor(pit.X), (int)MathF.Floor(pit.Z));
+        var cells = new List<TInt3>();
+        for (int x = (int)MathF.Floor(pit.X - Edge); x <= (int)MathF.Ceiling(pit.X + Edge); x++)
+            for (int z = (int)MathF.Floor(pit.Z) - 5; z < (int)MathF.Floor(pit.Z) + 5; z++)
+            {
+                int n = Math.Clamp((int)MathF.Round((Edge - MathF.Abs(x + 0.5f - pit.X)) / Run), 0, PitDepth);
+                if (n == 0) continue;
+                for (int y = rimTop - n + 1; y <= _w.Store.TopSolid(x, z); y++) cells.Add(new TInt3(x, y, z));
+            }
+        _w.Terrain.DigCells(cells);
 
         // The biggest crater a crash cuts (the 6 m cap), its blast sphere where a crash puts it.
         N.Vector3 rim = _w.Ground(24f, laneZ);
@@ -1311,19 +1335,20 @@ public partial class PhysicsTest : Node
         for (int i = 0; i < 3; i++) yield return 0;
 
         var runs = new List<HoleRun>();
-        foreach (var (name, centre, from) in new[] { ("dug pit", pit, -36f), ("crater", rim, 8f) })
+        foreach (var (name, centre, from, beyond) in new[] { ("dug pit with 27° ramps", pit, -44f, Edge + 6f), ("crater", rim, 8f, 14f) })
         {
             var run = new HoleRun { Name = name, Depth = centre.Y - _w.GroundTop(centre.X, centre.Z) };
-            foreach (int x in ThroughHole(rover, centre, from, run)) yield return x;
+            foreach (int x in ThroughHole(rover, centre, from, beyond, run)) yield return x;
             runs.Add(run);
             GD.Print($"INFO  {name}: {run.Depth:F1} m deep; in and out in {run.Seconds:F1} s, nose {run.NoseDown:F0}° down going in and {run.NoseUp:F0}° up coming out, " +
-                     $"steepest grade ahead {run.Steepest:F0}°, slowest climbing {run.Slowest:F1} m/s, {run.Contacts} hull contacts, {run.Refused} ticks refused");
+                     $"steepest grade ahead {run.Steepest:F0}°, slowest climbing {run.Slowest:F1} m/s, slewed {run.Slew:F1}°, {run.Contacts} hull contacts, {run.Refused} ticks refused");
         }
         foreach (HoleRun run in runs)
-            Check(run.Depth > 2f && run.Bottomed && run.Out && run.Slowest > 1f && run.NoseDown < -8f && run.NoseUp > 8f,
+            Check(run.Depth > 2f && run.Bottomed && run.Out && run.Slowest > 1f && run.NoseDown < -8f && run.NoseUp > 8f && run.Slew < 3f,
                 $"the hover rover drives at a crawl into a {run.Name} {run.Depth:F1} m deep, stops at the bottom ({run.Bottom:F1} m down) and drives on up and out " +
                 $"over the far rim in {run.Seconds:F1} s, following the ground: nose {-run.NoseDown:F0}° down going in, {run.NoseUp:F0}° up coming out, " +
-                $"never slower than {run.Slowest:F1} m/s on the way out (steepest grade ahead {run.Steepest:F0}°, under the {_w.Rules.Hover.MaxSlope:0}° limit)");
+                $"never slower than {run.Slowest:F1} m/s on the way out (steepest grade ahead {run.Steepest:F0}°, under the {_w.Rules.Hover.MaxSlope:0}° limit), " +
+                $"never turned more than {run.Slew:F1}° off its heading with nobody steering");
 
         // A cliff is still refused: driven west from the basin at the bank, which rises 13 m in about 5 m.
         N.Vector3 basin = _w.Ground(68f, -30f);
@@ -1348,10 +1373,12 @@ public partial class PhysicsTest : Node
     }
 
     /// <summary>Drives the rover east along the lane from <paramref name="from"/> into a hole, stops it at the bottom, then drives it out.</summary>
-    IEnumerable<int> ThroughHole(Ship rover, N.Vector3 centre, float from, HoleRun run)
+    IEnumerable<int> ThroughHole(Ship rover, N.Vector3 centre, float from, float beyond, HoleRun run)
     {
         rover.Vessel.Place(rover.Body, _w.Ground(from, centre.Z) + N.Vector3.UnitY * 2.3f, -MathF.PI / 2f);
         rover.Binding.Teleport();
+        N.Vector3 heading = N.Vector3.Normalize(MathX.Flat(MathX.Forward(rover.Body.Rotation)));
+        void Slew() => run.Slew = MathF.Max(run.Slew, Units.Degrees(MathX.Angle(N.Vector3.Normalize(MathX.Flat(MathX.Forward(rover.Body.Rotation))), heading)));
         for (int i = 0; i < 40; i++)
         {
             rover.Flight.Input = PilotInput.LetGo;
@@ -1365,16 +1392,18 @@ public partial class PhysicsTest : Node
 
         // In, until the hole's middle is under it, then hands off: it stops at the bottom.
         int ticks = 0;
-        for (; ticks < 600 && rover.Body.Position.X < centre.X; ticks++)
+        for (; ticks < 900 && rover.Body.Position.X < centre.X; ticks++)
         {
             rover.Flight.Input = crawl;
             yield return 0;
             run.NoseDown = MathF.Min(run.NoseDown, Pitch());
+            Slew();
         }
         for (int i = 0; i < 60; i++)
         {
             rover.Flight.Input = PilotInput.LetGo;
             yield return 0;
+            Slew();
             ticks++;
         }
         run.Bottom = centre.Y - rover.Vessel.Hover.GroundRef;
@@ -1382,19 +1411,159 @@ public partial class PhysicsTest : Node
 
         // Out over the far rim, from a standstill at the bottom.
         int climbing = 0;
-        for (; ticks < 1500 && rover.Body.Position.X < centre.X + 14f; ticks++, climbing++)
+        for (; ticks < 2100 && rover.Body.Position.X < centre.X + beyond; ticks++, climbing++)
         {
             rover.Flight.Input = crawl;
             yield return 0;
+            Slew();
             HoverController hover = rover.Vessel.Hover;
             run.NoseUp = MathF.Max(run.NoseUp, Pitch());
             run.Steepest = MathF.Max(run.Steepest, hover.SteepestAhead);
             if (hover.SlopeRefused) run.Refused++;
             if (climbing > 60) run.Slowest = MathF.Min(run.Slowest, MathX.Flat(rover.Body.Velocity).Length());
         }
-        run.Out = rover.Body.Position.X >= centre.X + 14f;
+        run.Out = rover.Body.Position.X >= centre.X + beyond;
         run.Seconds = ticks * Dt;
         run.Contacts = _impacts.Count(i => i.Body == rover.Body && i.Other == null);
+    }
+
+    /// <summary>What one drive across the lake saw.</summary>
+    sealed class LakeRun
+    {
+        public float Land, Water, LandSpeed, WaterSpeed, WorstWater, ShoreDip, Jolt, LandJolt, WaterJolt, JoltAt, Slew, Wet;
+        public bool Across;
+        public int Contacts;
+    }
+
+    /// <summary>
+    /// A hover vessel treats water as it treats the ground: the rover drives off the land onto the lake, across it and
+    /// out onto the far shore at a steady 8 m/s, at the same ride height over the water as over the ground, with no dip
+    /// or jolt at either shoreline and no slowing. Twice: with the lake's surface to hit, and as on a planet, where the
+    /// water is only the world's water field. Then left hands off over the water, and with its generator shot out.
+    /// </summary>
+    IEnumerable<int> HoverOnWater()
+    {
+        N.Vector2 lake = SandboxTerrain.LakeCenter;
+        float level = SandboxTerrain.LakeLevel;
+        var surface = _w.FindChild("LakeSurface", true, false) as StaticBody3D;
+        N.Vector3 parked = _w.Rover.Body.Position;
+        float parkedHeading = MathX.Heading(_w.Rover.Body.Rotation);
+        var runs = new List<(string, LakeRun)>();
+        foreach (bool field in new[] { false, true })
+        {
+            if (surface != null) surface.CollisionLayer = field ? 0u : Layers.Water;
+            var run = new LakeRun();
+            foreach (int x in AcrossLake(lake, level, run)) yield return x;
+            runs.Add((field ? "the world's water field alone (as on a planet)" : "the lake's surface", run));
+        }
+        if (surface != null) surface.CollisionLayer = Layers.Water;
+        foreach (var (what, run) in runs)
+        {
+            GD.Print($"INFO  across the lake on {what}: engines {run.Land:F3} m over the ground, {run.Water:F3} m over open water (worst {run.WorstWater:F3} off); " +
+                     $"{run.LandSpeed:F2} m/s on land, {run.WaterSpeed:F2} m/s on water; shoreline dip {run.ShoreDip:F2} m, jolt {run.Jolt:F2} m/s in a tick at {run.JoltAt:F2} shore radii (land {run.LandJolt:F2}, water {run.WaterJolt:F2}); slewed {run.Slew:F1}°, {run.Contacts} hull contacts");
+            Check(run.Across && MathF.Abs(run.Water - run.Land) < 0.05f && run.WorstWater < 0.1f && run.ShoreDip < 0.25f && run.Jolt <= _w.Rules.Hover.MaxRise * Dt + 0.02f
+                  && MathF.Abs(run.WaterSpeed - run.LandSpeed) < 0.03f * run.LandSpeed && run.Wet == 0f && run.Contacts == 0 && run.Slew < 2f,
+                $"the hover rover treats water as ground ({what}): driven off the land, across the lake and out on the far shore at a steady {run.LandSpeed:F1} m/s, " +
+                $"its engines ride {run.Water:F2} m over the water and {run.Land:F2} m over the ground (within 5 cm; open water within {run.WorstWater * 100f:F0} cm of it), " +
+                $"{run.WaterSpeed:F1} m/s on the water (within 3%), no dip at either shore ({run.ShoreDip:F2} m below ride height at worst, under 0.25) and no knock: its climb changes {run.Jolt:F2} m/s in a tick at most there, within the hover's own {_w.Rules.Hover.MaxRise:0} m/s² as over any rise of ground, " +
+                $"hull never wet, never touching, turned {run.Slew:F1}° with nobody steering");
+        }
+
+        // Left hands off over open water it holds station there; with its generator shot out it has no hover and goes into the water.
+        Ship rover = _w.Rover;
+        rover.Vessel.Place(rover.Body, new N.Vector3(lake.X, level + 1.5f + rover.Body.Shape.FeetBelowOrigin, lake.Y), 0f);
+        rover.Binding.Teleport();
+        rover.Flight.Input = PilotInput.LetGo;
+        for (int i = 0; i < 90; i++) yield return 0;
+        N.Vector3 held = rover.Body.Position;
+        float drift = 0f;
+        for (int i = 0; i < 120; i++)
+        {
+            yield return 0;
+            drift = MathF.Max(drift, N.Vector3.Distance(rover.Body.Position, held));
+        }
+        float hands = rover.Vessel.Hover.Clearance;
+        Ship dead = _w.SpawnVessel(SandboxWorld.HoverRover, new N.Vector3(lake.X - 6f, level + 1.5f + rover.Body.Shape.FeetBelowOrigin, lake.Y + 6f), 0f, landed: false);
+        dead.Flight.Input = PilotInput.LetGo;
+        for (int i = 0; i < 30; i++) yield return 0;
+        dead.ShootThrough(new[] { new SInt3(-1, 0, 2) }); // its generator
+        bool sank = false;
+        int t = 0;
+        for (; t < 1200 && !dead.Vessel.Frozen; t++)
+        {
+            yield return 0;
+            sank |= dead.Body.Water.Underwater;
+        }
+        float bed = _w.GroundTop(dead.Body.Position.X, dead.Body.Position.Z);
+        float keel = dead.Body.Position.Y - dead.Body.Shape.FeetBelowOrigin;
+        GD.Print($"INFO  unpowered rover on the lake: can hover {dead.Stats.CanLiftOff}, {dead.Body.Water.Fraction:P0} under after {t * Dt:F1} s, " +
+                 $"keel {keel - level:+0.00;-0.00} m from the surface and {keel - bed:F2} m over the bed {level - bed:F1} m down, landed {dead.Vessel.Frozen}");
+        Check(drift < 0.1f && MathF.Abs(hands - rover.Stats.RideHeight) < 0.05f && !dead.Stats.CanLiftOff && dead.Body.Water.InWater
+              && keel > bed - 0.3f && !_w.Physics.Stuck.IsStuck(dead.Body, out _),
+            $"left hands off over open water the rover holds station at its ride height ({hands:F2} m, {drift * 100f:F1} cm in 2 s); with its generator shot out " +
+            $"it has no hover and goes into the water by its density: {(sank ? $"sinks and rests on the bed {level - bed:F1} m down" : $"floats {dead.Body.Water.Fraction:P0} under")}, never through the bed");
+        _w.Remove(dead);
+        rover.Vessel.Place(rover.Body, parked, parkedHeading); // back where the scenarios before left it
+        rover.Binding.Teleport();
+        for (int i = 0; i < 30; i++) yield return 0;
+    }
+
+    /// <summary>Drives the rover north across the lake from the land south of it to the land north of it.</summary>
+    IEnumerable<int> AcrossLake(N.Vector2 lake, float level, LakeRun run)
+    {
+        Ship rover = _w.Rover;
+        rover.Vessel.Place(rover.Body, _w.Ground(lake.X, lake.Y + 48f) + N.Vector3.UnitY * 3f, 0f); // facing north (-z)
+        rover.Binding.Teleport();
+        rover.Flight.Input = PilotInput.LetGo;
+        for (int i = 0; i < 60; i++) yield return 0;
+        _impacts.Clear();
+        var drive = PilotInput.Hands(new Vector3(0f, 0f, -8f / rover.Stats.TopSpeed));
+        float ride = rover.Stats.RideHeight;
+        N.Vector3 heading = N.Vector3.Normalize(MathX.Flat(MathX.Forward(rover.Body.Rotation)));
+        float landSum = 0f, waterSum = 0f, landV = 0f, waterV = 0f, lastVy = rover.Body.Velocity.Y;
+        int landN = 0, waterN = 0;
+        for (int t = 0; t < 1800 && rover.Body.Position.Z > lake.Y - 34f; t++)
+        {
+            rover.Flight.Input = drive;
+            yield return 0;
+            Body b = rover.Body;
+            HoverController h = rover.Vessel.Hover;
+            float reach = SandboxTerrain.LakeReach(b.Position.X, b.Position.Z), vy = b.Velocity.Y;
+            run.Wet = MathF.Max(run.Wet, b.Water.Fraction);
+            run.Slew = MathF.Max(run.Slew, Units.Degrees(MathX.Angle(N.Vector3.Normalize(MathX.Flat(MathX.Forward(b.Rotation))), heading)));
+            if (b.Position.Z > lake.Y + 38f) { lastVy = vy; continue; } // getting up to speed
+            float jolt = MathF.Abs(vy - lastVy);
+            lastVy = vy;
+            if (reach > 1.5f && b.Position.Z > lake.Y)
+            {
+                // The ground south of the beach: the ride height and speed to match.
+                landSum += h.Clearance;
+                landV += MathX.Flat(b.Velocity).Length();
+                landN++;
+                run.LandJolt = MathF.Max(run.LandJolt, jolt);
+            }
+            else if (reach < 0.6f)
+            {
+                waterSum += h.Clearance;
+                waterV += MathX.Flat(b.Velocity).Length();
+                waterN++;
+                run.WorstWater = MathF.Max(run.WorstWater, MathF.Abs(h.Clearance - ride));
+                run.WaterJolt = MathF.Max(run.WaterJolt, jolt);
+            }
+            else
+            {
+                run.ShoreDip = MathF.Max(run.ShoreDip, ride - h.Clearance);
+                if (jolt > run.Jolt) (run.Jolt, run.JoltAt) = (jolt, reach);
+            }
+        }
+        rover.Flight.Input = PilotInput.LetGo;
+        run.Land = landSum / Math.Max(1, landN);
+        run.Water = waterSum / Math.Max(1, waterN);
+        run.LandSpeed = landV / Math.Max(1, landN);
+        run.WaterSpeed = waterV / Math.Max(1, waterN);
+        run.Across = landN > 30 && waterN > 60 && rover.Body.Position.Z <= lake.Y - 34f;
+        run.Contacts = _impacts.Count(i => i.Body == rover.Body && i.Other == null);
+        for (int i = 0; i < 30; i++) yield return 0;
     }
 
     IEnumerable<int> GearOnUnevenGround()
@@ -1610,8 +1779,8 @@ public partial class PhysicsTest : Node
     /// The lake in the basin, through the shared force path: an ore crate sinks to the bed and a
     /// supply crate floats; the player walks in, swims across and out the far side, dives 10 m and
     /// surfaces; a Corsair that loses its power sinks and settles on the bed without tunnelling; a
-    /// powered one is flown under water, slowly, and holds its depth hands off; the hover rover
-    /// rides the surface; and the stuck guard never mistakes any of it for being stuck.
+    /// powered one is flown under water, slowly, and holds its depth hands off; and the stuck guard
+    /// never mistakes any of it for being stuck. (Hover vessels on water: <see cref="HoverOnWater"/>.)
     /// </summary>
     IEnumerable<int> WaterVolume()
     {
@@ -1787,36 +1956,9 @@ public partial class PhysicsTest : Node
         _w.Remove(diver);
         watched.Remove(diver.Body);
 
-        // The hover rover rides the surface, powered, as it rides the ground, and drives out up the
-        // far shore. Its ride height is judged over open water: nearing a shore, the look-ahead
-        // lifts it early for the bank, as for any rise.
-        Ship skiff = _w.SpawnVessel(SandboxWorld.HoverRover, new N.Vector3(lake.X + 4f, level + 2.3f, lake.Y + 12f), 0f, landed: false);
-        watched.Add(skiff.Body);
-        float ride = 0f, worstRide = 0f, wetHull = 0f, overWater = 0f;
-        for (int t = 0; t < 300; t++)
-        {
-            skiff.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -0.25f));
-            yield return 0;
-            Watching("hovering");
-            ride = skiff.Stats.RideHeight;
-            HoverController h = skiff.Vessel.Hover;
-            wetHull = MathF.Max(wetHull, skiff.Body.Water.Fraction);
-            bool openWater = SandboxTerrain.LakeReach(skiff.Body.Position.X, skiff.Body.Position.Z) < 0.6f && MathF.Abs(h.GroundRef - level) < 0.05f;
-            if (t < 30 || !openWater) continue;
-            overWater += Dt;
-            worstRide = MathF.Max(worstRide, MathF.Abs(h.Clearance - ride));
-        }
-        float ashore = skiff.Vessel.Hover.GroundRef - level;
-        bool outOfLake = SandboxTerrain.LakeReach(skiff.Body.Position.X, skiff.Body.Position.Z) > 1f && ashore > 0.5f;
-        Check(overWater > 1f && worstRide < 0.25f && wetHull == 0f && outOfLake,
-            $"the hover rover rides the lake's surface with its hover powered: {overWater:F1} s over open water, its engines {ride:F1} m above it (within {worstRide:F2} m), " +
-            $"its hull never wet, and drives out up the far shore ({ashore:F1} m above the water)");
-        _w.Remove(skiff);
-        watched.Remove(skiff.Body);
-
         int wrongly = _rescues.Skip(rescuesBefore).Count(r => r.Body == p.Body || r.Body == light.Body || r.Body == heavy.Body || r.Body.Kind == BodyKind.Vessel);
         Check(tally.Failures == 0 && wrongly == 0,
-            $"nothing in the water is taken for stuck: floating, sunk, diving, swimming, landed on the bed, flown under or hovering, {tally.SeenInside} ticks seen inside anything and {wrongly} rescues" +
+            $"nothing in the water is taken for stuck: floating, sunk, diving, swimming, landed on the bed or flown under, {tally.SeenInside} ticks seen inside anything and {wrongly} rescues" +
             (tally.First != null ? $". First failure: {tally.First}" : ""));
 
         _w.Remove(light);

@@ -115,13 +115,12 @@ public sealed class HoverController
         foreach (Vector3 engine in _engines)
         {
             Vector3 p = pos + MathX.Rotate(basis, engine);
-            if (down.Y > -0.3f || !world.Query.Ray(p + Vector3.UnitY * ride, p - Vector3.UnitY * depth, Layers.ProbeMask, body, out RayHit hit)
-                || hit.Normal.Y < 0.1f)
+            if (down.Y > -0.3f || !Probe(world, body, p + Vector3.UnitY * ride, p.Y - depth, out Vector3 point, out Vector3 normal) || normal.Y < 0.1f)
                 continue;
-            _seen[hits++] = hit.Point;
-            groundSum += hit.Point.Y;
+            _seen[hits++] = point;
+            groundSum += point.Y;
             engineSum += p.Y;
-            normalSum += hit.Normal;
+            normalSum += normal;
         }
 
         Grounded = hits > 0;
@@ -132,7 +131,7 @@ public sealed class HoverController
             SlopeRefused = false;
             SteepestAhead = 0f;
             velocity.Y -= g * dt;
-            orientation = MathX.TiltToward(orientation, Vector3.UnitY, 1f - MathF.Exp(-h.LevelRate * dt));
+            orientation = Follow(orientation, Vector3.UnitY, 1f - MathF.Exp(-h.LevelRate * dt));
             return;
         }
 
@@ -170,11 +169,9 @@ public sealed class HoverController
                 foreach (float lateral in Sides)
                 {
                     Vector3 q = pos + dir * distance + side * halfWidth * lateral;
-                    if (!world.Query.Ray(new Vector3(q.X, probeTop, q.Z), new Vector3(q.X, GroundRef - depth, q.Z),
-                            Layers.ProbeMask, body, out RayHit hit))
-                        continue;
-                    _seen[hits++] = hit.Point;
-                    steepest = MathF.Max(steepest, (hit.Point.Y - GroundRef) / distance);
+                    if (!Probe(world, body, new Vector3(q.X, probeTop, q.Z), GroundRef - depth, out Vector3 point, out _)) continue;
+                    _seen[hits++] = point;
+                    steepest = MathF.Max(steepest, (point.Y - GroundRef) / distance);
                 }
             }
         }
@@ -241,7 +238,50 @@ public sealed class HoverController
         Vector3 targetUp = Clearance < ride * 2.5f ? Attitude : Vector3.UnitY;
         float tilt = MathX.Angle(targetUp, Vector3.UnitY), maxTilt = Units.Radians(h.MaxSlope);
         if (tilt > maxTilt) targetUp = MathX.Slerp(Vector3.UnitY, targetUp, maxTilt / tilt);
-        orientation = MathX.TiltToward(orientation, targetUp, 1f - MathF.Exp(-h.LevelRate * dt));
+        orientation = Follow(orientation, targetUp, 1f - MathF.Exp(-h.LevelRate * dt));
+    }
+
+    /// <summary>
+    /// What a probe straight down from <paramref name="from"/> to <paramref name="bottom"/> rides on: the ground, or
+    /// the water's surface where that lies higher (from the world's water field, so any water the world has counts,
+    /// whether or not it has a surface to hit). Water is level, so its up is straight up. A probe that starts under
+    /// the surface reads it too: like the ground, water is ridden on, never driven under.
+    /// </summary>
+    static bool Probe(PhysicsWorld world, Body body, Vector3 from, float bottom, out Vector3 point, out Vector3 normal)
+    {
+        bool hit = world.Query.Ray(from, new Vector3(from.X, bottom, from.Z), Layers.ProbeMask, body, out RayHit ground);
+        point = ground.Point;
+        normal = ground.Normal;
+        if (world.Water != null && world.Water.SurfaceAt(from, out float surface) && surface >= bottom
+            && (!hit || surface > point.Y))
+        {
+            point = new Vector3(from.X, surface, from.Z);
+            normal = Vector3.UnitY;
+            hit = true;
+        }
+        return hit;
+    }
+
+    /// <summary>
+    /// Tips <paramref name="q"/> so its up turns toward <paramref name="targetUp"/> by a share of the angle, keeping
+    /// its heading exactly: the nose stays over the same line on the ground however it pitches and rolls. (Tipping by
+    /// the smallest rotation turns the heading a little each time it pitches and rolls together, and those add up: a
+    /// rover driven down a ramp with the ground rolling under it slewed several degrees with nobody steering.)
+    /// </summary>
+    static Quaternion Follow(Quaternion q, Vector3 targetUp, float share)
+    {
+        Vector3 up = Vector3.Normalize(MathX.Slerp(Vector3.Normalize(MathX.Up(q)), targetUp, share));
+        Vector3 heading = MathX.Flat(MathX.Forward(q));
+        if (heading.LengthSquared() < 1e-6f) return MathX.TiltToward(q, targetUp, share);
+        // Forward lies in the upright plane through the heading, square to the new up.
+        Vector3 across = Vector3.Normalize(Vector3.Cross(heading, Vector3.UnitY));
+        Vector3 forward = Vector3.Normalize(Vector3.Cross(up, across));
+        Vector3 right = Vector3.Cross(forward, up);
+        return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(new Matrix4x4(
+            right.X, right.Y, right.Z, 0f,
+            up.X, up.Y, up.Z, 0f,
+            -forward.X, -forward.Y, -forward.Z, 0f,
+            0f, 0f, 0f, 1f)));
     }
 
     /// <summary>
@@ -279,7 +319,8 @@ public sealed class HoverController
         Vector3 axis = Vector3.Cross(normal, Vector3.UnitY);
         if (axis.LengthSquared() < 1e-4f) return orientation;
         float angle = MathF.Min(0.35f, closing * 0.03f);
-        return MathX.ThenWorld(orientation, MathX.AxisAngle(Vector3.Normalize(axis), -angle));
+        // It tips, but never turns: a knock against the ground has no say in where the nose points.
+        return Follow(orientation, MathX.Rotate(MathX.AxisAngle(Vector3.Normalize(axis), -angle), MathX.Up(orientation)), 1f);
     }
 
     /// <summary>Takes out the part of horizontal velocity heading up a slope with this normal.</summary>
