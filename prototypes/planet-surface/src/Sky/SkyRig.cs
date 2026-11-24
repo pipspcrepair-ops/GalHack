@@ -724,6 +724,8 @@ public partial class SkyRig : Node3D
         // The weather's fog lies in the layer: full density inside it, fading out over a band above its top.
         float inFog = camera == null ? 1f : 1f - Smooth(0f, depth * 0.5f, camera.GlobalPosition.Y - top);
         Environment.FogDensity = Atmosphere.FogFrom(air.AirFog, over) + (air.FogDensity - air.AirFog) * inFog + valley * 0.004f * (1f - layer);
+        // So does its wash over the sky: out of the layer the sky is fogged only as much as the air's own murk fogs it.
+        Environment.FogSkyAffect = Mathf.Lerp(Atmosphere.SkyAffectOf(2.3f * 0.85f / MathF.Max(air.AirFog, 1e-7f)), air.FogSkyAffect, inFog);
     }
 
     /// <summary>

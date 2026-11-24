@@ -55,10 +55,12 @@ public static class Atmosphere
 
         float haze = 0.00006f * sky.Density;
         float fog = Math.Max(haze, 2.3f / visibility * 0.85f);
-        // What the weather's ground fog makes of the murk lies in the low ground (the layer); the rest, from
-        // rain, snow, dust and ash, is in the whole air. The haze is always the air's.
-        float airFog = Math.Max(haze, fog * (1f - Math.Clamp(c.GroundFog, 0f, 1f)));
-        float skyAffect = Math.Clamp(1.25f - MathF.Log10(visibility) / 3.4f, 0.1f, 0.95f);
+        // The murk is shared by what makes it: the weather's ground fog's share lies in the low ground (the layer), the
+        // rest, from rain, snow, dust and ash, is in the whole air. A fog only part at home here (a region's fog thinned
+        // toward its fallback, or one coming in) is still all ground fog: none of it fills the air. The haze is always the air's.
+        float ground = Math.Clamp(c.GroundFog, 0f, 1f), lofted = Math.Max(0f, c.Rain) + Math.Max(0f, c.Snow) + Math.Max(0f, c.Dust) + Math.Max(0f, c.Embers);
+        float airFog = Math.Max(haze, fog * (ground + lofted > 0f ? lofted / (ground + lofted) : 1f));
+        float skyAffect = SkyAffectOf(visibility);
 
         // Morning fog: strongest just after sunrise, gone by mid-morning; damp air holds it.
         float damp = sky.Air switch { AirKind.Humid => 1f, AirKind.Breathable => 0.75f, AirKind.Exotic => 0.6f, AirKind.Thin => 0.25f, _ => 0.1f };
@@ -101,6 +103,9 @@ public static class Atmosphere
             GroundFog = 0f, AirFog = 0f, Stratus = 0f, Cirrus = 0f,
         };
     }
+
+    /// <summary>How much of the sky the fog takes, 0.1 to 0.95, for a visibility in metres.</summary>
+    public static float SkyAffectOf(float visibility) => Math.Clamp(1.25f - MathF.Log10(visibility) / 3.4f, 0.1f, 0.95f);
 
     /// <summary>How deep the haze lies, m: its density falls by e over this much height.</summary>
     public const float HazeDepth = 180f;
