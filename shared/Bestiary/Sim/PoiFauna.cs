@@ -250,6 +250,7 @@ public static partial class PoiFauna
         {
             PoiPopulation pop = PopulateHeld(poi, fauna, rules);
             if (poi.Crawlers) WallCrawlers(poi, pop, fauna);
+            pop.Spawns.RemoveAll(s => fauna.Forbids(s.Species));
             return pop;
         }
         finally { fauna.Variant = 0; }

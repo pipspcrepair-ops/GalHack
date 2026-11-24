@@ -62,6 +62,12 @@ public sealed class DeepFauna
     /// <summary>Insects defend themselves and their own on this world (a swarm took it); elsewhere they keep to themselves.</summary>
     public bool InsectsDefend;
 
+    /// <summary>The world keeps insects (<see cref="WorldConditions.Insects"/>): where it doesn't, no place or cave holds any.</summary>
+    public bool Insects = true;
+
+    /// <summary>An insect-bodied creature the world has no air or warmth for (a swarm's own excepted).</summary>
+    public bool Forbids(Species s) => !Insects && !InsectsDefend && Insect(s.Form);
+
     /// <summary>The bodies a place's insects come in: they crawl its walls and keep to themselves.</summary>
     public static bool Insect(string form) => form is "creeper" or "ducteel" or "mossgrub" or "scrapper" or "skitterer";
 
