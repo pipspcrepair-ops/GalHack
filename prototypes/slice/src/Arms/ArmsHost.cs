@@ -285,6 +285,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
 
     /// <summary>Shots someone else fired: people, machines (tests).</summary>
     public int OthersFired;
+    /// <summary>Someone else's shot, who fired it and where it left (tests: from the muzzle drawn).</summary>
+    public Action<object, Vector3> OtherFired;
 
     /// <summary>The owner of a shot fired by anyone but the player: it can hit the player (it isn't friendly fire).</summary>
     public const int Hostile = -1;
@@ -306,6 +308,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         float wide = count > 1 ? d.Pellets?.Spread ?? 0f : 0f;
         OthersFired++;
         NpcRounds++;
+        OtherFired?.Invoke(shooter, muzzle);
         if (d.Cone != null)
         {
             ConeTick(d, muzzle, dir, Hostile, shooter);

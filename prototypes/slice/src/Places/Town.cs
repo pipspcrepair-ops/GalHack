@@ -1602,8 +1602,8 @@ public sealed partial class Town : IKeeper
     /// </summary>
     int _frame;
 
-    /// <summary>How many drawn frames apart a body this far off is posed.</summary>
-    static int PoseFrames(float away) => away < 15f ? 1 : away < 30f ? 2 : away < 60f ? 3 : 4;
+    /// <summary>How many drawn frames apart a body this far off is posed: a few times a second past 150 m, and past the far range held, re-posed twice a second.</summary>
+    static int PoseFrames(float away) => away < 15f ? 1 : away < 30f ? 2 : away < 60f ? 3 : away < 150f ? 4 : away < PersonView.FarRange ? 8 : 30;
 
     void PoseFrame()
     {
@@ -1619,7 +1619,7 @@ public sealed partial class Town : IKeeper
         {
             Person p = People[i];
             // (What they hold or carry goes with the pose carried between their poses.)
-            if (p.View is { Visible: true } && p.View.Glide())
+            if (p.View is { Visible: true } && p.PoseAway < PersonView.FarRange && p.View.Glide()) // (held past the far range: nothing eased between)
             {
                 PoseWeapon(p);
                 PoseSack(p);
@@ -1657,7 +1657,6 @@ public sealed partial class Town : IKeeper
             if (plane.DistanceTo(at) > radius) return false;
         return true;
     }
-    /// <summary>Whether their body shows at all (not beyond the far range), faded in and out at its edges.</summary>
     /// <summary>Whether their body shows at all (not away on a run, not beyond the far range), faded in and out at its edges.</summary>
     bool Shown(Person p, float away, float dt)
     {

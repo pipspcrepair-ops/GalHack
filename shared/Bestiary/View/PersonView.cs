@@ -8,14 +8,17 @@ namespace Wildlife;
 /// Draws one person: their real body at every distance, as creatures are drawn. It is one skinned
 /// mesh posed by the rig; its small parts (eyes, buttons, hands, ears) drop out by size on screen
 /// through the mesh's levels of detail, while every rig piece keeps its body. A game poses them less
-/// often the further off they are (<see cref="PoseEvery"/>) and, with its fade, they dissolve in
-/// once built and out over the last <see cref="FadeBand"/> before <see cref="FarRange"/>.
+/// often the further off they are (<see cref="PoseEvery"/>), past <see cref="FarRange"/> seldom (a
+/// pose held), and, with its fade, they dissolve in once built and out over the last
+/// <see cref="FadeBand"/> before <see cref="FieldRange"/>.
 /// </summary>
 public partial class PersonView : Node3D
 {
-    /// <summary>Beyond this a person isn't drawn at all, m.</summary>
+    /// <summary>Out to here a person is posed a few times a second at the least; beyond it, seldom (their pose held), m.</summary>
     public static float FarRange = 340f; // a game's spawn distance can take it further
-    /// <summary>The last stretch before <see cref="FarRange"/> they dissolve out over, with the game's fade, m.</summary>
+    /// <summary>Beyond this a person isn't drawn at all, m: as far as anyone's fire is seen (whatever is going on is drawn).</summary>
+    public const float FieldRange = 1200f;
+    /// <summary>The last stretch before <see cref="FieldRange"/> they dissolve out over, with the game's fade, m.</summary>
     public const float FadeBand = 30f;
     /// <summary>How long a body built in sight takes to dissolve in, s.</summary>
     const float ArriveSeconds = 0.6f;
@@ -93,7 +96,7 @@ public partial class PersonView : Node3D
                 skin.AddBind(i, Transform3D.Identity);
             }
             AddChild(_skeleton);
-            _body = new MeshInstance3D { Mesh = ready != null ? ready.Body.Commit() : Bodies.GetValue(s, _ => Mesh(pieces).Commit()), Skin = skin, MaterialOverride = material, VisibilityRangeEnd = FarRange };
+            _body = new MeshInstance3D { Mesh = ready != null ? ready.Body.Commit() : Bodies.GetValue(s, _ => Mesh(pieces).Commit()), Skin = skin, MaterialOverride = material, VisibilityRangeEnd = FieldRange };
             _skeleton.AddChild(_body);
             _body.Skeleton = new NodePath("..");
         }
@@ -104,7 +107,7 @@ public partial class PersonView : Node3D
                 Mesh = MeshBuilder.For(piece),
                 MaterialOverride = material,
                 CastShadow = piece.Shadow ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-                VisibilityRangeEnd = FarRange,
+                VisibilityRangeEnd = FieldRange,
             };
             AddChild(mi);
             _parts.Add(mi);
@@ -229,7 +232,7 @@ public partial class PersonView : Node3D
 
     /// <summary>
     /// How much of them shows this far off, through the game's fade (<see cref="Fader"/>): a body
-    /// built in sight dissolves in over <see cref="ArriveSeconds"/>, and one near <see cref="FarRange"/>
+    /// built in sight dissolves in over <see cref="ArriveSeconds"/>, and one near <see cref="FieldRange"/>
     /// dissolves out by distance. False once none of them shows: nothing need pose them.
     /// </summary>
     /// <summary>A body built in sight, how far off (measurements: the game's pop-in log).</summary>
@@ -240,11 +243,11 @@ public partial class PersonView : Node3D
         if (_fresh)
         {
             _fresh = false;
-            _arrived = distance < FarRange ? 0f : 1f;
-            if (distance < FarRange) Arrives?.Invoke(distance);
+            _arrived = distance < FieldRange ? 0f : 1f;
+            if (distance < FieldRange) Arrives?.Invoke(distance);
         }
         else if (_arrived < 1f) _arrived = MathF.Min(1f, _arrived + dt / ArriveSeconds);
-        float shows = Fader == null ? (distance < FarRange ? 1f : 0f) : MathF.Min(Math.Clamp((FarRange - distance) / FadeBand, 0f, 1f), _arrived);
+        float shows = Fader == null ? (distance < FieldRange ? 1f : 0f) : MathF.Min(Math.Clamp((FieldRange - distance) / FadeBand, 0f, 1f), _arrived);
         shows = MathF.Round(shows * 32f) / 32f;
         // Their shadow out to where it is worth drawing, as a creature's of their size (CreatureView.ShadowsAt).
         bool cast = distance < 60f + 40f * (_rig?.Species.Figure?.Height ?? 1.8f);
