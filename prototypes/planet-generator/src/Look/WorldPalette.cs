@@ -842,11 +842,11 @@ public sealed record WorldPalette
         _ => 0f,
     };
 
-    /// <summary>Ice as light as it was, its hue and chroma those of its own meltwater's (the shallows): ice worlds differ in their land as in their seas.</summary>
+    /// <summary>Ice two fifths of the way to its meltwater's lightness (the shallows), in that water's hue and a little more chroma: ice worlds differ in their land as in their seas.</summary>
     Rgb MeltTint(Rgb ice)
     {
         Oklab i = Oklab.Of(ice), w = Oklab.Of(Shallow);
-        return Oklab.Lch(i.L, MathF.Max(i.Chroma, MathF.Min(w.Chroma, 0.12f)), w.Hue).Fit().ToRgb();
+        return Oklab.Lch(i.L + (w.L - i.L) * 0.4f, MathF.Max(i.Chroma, MathF.Min(w.Chroma * 1.3f, 0.16f)), w.Hue).Fit().ToRgb();
     }
 
     /// <summary>
@@ -869,9 +869,10 @@ public sealed record WorldPalette
             case Biome.Ash: return Rgb.Lerp(Sand, Dust, 0.3f);
             case Biome.LavaField: return Bedrock * 0.7f;
             case Biome.Obsidian: case Biome.Sulfur:
-            // Blue ice takes the tint of its own meltwater (the shallows), so ice worlds differ in the land as in the sea.
+            // Ice and hot springs take their own meltwater's tint (the shallows), sinter the world's dust, so ice worlds differ in the land as in the sea.
             case Biome.BlueIce: return MeltTint(BiomeLook.Ground(biome));
-            case Biome.HotSpring: case Biome.Sinter:
+            case Biome.HotSpring: return MeltTint(BiomeLook.Ground(biome));
+            case Biome.Sinter: return Rgb.Lerp(BiomeLook.Ground(biome), Dust, 0.7f); // its crust is the world's own minerals
             case Biome.CrystalPlain: case Biome.CrystalSpires: case Biome.Chalk: case Biome.GlowMoss:
             case Biome.FungalForest: case Biome.SporeMarsh: case Biome.Mycelium:
                 return BiomeLook.Ground(biome);
