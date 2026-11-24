@@ -370,22 +370,19 @@ public partial class SleeperToolTest : Node
 
     // ---- People: a chip and a stun -----------------------------------------------------------------
 
-    Creature Bystander(float far) => Bystander(_game, far, (ulong)_rng.NextInt64());
-    Vector3 Chest(Creature c) => Chest(_game, c);
-
-    /// <summary>One of the wild's people (a worker, nobody's enemy) set down on open ground in front of the sleeper, so far off (other tests set one down by it too).</summary>
-    public static Creature Bystander(Game.Game game, float far, ulong seed)
+    /// <summary>One of the wild's people (a worker, nobody's enemy) set down on open ground in front of the sleeper, so far off.</summary>
+    Creature Bystander(float far)
     {
-        WildlifePatch patch = game.Zone.Wildlife;
-        Species s = patch.Life.People.Person(seed, PersonRole.Worker, Occupancy.Friendly);
-        Vector3 feet = game.Survivor.WorldFeet, look = game.Survivor.WorldLook();
+        WildlifePatch patch = _game.Zone.Wildlife;
+        Species s = patch.Life.People.Person((ulong)_rng.NextInt64(), PersonRole.Worker, Occupancy.Friendly);
+        Vector3 feet = _game.Survivor.WorldFeet, look = _game.Survivor.WorldLook();
         look.Y = 0f;
         look = look.LengthSquared() < 1e-4f ? Vector3.Forward : look.Normalized();
-        Vector3 spot = game.Zone.GroundAt(feet.X + look.X * far, feet.Z + look.Z * far);
+        Vector3 spot = _game.Zone.GroundAt(feet.X + look.X * far, feet.Z + look.Z * far);
         return patch.Sim.Spawn(s, patch.PatchLocal(spot));
     }
 
-    public static Vector3 Chest(Game.Game game, Creature c) => game.Zone.Wildlife.WorldOf(c) + Vector3.Up * c.Species.Figure.Height * 0.62f;
+    Vector3 Chest(Creature c) => _game.Zone.Wildlife.WorldOf(c) + Vector3.Up * c.Species.Figure.Height * 0.62f;
 
     IEnumerable<int> Person()
     {

@@ -29,6 +29,7 @@ public static class TestRows
         float top = float.MinValue;
         for (float dx = -4f; dx <= 4f; dx += 1f)
             for (float dz = -4f; dz <= 4f; dz += 1f) top = MathF.Max(top, game.Zone.GroundAt(spot.X + dx, spot.Z + dz).Y);
+        if (float.IsNegativeInfinity(top)) top = feet.Y + 1f; // in space: no ground, so at chest height
         N.Vector3 at = new(spot.X, top + s.Grid.CellSize * 0.5f + 0.3f, spot.Z);
         Vessel v = core ? Vessel.SpawnBase(game.Zone, s, at, bearing) : Vessel.SpawnGroundWreck(game.Zone, s, at, N.Quaternion.CreateFromAxisAngle(N.Vector3.UnitY, -bearing));
         foreach (var (p, _) in s.Blocks()) v.ClearGround(p);

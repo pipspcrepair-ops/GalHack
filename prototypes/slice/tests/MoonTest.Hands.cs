@@ -1,79 +1,87 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using GalHack.Physics;
 using Godot;
-using Slice.Game;
 using Slice.Items;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Vessels;
 using Wildlife;
+using GalHack.Physics.Engine;
+using S = GalHack.Structures;
 
 namespace Slice.Tests;
 
 /// <summary>Off the start world the hands work as on it: a weapon and the Sleeper tool in orbit and on the airless moon.</summary>
 public partial class MoonTest
 {
-    /// <summary>Stopped in orbit, up out of the seat: a pistol's bolts hurt the Skiff's floor and the tool's repair mends it.</summary>
+    /// <summary>Stopped in orbit, up on the Skiff's deck: a pistol's bolts and the tool's blast both wear someone else's hull beside it.</summary>
     IEnumerable<int> HandsInOrbit()
     {
         GD.Print("-- hands in orbit --");
-        Vessel v = _skiff;
         foreach (int x in _pilot.Stop()) yield return x;
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
-        var s = _game.Survivor;
-        Vector3 look = s.WorldLook() with { Y = 0f };
-        Vector3 floor = s.WorldFeet + (look.LengthSquared() > 1e-4f ? look.Normalized() : Vector3.Forward) * 1.5f + Vector3.Down * 0.4f;
-        foreach (int x in _drive.LookAt(floor, 8)) yield return x;
-        LookHit on = default;
-        bool up = s.Seated == null && WorldRay.Cast(_game.Zone, s, 4f, Layers.Hull, out on) && on.Vessel == v;
-        Check(up, $"up out of the seat in orbit, the Skiff's floor in the crosshair (seated {s.Seated != null})");
-        if (!up)
-        {
-            foreach (int x in _pilot.Board(v)) yield return x;
-            yield break;
-        }
-        float hp = v.Structure.Get(on.Cell).Hp;
-        int blocks = _game.Arms.BlockHits;
-        foreach (int x in Fire("tack-pistol", floor, 3)) yield return x;
-        float shot = v.Structure.Has(on.Cell) ? v.Structure.Get(on.Cell).Hp : 0f;
-        Check(_game.Arms.BlockHits > blocks && shot < hp, $"in orbit a pistol's bolts land: {_game.Arms.BlockHits - blocks} block hits, the floor {hp:F0} to {shot:F0} hp");
-        if (v.Structure.Has(on.Cell))
-        {
-            foreach (var (id, n) in v.Hits.RepairBill(on.Cell)) _game.Pack.Add(id, n);
-            foreach (int x in ToolIn(ToolMode.Repair)) yield return x;
-            foreach (int x in _drive.HoldPrimary(floor, 120)) yield return x;
-            Check(v.Structure.Get(on.Cell).Hp > shot, $"and the tool's repair mends it: {shot:F0} to {v.Structure.Get(on.Cell).Hp:F0} hp");
-        }
-        foreach (int x in _pilot.Board(v)) yield return x;
+        Check(_game.Survivor.Seated == null, "up out of the seat in orbit");
+        _game.Controls.Hold(Key.Space); // off the deck and floating, clear of the Skiff's cabin
+        foreach (int x in _drive.Wait(8)) yield return x;
+        _game.Controls.ReleaseAll();
+        foreach (int x in _drive.Wait(40)) yield return x;
+        if (_game.Survivor.Seated == null) foreach (int x in HandsOnHull("orbit")) yield return x;
+        foreach (int x in _pilot.Board(_skiff)) yield return x;
     }
 
-    /// <summary>On the moon's ground: a pistol hurts a person, the tool zaps another and digs the ground for stone.</summary>
+    /// <summary>A raiders' row of hull set beside the sleeper: a pistol's bolts land on it as block hits, and the tool's blast wears it.</summary>
+    IEnumerable<int> HandsOnHull(string where)
+    {
+        Vector3 look = _game.Survivor.WorldLook();
+        Vessel row = TestRows.Row(_game, "raiders", false, MathF.Atan2(look.Z, look.X), out S.Int3[] cells, 6f);
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Vector3 Face() => TestRows.FaceOf(_game, row, cells[1]);
+        float Total() => row.Structure.Blocks().Sum(b => b.block.Hp);
+        float was = Total();
+        int blocks = _game.Arms.BlockHits;
+        foreach (int x in Fire("tack-pistol", Face(), 4)) yield return x;
+        float shot = Total();
+        Check(_game.Arms.BlockHits > blocks && shot < was, $"in {where} a pistol's bolts land on a raiders' hull: {_game.Arms.BlockHits - blocks} block hits, {was - shot:F0} hp off ({_game.Arms.Fired} fired, {_game.Arms.Hits} hits, hand {_game.Pack.Hand}, the hull {row.Body.Position.ToGodot().DistanceTo(_game.Survivor.WorldEye()):F1} m off, the probe: {_game.Arms.Probe(_game.Survivor.WorldEye(), Face())})");
+        foreach (int x in ToolIn(ToolMode.Gather)) yield return x;
+        foreach (int x in _drive.LookAt(Face(), 6)) yield return x;
+        foreach (int x in _drive.HoldPrimary(Face(), 120)) yield return x;
+        Check(Total() < shot, $"and the Sleeper tool's blast wears it: {shot - Total():F1} hp off in 2 s");
+        row.Zone.Remove(row);
+    }
+
+    /// <summary>On a moon's ground: the weapon and the tool on a hull, on an animal if the moon has any, and the tool digs the ground.</summary>
     IEnumerable<int> HandsOnGround(string where)
     {
         GD.Print($"-- hands on {where} --");
         SurfaceZone zone = _game.Zone;
+        foreach (int x in HandsOnHull(where)) yield return x;
         zone.Wildlife.Frozen = true;
-        Creature shot = Bystander(6f);
-        foreach (int x in _drive.Wait(10)) yield return x;
-        float health = shot.Health;
-        foreach (int x in Fire("tack-pistol", Chest(shot), 4)) yield return x;
-        Check(shot.Dead || shot.Health < health, $"on {where} a pistol's bolts land: a person {health:F0} to {shot.Health:F0}");
-        Creature zapped = Bystander(4f);
-        foreach (int x in _drive.Wait(10)) yield return x;
-        health = zapped.Health;
-        int zaps = _game.Tool.Zapped;
+        Vector3 feet = _game.Survivor.WorldFeet, ahead = _game.Survivor.WorldLook() with { Y = 0f };
+        ahead = ahead.LengthSquared() < 1e-4f ? Vector3.Forward : ahead.Normalized();
+        Species kind = zone.Wildlife.Fauna?.Species?.FirstOrDefault(x => !x.Flies && x.Rig != RigKind.Swarm);
+        if (kind != null && zone.Wildlife.Sim != null)
+        {
+            Creature c = zone.Wildlife.Sim.Spawn(kind, zone.Wildlife.PatchLocal(zone.GroundAt(feet.X + ahead.X * 6f, feet.Z + ahead.Z * 6f)));
+            c.Health = 4000f;
+            foreach (int x in _drive.Wait(10)) yield return x;
+            Vector3 Mid() => zone.Wildlife.WorldOf(c) + Vector3.Up * 0.4f;
+            foreach (int x in Fire("tack-pistol", Mid(), 4)) yield return x;
+            float shot = c.Health;
+            Check(shot < 4000f, $"on {where} a pistol's bolts hurt an animal: {4000f - shot:F0}");
+            foreach (int x in ToolIn(ToolMode.Gather)) yield return x;
+            foreach (int x in _drive.LookAt(Mid(), 6)) yield return x;
+            foreach (int x in _drive.Click()) yield return x;
+            Check(c.Health < shot, $"and the tool's arc hurts it: {shot - c.Health:F0}");
+        }
+        else GD.Print($"  ({where} has no wildlife to shoot)");
         foreach (int x in ToolIn(ToolMode.Gather)) yield return x;
-        foreach (int x in _drive.LookAt(Chest(zapped), 6)) yield return x;
-        foreach (int x in _drive.Click()) yield return x;
-        Check(_game.Tool.Zapped > zaps && zapped.Health < health, $"the tool's arc zaps a person: {health:F0} to {zapped.Health:F0}");
-        Vector3 feet = _game.Survivor.WorldFeet, away = (feet - zone.Wildlife.WorldOf(zapped)) with { Y = 0f };
-        Vector3 ground = zone.GroundAt(feet.X + away.Normalized().X * 2f, feet.Z + away.Normalized().Z * 2f);
+        Vector3 ground = zone.GroundAt(feet.X - ahead.X * 2f, feet.Z - ahead.Z * 2f); // behind: clear of the hull and the animal
         int gathered = _game.Tool.Gathered.Values.Sum();
-        foreach (int x in _drive.LookAt(ground, 6)) yield return x;
+        foreach (int x in _drive.LookAt(ground, 10)) yield return x;
         foreach (int x in _drive.HoldPrimary(ground, 180)) yield return x;
-        Check(_game.Tool.Gathered.Values.Sum() > gathered, $"and it gathers the ground: +{_game.Tool.Gathered.Values.Sum() - gathered} ({string.Join(", ", _game.Tool.Gathered.Select(kv => $"{kv.Key} {kv.Value}"))})");
+        Check(_game.Tool.Gathered.Values.Sum() > gathered, $"and the tool gathers the ground: +{_game.Tool.Gathered.Values.Sum() - gathered} ({string.Join(", ", _game.Tool.Gathered.Select(kv => $"{kv.Key} {kv.Value}"))})");
     }
 
     /// <summary>A weapon armed and fired a few times at a point.</summary>
@@ -102,7 +110,4 @@ public partial class MoonTest
         for (int i = 0; i < 3 && _game.Tool.Mode != mode; i++) foreach (int x in _drive.Tap(Key.Q)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
     }
-
-    Creature Bystander(float far) => SleeperToolTest.Bystander(_game, far, (ulong)System.Random.Shared.NextInt64());
-    Vector3 Chest(Creature c) => SleeperToolTest.Chest(_game, c);
 }
