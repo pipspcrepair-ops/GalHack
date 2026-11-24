@@ -807,18 +807,13 @@ public partial class Game : Node3D
     void OnWeather(WeatherEvent e)
     {
         Vector3 feet = Survivor.WorldFeet;
-        switch (e.Kind)
+        if (e.Kind is not (WeatherEventKind.LightningStrike or WeatherEventKind.DebrisImpact)) return;
+        if (e.Kind == WeatherEventKind.LightningStrike) Zone.Weather.Thunder(e.Position);
+        if (feet.DistanceTo(e.Position) < e.DamageRadius && !UnderCover())
         {
-            case WeatherEventKind.LightningStrike:
-                float distance = feet.DistanceTo(e.Position);
-                Zone.Weather.Thunder(e.Position);
-                if (distance < e.DamageRadius && !UnderCover())
-                {
-                    Suit.Hit(e.Damage, DamageKind.Hit);
-                    Visor.Hurt(e.Position);
-                    Alerts.Attack("storm", e.Position);
-                }
-                break;
+            Suit.Hit(e.Damage, DamageKind.Hit);
+            Visor.Hurt(e.Position);
+            Alerts.Attack("storm", e.Position);
         }
     }
 
