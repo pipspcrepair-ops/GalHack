@@ -243,8 +243,9 @@ public partial class BlueprintTest : Node
             $"{name}: stands where PLACE set it down ({drop:F2} m lower), every block and its chair kept ({v.Structure.BlockCount} of {plan.BlockCount})");
 
         // Seated: drawn, the camera at the chair's eye.
-        _game.ThirdPerson = false;
         bool sat = _game.Survivor.Sit(v);
+        foreach (int x in _drive.Wait(2)) yield return x; // the game switches the view on its next frame
+        _game.ThirdPerson = false; // V: the chair's own eye
         foreach (int x in _drive.Wait(30)) yield return x;
         Camera3D cam = _game.Camera;
         float eyeOff = sat ? cam.GlobalPosition.DistanceTo(v.DrawTransform * v.Eye.ToGodot()) : float.NaN;

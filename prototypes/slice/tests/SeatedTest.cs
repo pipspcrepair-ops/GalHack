@@ -116,8 +116,10 @@ public partial class SeatedTest : Node
         float cell = s.Grid.CellSize;
         foreach (int x in _drive.Wait(20)) yield return x;
         v.TakeChair(anchor);
-        _game.ThirdPerson = false;
         Check(_game.Survivor.Sit(v), $"-- {type.Name}, {type.Size.X}x{type.Size.Y}x{type.Size.Z}, turned {turns * 90} degrees: seated");
+        foreach (int x in _drive.Wait(2)) yield return x; // the game switches the view on its next frame
+        Check(_game.ThirdPerson, "sitting down goes to the chase view");
+        _game.ThirdPerson = false; // V: the chair's own eye, for the checks below
         foreach (int x in _drive.Wait(40)) yield return x;
 
         // The part's box and frame, structure-local metres; points of the figure brought into it.
