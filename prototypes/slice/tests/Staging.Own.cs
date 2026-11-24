@@ -127,15 +127,19 @@ public sealed partial class Staging
         WorldLife life = _game.Zone.Wildlife.Life;
         // --who=crawler: a wall crawler of a place nobody marked (--force-family=flavour_house) instead of its holders.
         bool crawler = _args.GetValueOrDefault("who", "") == "crawler";
-        var held = deep.Sim.Creatures.Where(c => !c.Dead && !c.Removed && (crawler ? c.Species.Passive && c.Species.Role == DeepRole.Crawler && !c.InWalls : c.Species.Role != DeepRole.Subsister)).ToList();
+        List<Creature> Held() => deep.Sim.Creatures.Where(c => !c.Dead && !c.Removed && (crawler ? c.Species.Passive && c.Species.Role == DeepRole.Crawler && !c.InWalls : c.Species.Role != DeepRole.Subsister)).ToList();
+        // Crawlers that would have appeared in view are put down out of sight a little later: wait for one on a wall.
+        for (int i = 0; crawler && i < 900 && !Held().Any(c => MathF.Abs(c.Facing.Y.Y) < 0.35f && !c.Falling); i++) yield return 0;
+        var held = Held();
         GD.Print($"(inside: {string.Join(", ", held.GroupBy(c => c.Species.CommonName).Select(g => $"{g.Count()} {g.Key}"))})");
         // The busiest room: the holder with most of its own round it, the world's own first.
-        Creature target = held.OrderByDescending(c => life.Signature.Is(c.Species) || c.Species.Hosts?.Any(life.Signature.Is) == true ? 1 : 0)
+        Creature target = held.OrderByDescending(c => crawler ? (MathF.Abs(c.Facing.Y.Y) < 0.35f ? 1 : 0) : life.Signature.Is(c.Species) || c.Species.Hosts?.Any(life.Signature.Is) == true ? 1 : 0)
             .ThenByDescending(c => held.Count(o => o.Position.DistanceTo(c.Position) < 6f)).FirstOrDefault()
             ?? throw new InvalidOperationException("nothing holds the place");
         _game.Torch.Visible = true;
         _game.Visor.Visible = false;
-        foreach (int x in DenView(p, deep, target.Position + Vector3.Up * 0.9f, (float)Num("away", 4.5), 1.6f)) yield return x;
+        // A crawler is looked at where it clings (on a wall, by preference), from a little below eye height.
+        foreach (int x in crawler ? DenView(p, deep, Crawl.Center(target), (float)Num("away", 1.8), 0.2f) : DenView(p, deep, target.Position + Vector3.Up * 0.9f, (float)Num("away", 4.5), 1.6f)) yield return x;
         foreach (int x in Shot(_args.GetValueOrDefault("out", "own-inside.png"))) yield return x;
     }
 }
