@@ -87,7 +87,6 @@ public partial class WeatherAudio : Node
         }
 
         int dangers = 0;
-        foreach (Hazard h in sim.Hazards) if (h.Kind == HazardKind.Lightning && h.Target.DistanceTo(ear) < 350f) dangers++;
         foreach (Tornado t in sim.Tornadoes) if (t.Roar(ear) > 0.05f) dangers++;
         if (dangers > _lastDangerCount) Alert();
         _lastDangerCount = dangers;

@@ -37,6 +37,8 @@ Worst first.
 
 11. **Names that differ from the design.** DESIGN 539 and 538: Hand drill T1/T2, medkits, O2 bottles small +75 and large +250, ration paste. The game has Mining drill and Plasma drill (`slice/data/items.json:22-25`), Patch kit and Trail ration (`:26-29`), one Oxygen bottle that refills the whole tank plus an Air cell that refills half (`slice/data/items.json:30, 80-81`, `items/items.json:135`). The start screen's "Barren" is the Arid desert archetype (`slice/src/Game/WorldChoice.cs:20`), not the design's cratered, airless Barren world.
 
+12. **Weather hits are no longer telegraphed (decided 24 Nov, built on `proto/weather-no-telegraph`).** DESIGN 249 and the weather section: lightning and burning debris land with no build-up, glow, ring, countdown, warning message or sound beforehand. The old rule ("never a surprise", visible for the whole lead, on the visor) is gone from the weather prototype, its tests and its README. Tornado formation and roar are not hits and stay.
+
 ---
 
 ## 2. Decided but missing

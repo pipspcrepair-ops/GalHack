@@ -246,7 +246,7 @@ A few planets carry a theme that overrides the usual rules. They're rare enough 
 | Fog | Swamp, ocean and cold worlds | Hides the horizon; things appear close before they're seen |
 | Snow and blizzards | Ice worlds | Faster cold drain, low visibility, slower movement |
 | Dust storms | Arid worlds | Visibility near zero, strong wind, solar output cut |
-| Lightning storms | Storm and temperate worlds | Strikes high points and exposed ships after a visible build-up |
+| Lightning storms | Storm and temperate worlds | Strikes high points and exposed ships with no warning: no charge, glow or countdown, only the hit |
 | Fire storms | Lava and scorched worlds | Burning debris rains down; heat drain |
 | Hurricanes | Ocean and temperate worlds | Sustained winds that push players and vehicles |
 | Tornadoes | Temperate, arid and storm worlds | A moving vortex that lifts players and vehicles into the sky and flings them |
@@ -305,6 +305,7 @@ The bands are low (pre-industrial and industrial: timber, stone, carts and anima
 - **Wind is a simple force** (direction and strength) applied to players and vehicles: light craft drift, heavy ones barely notice.
 - **Tornadoes are moving vortex volumes.** They wander at random and eventually wear out, and never seek the player: weather is an act of god, not an antagonist. Wind and tornadoes can't touch anything in shelter, and trees and wildlife are as vulnerable to them as players and vehicles are, so a tornado leaves a trail of destruction behind it. Inside, a lift force pulls players and vehicles up and around, then lets them go. Getting caught is dramatic, never fatal: a fling always leaves the player alive, if badly hurt.
 - **Forecasts:** weather shows on the visor before it arrives, and severe weather comes with a warning.
+- **Weather hits are never telegraphed** (owner, 24 Nov). Lightning strikes and burning debris land with no lead-up: no charging glow or ring, no bolt before the strike, no countdown, no "incoming" message, no sound before the hit. The impact itself (flash, fireball, thunder) happens at the hit. The weather around it still shows (cloud, sky, storm sound, the forecast and the severe-weather warning), so you know a storm is on; you just never see a particular hit coming. To stay fair, the rates and damage are tuned to be survivable without a warning. Tornadoes are not hits: their funnel and roar stay. Creature attack wind-ups are a separate rule.
 - Weather changes temperature, visibility, solar output and creature behaviour. There's no fluid or cloud simulation: only visual effects and simple forces. Rain, lightning and tornadoes always come from visible clouds above them. Skies mix cloud types: happy puffy cumulus, streaky cirrus, flat grey stratus layers, and big angry dark storm towers.
 
 **Sky and sense of place**

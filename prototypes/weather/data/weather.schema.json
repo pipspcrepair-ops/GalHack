@@ -13,13 +13,10 @@
     "strike": {
       "type": "object",
       "properties": {
-        "buildUpSeconds": { "$ref": "#/$defs/positive", "description": "Lightning: how long the charge glows before it strikes." },
-        "fallSeconds": { "$ref": "#/$defs/positive", "description": "Debris: how long the warning ring shows before impact." },
         "radius": { "type": "number", "minimum": 0, "description": "Lightning hits the highest point within this many metres of its aim." },
         "strikeOffset": { "$ref": "#/$defs/positive", "description": "Strikes are aimed this far from the player at most." },
         "damage": { "type": "number", "minimum": 0 },
-        "damageRadius": { "type": "number", "minimum": 0 },
-        "maxConcurrent": { "type": "integer", "minimum": 1 }
+        "damageRadius": { "type": "number", "minimum": 0, "description": "Everything this close to a hit is hurt, less with distance." }
       }
     }
   },

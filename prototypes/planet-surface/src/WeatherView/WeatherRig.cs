@@ -35,7 +35,6 @@ public partial class WeatherRig : Node3D, IWeatherScene
     public Camera3D Camera => Main.Camera;
     public Vector3 ToSun => Main.Sky.ToSun;
     public float CloudBaseY => Main.Sky.Air.CloudBase;
-    public IReadOnlyList<Hazard> Hazards => Sim?.Hazards ?? (IReadOnlyList<Hazard>)Array.Empty<Hazard>();
     public Vector2 Wind2D => Sim?.Current.Wind ?? Vector2.Zero;
     public string ArchetypeId { get; private set; } = "temperate";
 
@@ -269,7 +268,7 @@ public partial class WeatherRig : Node3D, IWeatherScene
         foreach (Emitter e in _emitters)
             if (e.Node.Visible && e.Node.Emitting) count += (int)MathF.Round(e.Node.Amount * e.Node.AmountRatio);
         foreach (TornadoFx t in _tornadoes.Values) count += t.ActiveParticles();
-        return count + _lightning.ActiveParticles();
+        return count;
     }
 
     // ---- Keys -----------------------------------------------------------------------------
@@ -291,8 +290,7 @@ public partial class WeatherRig : Node3D, IWeatherScene
         }
         else if (key == Key.L)
         {
-            Sim.StartStrike(HazardKind.Lightning, Main.Player.GlobalPosition + Main.Player.LookDirection * 60f);
-            Main.Hud.Toast("A strike is charging ahead of you", Hud.Caution);
+            Sim.Strike(HazardKind.Lightning, Main.Player.GlobalPosition + Main.Player.LookDirection * 60f);
         }
         else if (key == Key.O)
         {

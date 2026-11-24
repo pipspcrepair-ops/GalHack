@@ -113,9 +113,9 @@ public partial class Screenshot : Node
     {
         Player.DebugPlace(_feet, _yaw, _pitch); // the wind would otherwise walk the camera off its mark
         if (_view == "thunder" && _tick == SettleTicks - 200)
-            Sim.StartStrike(HazardKind.Lightning, _main.Spire.RodTip); // charges for 4 s, then strikes the spire
+            Sim.Strike(HazardKind.Lightning, _main.Spire.RodTip); // lands on the spire at once
         if (_view == "fire" && _tick == SettleTicks - 150)
-            Sim.StartStrike(HazardKind.Debris, Player.GlobalPosition + Player.LookDirection.Slide(Vector3.Up).Normalized() * 55f);
+            Sim.Strike(HazardKind.Debris, Player.GlobalPosition + Player.LookDirection.Slide(Vector3.Up).Normalized() * 55f);
         if (_view == "tornado" && _tick == SettleTicks - 150)
         {
             // Right beside the skiff, heading away from the camera, so it carries the skiff up in view.
@@ -136,7 +136,7 @@ public partial class Screenshot : Node
                     if (e.Kind == WeatherEventKind.LightningStrike && e.Target?.Name == "the spire") return true;
                 return false;
             case "fire":
-                foreach (Hazard h in Sim.Hazards) if (h.Kind == HazardKind.Debris && h.Progress > 0.72f) return true;
+                foreach (var e in Sim.Events) if (e.Kind == WeatherEventKind.DebrisImpact) return true;
                 return false;
             case "tornado":
                 return _main.Hover.GlobalPosition.Y - _hoverGround > 24f;

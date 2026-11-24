@@ -98,18 +98,13 @@ public sealed class GroundRules
     public float DustClearRate { get; set; }
 }
 
-/// <summary>Lightning and burning debris share a shape: a visible build-up, then a hit.</summary>
+/// <summary>Lightning and burning debris share a shape: a hit that lands at once, with no lead-up.</summary>
 public sealed class StrikeRules
 {
-    public float BuildUpSeconds { get; set; }
-    public float FallSeconds { get; set; }
     public float Radius { get; set; }
     public float StrikeOffset { get; set; }
     public float Damage { get; set; }
     public float DamageRadius { get; set; }
-    public int MaxConcurrent { get; set; } = 1;
-
-    public float WarningSeconds => BuildUpSeconds > 0f ? BuildUpSeconds : FallSeconds;
 }
 
 /// <summary>A tornado's path and lift profile.</summary>

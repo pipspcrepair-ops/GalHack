@@ -211,7 +211,6 @@ public partial class WeatherFx : Node3D
         foreach (Emitter e in _emitters)
             if (e.Node.Visible && e.Node.Emitting) count += (int)MathF.Round(e.Node.Amount * e.Node.AmountRatio);
         foreach (TornadoFx t in _tornadoes.Values) count += t.ActiveParticles();
-        count += _debris.ActiveParticles() + _lightning.ActiveParticles();
         return count;
     }
 
@@ -375,8 +374,6 @@ public partial class WeatherFx : Node3D
     public void OnImpact(WeatherEvent e)
     {
         if (e.Kind == WeatherEventKind.LightningStrike) _lightning.Strike(e.Position);
-        else _debris.Impact(e.Id, e.Position);
+        else _debris.Impact(e.Position);
     }
-
-    public IReadOnlyList<Hazard> Hazards => Director.Sim.Hazards;
 }
