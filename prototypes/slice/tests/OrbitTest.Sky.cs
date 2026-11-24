@@ -123,7 +123,7 @@ public partial class OrbitTest
     float _lastShown = -1f;
     string _firstOverCap, _firstPop, _shot;
     int _shotTick;
-    bool _shotOverCap, _bodyShown;
+    bool _shotOverCap;
     uint _cullMask;
     List<CanvasLayer> _hud;
     readonly List<string> _shots = new();
@@ -186,7 +186,6 @@ public partial class OrbitTest
                 (_cullMask, cam.CullMask) = (cam.CullMask, 0u);
                 _hud = GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false).OfType<CanvasLayer>().Where(c => c.Visible).ToList();
                 _hud.ForEach(c => c.Visible = false);
-                if (_game.Survivor.Node is Node3D body) (_bodyShown, body.Visible) = (body.Visible, false); // the pilot in its seat draws apart from the camera's layers
                 sky.SetShaderParameter("debug_view", 1);
                 break;
             case 4:
@@ -199,14 +198,16 @@ public partial class OrbitTest
                 for (int i = 0; i < px.Length; i += 3) counts[px[i]]++;
                 int least = 0;
                 for (int seen = 0; (seen += counts[least]) < px.Length / 300; least++) { }
-                int clouded = 0;
-                for (int i = 0; i < px.Length; i += 3) clouded += px[i] > least + 24 ? 1 : 0;
+                // The pilot's figure in its seat still draws (posed every frame, apart from the camera's layers): its spot is left out.
+                int w = cover.GetWidth(), clouded = 0;
+                Vector2 pilot = _game.Figure != null && !cam.IsPositionBehind(_game.Figure.GlobalPosition) ? cam.UnprojectPosition(_game.Figure.GlobalPosition) : new Vector2(-1e4f, -1e4f);
+                for (int i = 0; i < px.Length; i += 3)
+                    if (px[i] > least + 24 && MathF.Max(MathF.Abs(i / 3 % w - pilot.X), MathF.Abs(i / 3 / w - pilot.Y)) > 60f) clouded++;
                 if (_shotOverCap) _coverPixels = Math.Max(_coverPixels, clouded);
                 else _underCapPixels = Math.Max(_underCapPixels, clouded);
                 GD.Print($"  ({_shot}: {height:F0} m, {clouded} pixels of the sky's own cloud; {file}.png)");
                 cam.CullMask = _cullMask;
                 _hud.ForEach(c => c.Visible = true);
-                if (_game.Survivor.Node is Node3D shown) shown.Visible = _bodyShown;
                 sky.SetShaderParameter("debug_view", 0);
                 _shot = null;
                 break;
