@@ -21,7 +21,7 @@ namespace Slice.Tests;
 /// centimetre and a twentieth of a degree (the band's flat terms drift off the globe as you fly: it is laid out again under
 /// you), so all the relief it stands up lies below you. Every tick: whatever is solid under the Skiff (the globe's sea-level
 /// shell, the land's own ground waiting under the band in the surface's terms) stands where the map's ground is at that
-/// place on the globe (its mesh's detail within 100 m) and well under the Skiff: drifted off the globe, the land's ground stood up as an unseen mountain in
+/// place on the globe (the land's own height there, within 10 m) and well under the Skiff: drifted off the globe, the land's ground stood up as an unseen mountain in
 /// orbit, and the Skiff touches nothing.
 ///
 /// Seated in the Skiff and flown from the external chase camera throughout. Windowed with --shots=folder, a picture over the
@@ -91,6 +91,7 @@ public partial class OrbitReliefTest : Node
     int _frames, _ticks, _touched, _solidUnder;
     float _worstHeight, _worstUp, _leastClear = float.MaxValue;
     string _firstSolid, _firstTouch;
+    float _worstOver = float.MinValue;
     int _relaid;
     N.Vector3 _shiftWas;
 
@@ -126,9 +127,9 @@ public partial class OrbitReliefTest : Node
         {
             float under = o.Height(hit.Point.ToGodot());
             var (x, z) = o.Map.MapPoint(o.ToGlobe(hit.Point));
-            var map = _game.Surface.Planet.Map;
-            float ground = MathF.Max(map.Sample(map.Elevation, x, z), 0f);
-            if (under > ground + 100f || h - under < 50f)
+            float ground = MathF.Max(_game.Surface.Planet.GroundHeight(x, z), 0f); // the land's own height there, as its mesh is made
+            _worstOver = MathF.Max(_worstOver, under - ground);
+            if (under > ground + 10f || h - under < 50f)
             {
                 _solidUnder++;
                 _firstSolid ??= $"at {h:F0} m something solid ({hit.Surface}) stood {under:F0} m over sea level under the Skiff, the map's ground there {ground:F0} m";
@@ -147,7 +148,7 @@ public partial class OrbitReliefTest : Node
             $"in the band the sheet stands from the readout's height and the up under you: {_frames} frames, at worst {_worstHeight:F3} m and {_worstUp:F3}° off (laid out again under you {_relaid} times)");
         Check(_frames > 300 && _leastClear > 50f,
             $"all the relief the sheet stands up lies under the Skiff: its least clearance over the drawn ground under it {_leastClear:F0} m (the world's highest ground {_game?.Spaceflight.Highest:F0} m)");
-        Check(_ticks > 600 && _solidUnder == 0, $"whatever is solid under the Skiff in orbit is the map's ground at that place on the globe, well under it: {_solidUnder} wrong of {_ticks} ticks{(_firstSolid != null ? ": " + _firstSolid : "")}");
+        Check(_ticks > 600 && _solidUnder == 0, $"whatever is solid under the Skiff in orbit is the map's ground at that place on the globe, well under it: {_solidUnder} wrong of {_ticks} ticks, at most {_worstOver:F1} m over the land's own height there{(_firstSolid != null ? ": " + _firstSolid : "")}");
         Check(_ticks > 600 && _touched == 0, $"the Skiff touched nothing in orbit: {_touched} of {_ticks} ticks{(_firstTouch != null ? ": " + _firstTouch : "")}");
     }
 
