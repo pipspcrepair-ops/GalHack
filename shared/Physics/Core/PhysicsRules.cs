@@ -111,10 +111,10 @@ public sealed class PhysicsRules
     /// <summary>Hover engines: see <see cref="HoverController"/>. Same meaning as in ship-handling's handling.json.</summary>
     public sealed class HoverData
     {
-        public float VerticalGain { get; set; } = 8f;
+        /// <summary>The cushion's bob, Hz, and its damping as a share of critical: one spring for every hover vessel and the bike (stiffness and damping scale with mass).</summary>
+        public float RideFrequency { get; set; } = 1.2f;
+        public float RideDamping { get; set; } = 0.4f;
         public float MaxRise { get; set; } = 40f;
-        public float MaxGrip { get; set; } = 30f;
-        public float GripBand { get; set; } = 0.8f;
         public float MaxClimbRate { get; set; } = 14f;
         public float LookAheadTime { get; set; } = 0.45f;
         public float LookAheadMin { get; set; } = 2f;

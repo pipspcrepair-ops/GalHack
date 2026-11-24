@@ -293,6 +293,33 @@ public partial class VehicleGroundTest : Node
         bike.Settle();
         foreach (int x in _drive.Wait(30)) yield return x;
 
+        // Its cushion, the hover vessels' own spring: dropped from 1.5× its ride height and knocked up as off a bump, it
+        // gives, bobs once or twice and settles, and never pitches or rolls for it.
+        foreach (var (what, knock) in new[] { ("dropped from 1.5× ride height", 0f), ("knocked up 2.5 m/s as off a bump", 2.5f) })
+        {
+            _segment = $"cushion, {what}";
+            bike.Settle();
+            foreach (int x in _drive.Wait(60)) yield return x;
+            if (knock > 0f) bike.Throw(Vector3.Up * knock, Vector3.Zero);
+            else bike.Position += Vector3.Up * HoverBike.Hover * 0.5f;
+            float overshoot = 0f, dev = 0f, rest = Mathf.RadToDeg(bike.Attitude.Y.AngleTo(Vector3.Up)), worstTilt = rest;
+            int bobs = 0, side = 0, last = 0;
+            for (int i = 0; i < 240; i++)
+            {
+                yield return 0;
+                dev = bike.Position.Y - _game.Bikes.SurfaceAt(bike.Position.X, bike.Position.Z, bike.Position.Y + 1.5f, out _) - HoverBike.Hover;
+                if (dev < 0f) overshoot = MathF.Max(overshoot, -dev);
+                int s = dev > 0.03f ? 1 : dev < -0.03f ? -1 : 0;
+                if (s != 0) last = i;
+                if (s != 0 && s != side) { bobs++; side = s; }
+                worstTilt = MathF.Max(worstTilt, Mathf.RadToDeg(bike.Attitude.Y.AngleTo(Vector3.Up)));
+            }
+            float settle = (last + 1) / 60f;
+            GD.Print($"INFO  {mode}, hover bike cushion, {what}: overshoot {overshoot:F2} m, {bobs} bobs over 3 cm, settled within 3 cm in {settle:F2} s, off {dev * 100f:F1} cm at the end, tilted {worstTilt:F1}° at most ({rest:F1}° at rest)");
+            Check(overshoot > 0.02f && bobs <= 3 && settle < 3f && MathF.Abs(dev) < 0.02f && worstTilt - rest < 2f,
+                $"{mode}, hover bike rides the cushion ({what}): gives {overshoot:F2} m past its ride height, bobs {bobs} times, settles in {settle:F2} s within {MathF.Abs(dev) * 100f:F1} cm, never tilted more than {worstTilt - rest:F1}° past its rest by it");
+        }
+
         // Hops standing: straight up and down, level all the way, never a flip.
         _segment = "hopping standing";
         var w = new Watch();

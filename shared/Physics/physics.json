@@ -41,9 +41,10 @@
   },
 
   "hover": {
-    // The ride-height servo (from ship-handling): verticalGain (1/s) closes the height error,
-    // limited to maxRise up and maxGrip down (m/s²); grip holds only within gripBand metres above
-    // ride height, so jumps fly. Look-ahead probes reach speed × lookAheadTime ahead (clamped);
+    // The cushion: a damped spring to ride height, vertical only, rideFrequency (Hz) and
+    // rideDamping (share of critical) for every hover vessel and the bike alike (stiffness and
+    // damping scale with mass). It only pushes (it never pulls down harder than gravity, so jumps
+    // and ledges fly), up to maxRise (m/s²). Look-ahead probes reach speed × lookAheadTime ahead (clamped);
     // terrain ahead rising more than stepAllowance × ride height lifts the vessel early, never
     // more than maxLift × ride height. It tilts to the ground's attitude (the plane through what
     // its engines and look-ahead probes see), settling at levelRate (1/s). Ground rising more
@@ -51,10 +52,9 @@
     // ground under it over the run to the ground ahead), is refused, and it slides off ground
     // that steep; a crater's lip or a dug pit's edge is climbed, a cliff is not. maxSlope also
     // limits the tilt. Probes reach probeDepth × ride height below the engines.
-    "verticalGain": 8,
+    "rideFrequency": 1.2,
+    "rideDamping": 0.4,
     "maxRise": 40,
-    "maxGrip": 30,
-    "gripBand": 0.8,
     "maxClimbRate": 14,
     "lookAheadTime": 0.45,
     "lookAheadMin": 2,
