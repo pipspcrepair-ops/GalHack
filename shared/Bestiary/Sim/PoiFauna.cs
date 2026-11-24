@@ -350,6 +350,8 @@ public static partial class PoiFauna
         // Vents and food first: every room has something to eat (no wall cracks are made: see the README).
         foreach (PoiRoom room in poi.Rooms)
         {
+            // The cracks are still rolled and dropped, so every place's other rolls stay as they were.
+            for (int i = rng.Int(pr.Cracks); i > 0; i--) WallCrack(room, rng, 1, -1);
             foreach (var (at, n) in room.Vents)
                 pop.Cracks.Add(new Crack { Id = pop.Cracks.Count, Kind = CrackKind.Vent, Position = at, Normal = n, Network = 2, Size = 0.45f });
             if (room.Kind is RoomKind.Vent or RoomKind.Duct) continue;
@@ -1067,7 +1069,8 @@ public static partial class PoiFauna
                 continue;
             }
             made.Add(c);
-            if (s.Species.Role == DeepRole.Subsister)
+            // Its small things (subsisters and insects) keep their numbers up.
+            if (s.Species.Role == DeepRole.Subsister || s.Species.Passive)
             {
                 if (!colonies.TryGetValue(s.Species, out Colony col))
                 {

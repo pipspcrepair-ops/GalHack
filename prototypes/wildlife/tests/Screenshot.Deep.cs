@@ -13,6 +13,7 @@ namespace Wildlife;
 /// - deep-food: a predator taking a subsister: a lurker springing at a grazing grub in the dark
 /// - deep-nest: the deep nest, its pale, blind guards rearing at an intruder
 /// - deep-hold: wreck nesters and their scrap nests in a derelict freighter's hold
+/// - deep-wall: a place's insects crawling a wall in the open
 /// - mutation: one species at mutation 0, 0.5 and 1, side by side
 /// </summary>
 public partial class Screenshot
@@ -153,6 +154,22 @@ public partial class Screenshot
                 Vector3 eye = OpenSpot(r.Current.Space, nest.Position, look, 3.6f, 1.55f, sameFloor: true);
                 _aim = () => (eye, look);
                 _captureTick = 240;
+                break;
+            }
+            case "deep-wall":
+            {
+                // A place's insects crawling a wall, out in the open (no cracks to slip into).
+                static bool OnWall(Creature x) => x.Species.Passive && !x.InWalls && !x.Removed && MathF.Abs(x.Facing.Y.Y) < 0.35f;
+                r.GoTo(3);
+                if (!r.Current.Sim.Creatures.Any(OnWall)) r.GoTo(2);
+                WildSim sim = r.Current.Sim;
+                sim.Targets.Clear();
+                Creature c = sim.Creatures.Where(OnWall).OrderByDescending(x => sim.Creatures.Count(o => OnWall(o) && (o.Position - x.Position).Length() < 3f)).First();
+                Vector3 at = Crawl.Center(c);
+                Vector3 eye = OpenSpot(r.Current.Space, at + c.Facing.Y * 2.2f, at, 2.4f, 1.5f, sameFloor: true);
+                r.Camera.Fov = 55f;
+                _aim = () => (eye, Crawl.Center(c));
+                _captureTick = 200;
                 break;
             }
             case "domestic":
