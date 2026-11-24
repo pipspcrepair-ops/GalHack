@@ -38,6 +38,8 @@ public sealed partial class Staging
         "smoke-ground" => SmokeGround(),
         "ascent" => ClimbView(),
         "rings" => RingsView(),
+        "glass" => GlassOrbit(),
+        "glass-ground" => GlassGround(),
         "bodies" => BodiesView(),
         "moon" => MoonView(),
         "moon2" => MoonView(second: true),
