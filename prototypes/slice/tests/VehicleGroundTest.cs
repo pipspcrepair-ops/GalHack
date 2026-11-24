@@ -438,6 +438,73 @@ public partial class VehicleGroundTest : Node
 
         _game.Survivor.Dismount();
         _game.Bikes.Remove(bike);
+        if (mode == nameof(GameMode.Survival)) foreach (int x in AcrossWater()) yield return x;
+    }
+
+    /// <summary>
+    /// The hover bike rides water as ground: flat out off the land, across a lake or the sea and out onto the far shore,
+    /// at the same ride height over the water as over the ground (5 cm), with no dip at either shoreline and no slowing.
+    /// </summary>
+    IEnumerable<int> AcrossWater()
+    {
+        var source = _game.Zone.Planet.Source;
+        bool Wet(float x, float z) => source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(x, _game.Zone.Planet.Width), Planets.Gen.Mathx.Wrap(z, _game.Zone.Planet.Height), out _);
+        float Top(float x, float z) => Wet(x, z) ? MathF.Max(source.WaterLevel, source.SurfaceHeight(x, z)) : source.SurfaceHeight(x, z);
+        // A straight line from the start's ring outward: 70 m of gentle dry land to get up to speed, at least 40 m of
+        // water, then 20 m of land beyond, from the terrain's own fields.
+        const float Step = 2.5f;
+        Vector3 from = default, way = default;
+        int shore = 0, back = 0;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        for (int ring = 1; ring <= 30 && shore == 0; ring++)
+            for (int k = 0; k < 24 && shore == 0; k++)
+                for (int d = 0; d < 8 && shore == 0; d++)
+                {
+                    var p = feet + new Vector3(MathF.Cos(k * MathF.Tau / 24f), 0f, MathF.Sin(k * MathF.Tau / 24f)) * (ring * 25f);
+                    var dir = new Vector3(MathF.Cos(d * MathF.Tau / 8f), 0f, MathF.Sin(d * MathF.Tau / 8f));
+                    int i = 0, wetFrom = -1, wetTo = -1;
+                    bool gentle = true;
+                    float last = Top(p.X, p.Z);
+                    for (; i < 72 && gentle; i++)
+                    {
+                        Vector3 q = p + dir * (i * Step);
+                        bool wet = Wet(q.X, q.Z);
+                        float h = Top(q.X, q.Z);
+                        gentle = MathF.Abs(h - last) < 0.5f;
+                        last = h;
+                        if (wet && wetFrom < 0) { if (i < 28) break; wetFrom = i; }
+                        if (!wet && wetFrom >= 0 && wetTo < 0) wetTo = i;
+                        if (wetTo >= 0 && (wet || i >= wetTo + 8)) break;
+                    }
+                    if (gentle && wetFrom >= 28 && wetTo - wetFrom >= 16 && i >= wetTo + 8 && !Wet(p.X + dir.X * i * Step, p.Z + dir.Z * i * Step))
+                        (from, way, shore, back) = (p, dir, wetFrom, wetTo);
+                }
+        if (shore == 0) { GD.Print("  (no gentle land-water-land crossing within 750 m of the start on this world: the bike's lake run is not tried)"); yield break; }
+
+        HoverBike bike = _game.Bikes.Place(new Vector3(from.X, source.SurfaceHeight(from.X, from.Z), from.Z), YawOf(way));
+        bike.Ridden = true;
+        foreach (int x in _drive.Wait(30)) yield return x;
+        bike.Throttle = 1f;
+        float land = 0f, water = 0f, landV = 0f, waterV = 0f, nearDip = 0f, farDip = 0f, worst = 0f;
+        int landN = 0, waterN = 0;
+        float Along() => (bike.Position - from).Dot(way) / Step;
+        for (int t = 0; t < 600 && Along() < back + 8; t++)
+        {
+            yield return 0;
+            float along = Along(), dev = bike.Position.Y - _game.Bikes.SurfaceAt(bike.Position.X, bike.Position.Z, bike.Position.Y + 1.5f, out _) - HoverBike.Hover;
+            if (along > shore - 4 && along < shore + 4) nearDip = MathF.Max(nearDip, -dev);
+            else if (along > back - 4 && along < back + 4) farDip = MathF.Max(farDip, -dev);
+            else if (along > shore - 12 && along < shore - 4) { land += dev; landV += bike.Speed; landN++; }
+            else if (along > shore + 4 && along < back - 4) { water += dev; waterV += bike.Speed; waterN++; worst = MathF.Max(worst, MathF.Abs(dev)); }
+        }
+        bool across = Along() >= back + 8 && bike.OnWater == false;
+        float dip = MathF.Max(nearDip, farDip);
+        land /= Math.Max(1, landN); water /= Math.Max(1, waterN); landV /= Math.Max(1, landN); waterV /= Math.Max(1, waterN);
+        GD.Print($"INFO  hover bike across water ({(back - shore) * Step:F0} m of it): {land * 100f:+0.0;-0.0} cm off ride height on land, {water * 100f:+0.0;-0.0} cm on water (worst {worst * 100f:F1}), shore dip {nearDip:F2} m onto the water, {farDip:F2} m off it, {landV:F1} m/s on land, {waterV:F1} m/s on water");
+        Check(across && landN > 5 && waterN > 10 && MathF.Abs(water - land) < 0.05f && dip < 0.25f && waterV > 0.97f * landV,
+            $"the hover bike rides water as ground: flat out off the land, {(back - shore) * Step:F0} m across the water and out on the far shore, riding within {MathF.Abs(water - land) * 100f:F1} cm of its height over the ground, " +
+            $"no dip at either shore ({dip:F2} m at worst, under 0.25), {waterV:F1} m/s on the water against {landV:F1} on land");
+        _game.Bikes.Remove(bike);
     }
 }
 

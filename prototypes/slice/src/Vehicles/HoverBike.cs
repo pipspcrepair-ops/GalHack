@@ -321,9 +321,6 @@ public sealed class HoverBike
         float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out bool water);
         OnWater = water;
         float target = surface + Hover;
-        // The ground ahead of and behind it: how fast it rises under the bike, and the lean to it.
-        float h0 = _owner.SurfaceAt(Position.X + fwd.X * 1.0f, Position.Z + fwd.Z * 1.0f, Position.Y + LookFrom, out _);
-        float h1 = _owner.SurfaceAt(Position.X - fwd.X * 1.0f, Position.Z - fwd.Z * 1.0f, Position.Y + LookFrom, out _);
         bool wasAirborne = !Grounded;
         if (Position.Y > target + 0.35f || tossed) { _vy -= Gravity * dt; Grounded = false; }
         else
@@ -331,7 +328,14 @@ public sealed class HoverBike
             // Back down: tipped past its plates' reach, it lands on its side or roof and stays there.
             if (wasAirborne && Tilt > 1.05f) Toppled = true;
             PhysicsRules.HoverData rules = _owner.Rules;
-            float rise = Math.Clamp((h0 - h1) * 0.5f * Velocity.Dot(fwd), -rules.MaxClimbRate, rules.MaxClimbRate);
+            // How fast the surface rises under it: the grade to the surface a short way ahead along its travel (its
+            // look-ahead), so it lifts before a rise or a far shore and stops sinking before a near one levels out.
+            float speed = Speed, reach = Math.Clamp(speed * 0.3f, 1f, 8f), rise = 0f;
+            if (speed > 0.5f)
+            {
+                Vector3 ahead = Position + Velocity / speed * reach;
+                rise = Math.Clamp((_owner.SurfaceAt(ahead.X, ahead.Z, Position.Y + LookFrom, out _) - surface) / reach * speed, -rules.MaxClimbRate, rules.MaxClimbRate);
+            }
             _vy = HoverController.Cushion(rules, target - Position.Y, _vy, rise, Gravity, dt);
             Grounded = true;
         }
@@ -349,6 +353,8 @@ public sealed class HoverBike
 
         // The body leans to the slope under it and into a turn; in the air (a hop, off a ledge) it holds itself
         // level, as a hover craft tries to, never nosing up or down with its climb.
+        float h0 = _owner.SurfaceAt(Position.X + fwd.X * 1.0f, Position.Z + fwd.Z * 1.0f, Position.Y + LookFrom, out _);
+        float h1 = _owner.SurfaceAt(Position.X - fwd.X * 1.0f, Position.Z - fwd.Z * 1.0f, Position.Y + LookFrom, out _);
         float k = 1f - MathF.Exp(-8f * dt);
         // A push short of a grip (a gale, the drag of its own speed) leans it a few degrees, nose up into a headwind, over
         // to leeward in a crosswind, about its own axes: a tumble about a slanting axis swung its nose off its heading.
