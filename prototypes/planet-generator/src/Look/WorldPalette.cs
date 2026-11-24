@@ -842,6 +842,13 @@ public sealed record WorldPalette
         _ => 0f,
     };
 
+    /// <summary>Ice as light as it was, its hue and chroma those of its own meltwater's (the shallows): ice worlds differ in their land as in their seas.</summary>
+    Rgb MeltTint(Rgb ice)
+    {
+        Oklab i = Oklab.Of(ice), w = Oklab.Of(Shallow);
+        return Oklab.Lch(i.L, MathF.Max(i.Chroma, MathF.Min(w.Chroma, 0.12f)), w.Hue).Fit().ToRgb();
+    }
+
     /// <summary>
     /// The ground's own colour for a biome in a climate (warmth and wetness 0..1, a map cell's): the soil its climate
     /// weathers from the world's rock, or where the biome is a mineral in itself, that mineral (sand, snow, salt,
@@ -862,7 +869,9 @@ public sealed record WorldPalette
             case Biome.Ash: return Rgb.Lerp(Sand, Dust, 0.3f);
             case Biome.LavaField: return Bedrock * 0.7f;
             case Biome.Obsidian: case Biome.Sulfur:
-            case Biome.BlueIce: case Biome.HotSpring: case Biome.Sinter:
+            // Blue ice takes the tint of its own meltwater (the shallows), so ice worlds differ in the land as in the sea.
+            case Biome.BlueIce: return MeltTint(BiomeLook.Ground(biome));
+            case Biome.HotSpring: case Biome.Sinter:
             case Biome.CrystalPlain: case Biome.CrystalSpires: case Biome.Chalk: case Biome.GlowMoss:
             case Biome.FungalForest: case Biome.SporeMarsh: case Biome.Mycelium:
                 return BiomeLook.Ground(biome);

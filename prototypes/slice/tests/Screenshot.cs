@@ -95,6 +95,8 @@ public partial class Screenshot : Node
         string[] cmd = OS.GetCmdlineUserArgs();
         WorldChoice world = WorldChoice.FromArgs(cmd, WorldChoice.Tested);
         if (Array.IndexOf(cmd, "--ringed=1") >= 0) world = Rolled(cmd, w => w.Spec().Has(Planets.Gen.Modifier.RingedSky), "rings");
+        // The same world under another star (--force-star=Orange), as planet-surface's shots take it.
+        if (_args.TryGetValue("force-star", out string forced)) PlanetSurface.Skies.SkySystem.ForceStar = Enum.Parse<PlanetSurface.Skies.StarClass>(forced, true);
         if (_args.TryGetValue("star", out string star))
             world = Rolled(cmd, w => PlanetSurface.Skies.SkySystem.For(w.Spec()).Star.ToString().Equals(star, StringComparison.OrdinalIgnoreCase), $"a {star} star");
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
