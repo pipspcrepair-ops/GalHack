@@ -115,7 +115,12 @@ void fragment() {
 	for (int k = 0; k < 4; k++) {
 		bent = max(bent, abs(raw[k] + raw[8 - k] - 2.0 * raw[4]));
 	}
-	bool outline = bent > 0.05 * nearest;
+	// The outline path is off (owner, 24 Nov): drawn whole, its pixels over the land round the eye came out black from the
+	// engine's lit stage (the rest of the storm is all but clear there, so the same pixels blend away unseen), which drew
+	// black outlines round the grass in a storm. Off, every pixel is marched to its own depth. The trace so far is on the
+	// playtest list.
+	const bool OUTLINES = false;
+	bool outline = OUTLINES && bent > 0.05 * nearest;
 	t1 = min(t1, outline ? scene_far : tap[4]);
 	if (t1 <= t0) discard;
 
