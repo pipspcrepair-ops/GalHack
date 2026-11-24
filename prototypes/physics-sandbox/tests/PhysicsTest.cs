@@ -303,6 +303,12 @@ public partial class PhysicsTest : Node
             worlds[i].Weather.Sim.Snap(WeatherKind.DustStorm);
         }
         for (int i = 0; i < 3; i++) yield return 0;
+        if (worlds.Any(w => w.Corsair == null || w.Rover == null))
+        {
+            Check(false, "both determinism worlds spawn the Corsair and the rover (a blueprint failed to load: see the error above)");
+            foreach (SubViewport v in views) v.QueueFree();
+            yield break;
+        }
 
         double worst = 0;
         int ticks = 420, compared = 0;

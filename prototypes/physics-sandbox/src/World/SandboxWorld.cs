@@ -71,7 +71,7 @@ public partial class SandboxWorld : Node3D
         Rules = PhysicsRules.FromJson(File.ReadAllText(DataPath("shared", "Physics", "physics.json")));
         Handling = Tunables.FromJson(File.ReadAllText(DataPath("prototypes", "ship-handling", "data", "handling.json")));
         Catalogue = StructureBridge.LoadCatalogue(DataPath("prototypes", "building", "data"),
-            ProjectSettings.GlobalizePath("res://data/vessel-parts.json"));
+            ProjectSettings.GlobalizePath("res://data/vessel-parts.json"), DataPath("shared", "Items", "data", "building-parts.json"));
         WeatherData weather = WeatherData.Parse(File.ReadAllText(DataPath("prototypes", "weather", "data", "weather.json")));
         CrateKinds = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, CrateKind>>(
             File.ReadAllText(ProjectSettings.GlobalizePath("res://data/crates.json")),
