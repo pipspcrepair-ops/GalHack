@@ -36,32 +36,36 @@ public static class CaveFauna
         }
         if (floors.Count == 0) return made;
 
-        // Moss on the floor.
+        // Moss on the floor; its grazers and the ceiling's crawlers none where the world keeps no insects and they come as one.
         Species grazer = fauna.For(DeepRole.Subsister, PoiTheme.Natural, depth);
-        floors.RemoveAll(f => !Roomy(space, SpaceMath.Center(f), grazer));
-        if (floors.Count == 0) return made;
-        int patches = Math.Min(floors.Count, 3);
-        var food = new List<FoodPatch>();
-        for (int i = 0; i < patches; i++)
+        if (!fauna.Forbids(grazer))
         {
-            Vector3I f = floors[rng.Int(0, floors.Count - 1)];
-            float? y = SpaceMath.FloorBelow(space, f.X + 0.5f, f.Y + 0.5f, f.Z + 0.5f, 2f);
-            var patch = new FoodPatch { Position = new Vector3(f.X + 0.5f, y ?? f.Y, f.Z + 0.5f), Kind = grazer.Diet, Amount = rng.Range(0.6f, 1f) };
-            sim.Food.Add(patch);
-            food.Add(patch);
+            floors.RemoveAll(f => !Roomy(space, SpaceMath.Center(f), grazer));
+            if (floors.Count == 0) return made;
+            int patches = Math.Min(floors.Count, 3);
+            var food = new List<FoodPatch>();
+            for (int i = 0; i < patches; i++)
+            {
+                Vector3I f = floors[rng.Int(0, floors.Count - 1)];
+                float? y = SpaceMath.FloorBelow(space, f.X + 0.5f, f.Y + 0.5f, f.Z + 0.5f, 2f);
+                var patch = new FoodPatch { Position = new Vector3(f.X + 0.5f, y ?? f.Y, f.Z + 0.5f), Kind = grazer.Diet, Amount = rng.Range(0.6f, 1f) };
+                sim.Food.Add(patch);
+                food.Add(patch);
+            }
+            var colony = new Colony { Species = grazer, Space = space, Home = food[0].Position };
+            foreach (Crack k in sim.Cracks) if (k.Network == 10 + (int)(seed % 1000)) colony.Sources.Add(k);
+            for (int i = 0; i < subsisters; i++)
+            {
+                FoodPatch at = food[i % food.Count];
+                Creature c = sim.SpawnIn(grazer, space, at.Position + new Vector3(rng.Range(-1f, 1f), 0.3f, rng.Range(-1f, 1f)));
+                c.Home = at.Position;
+                made.Add(c);
+                colony.Target++;
+            }
+            sim.Colonies.Add(colony);
         }
-        var colony = new Colony { Species = grazer, Space = space, Home = food[0].Position };
-        foreach (Crack k in sim.Cracks) if (k.Network == 10 + (int)(seed % 1000)) colony.Sources.Add(k);
-        for (int i = 0; i < subsisters; i++)
-        {
-            FoodPatch at = food[i % food.Count];
-            Creature c = sim.SpawnIn(grazer, space, at.Position + new Vector3(rng.Range(-1f, 1f), 0.3f, rng.Range(-1f, 1f)));
-            c.Home = at.Position;
-            made.Add(c);
-            colony.Target++;
-        }
-        sim.Colonies.Add(colony);
         Species crawler = fauna.For(DeepRole.Crawler, PoiTheme.Natural, depth);
+        if (fauna.Forbids(crawler)) crawlers = 0;
         ceilings.RemoveAll(k => !Roomy(space, SpaceMath.Center(k) + Vector3.Down, crawler));
         var taken = new List<Vector3>();
         for (int i = 0; i < crawlers && ceilings.Count > 0; i++)

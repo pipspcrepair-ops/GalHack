@@ -21,17 +21,21 @@ public partial class OccupantTest
     {
         GD.Print("-- crawlers in places nobody marked --");
         var flavour = _lib.Families.Where(f => f.Id.StartsWith("flavour_", StringComparison.Ordinal)).ToList();
+        var marked = _lib.Families.Except(flavour).ToList();
         int places = 0, keptPlaces = 0, keptWith = 0, crawlers = 0, forbidden = 0, forbiddenWorlds = 0, harmful = 0, ruinedN = 0, activeN = 0, floating = 0, settled = 0;
         float ruined = 0f, active = 0f;
         var crawl = new CrawlWatch(_data);
         var perWorld = new List<string>();
         var none = new List<string>();
-        int small = 0, poorBig = 0, richBig = 0, richBugs = 0;
+        int small = 0, poorBig = 0, richBig = 0, richBugs = 0, denseBugs = 0, markedForbidden = 0, markedPlaces = 0, caves = 0, caveLife = 0;
         foreach (Archetype a in Enum.GetValues<Archetype>())
             for (int k = 0; k < 2; k++)
             {
                 ulong seed = Seed();
-                var spec = new PlanetSpec(seed, a, _rng.Next(0, Planets.Gen.Archetypes.Variants(a)), k == 1 && _rng.Next(2) == 0 ? Modifier.Cratered : Modifier.None);
+                // Any size, and the second roll of each type a large one, so dense air (size 2 and up) is always among them.
+                int[] widths = PlanetSpec.Widths;
+                var spec = new PlanetSpec(seed, a, _rng.Next(0, Planets.Gen.Archetypes.Variants(a)), k == 1 && _rng.Next(2) == 0 ? Modifier.Cratered : Modifier.None,
+                    widths[k == 1 ? _rng.Next(2, widths.Length) : _rng.Next(widths.Length)]);
                 WorldRoll roll = Roll(seed, a.ToString());
                 WorldConditions w = WorldConditions.Of(spec);
                 WorldReading reading = WorldReading.Of(roll);
@@ -66,7 +70,31 @@ public partial class OccupantTest
                         if (bugs.Count > 0 && crawl.Places < 6) crawl.Run(inst, pop);
                         if (bugs.Count > 0 && settled < 40) floating += Floating(inst, planned, ref settled);
                     }
-                if (!w.Insects) forbiddenWorlds++;
+                if (!w.Insects && deep != null)
+                {
+                    forbiddenWorlds++;
+                    // Marked places and caves keep to the same rule: no insect of any role.
+                    foreach (FamilyDef f in marked.OrderBy(_ => _rng.Next()).Take(4))
+                    {
+                        Layout layout = PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, Seed());
+                        PoiInstance inst = PoiFactory.Spawn(_lib, layout, PoiState.Ruined, Seed(), null);
+                        PoiPopulation pop = PlaceFauna.Plan(new PlaceMemory(new PoiSite { Instance = inst, Family = f, Name = f.Id }), deep).Population;
+                        markedPlaces++;
+                        markedForbidden += pop?.Spawns.Count(s => DeepFauna.Insect(s.Species.Form) && !deep.Fauna.InsectsDefend) ?? 0;
+                        // And a cave's own fill, in the place's rooms as rock.
+                        if (layout.Modules.Count == 0) continue;
+                        var terrain = new Wildlife.Terrain((x, z) => 0f, 64f);
+                        var sim = new WildSim(_data, terrain, new Wildlife.NavGrid(terrain.HalfSize, 3f));
+                        BlockSpace space = PlaceFauna.SpaceOf(new PlaceMemory(new PoiSite { Instance = inst, Family = f, Name = "" }));
+                        Int3 m = layout.Modules[_rng.Next(layout.Modules.Count)].Min;
+                        var at = new Vector3(m.X + 1.5f, m.Y + 1.5f, m.Z + 1.5f);
+                        caves++;
+                        List<Creature> cave = CaveFauna.Populate(sim, space, deep.Fauna, at, 20f, Seed(), dark: deep.Life.Dark);
+                        caveLife += cave.Count;
+                        markedForbidden += cave.Count(c => DeepFauna.Insect(c.Species.Form) && !deep.Fauna.InsectsDefend);
+                    }
+                }
+                if (w.Thickness > 1f && w.Insects) denseBugs += lengths.Count;
                 int big = lengths.Count(l => l > 0.151f);
                 small += lengths.Count - big;
                 if (w.Rich < 0.6f) poorBig += big;
@@ -76,7 +104,8 @@ public partial class OccupantTest
             }
         foreach (string s in perWorld) GD.Print("    " + s);
         GD.Print($"    {crawlers} crawlers in {keptPlaces} places where insects live; ruins {ruined / Math.Max(1, ruinedN):F1} a place, lived-in {active / Math.Max(1, activeN):F1}");
-        Check(forbidden == 0, $"no crawlers where the world's climate forbids insects: {forbidden} on {forbiddenWorlds} such worlds");
+        Check(forbidden == 0 && markedForbidden == 0, $"no insects where the world's climate forbids them: {forbidden} in unmarked places, {markedForbidden} in {markedPlaces} marked places and {caves} cave fills ({caveLife} other creatures), on {forbiddenWorlds} such worlds");
+        Check(denseBugs > 0, $"dense-air worlds tested: {denseBugs} crawlers on worlds of air thicker than a start world's");
         if (none.Count > 0) GD.Print($"    none in: {string.Join(", ", none.Distinct())}");
         Check(keptPlaces > 0 && keptWith >= keptPlaces * 0.9f && crawlers <= keptPlaces * 6, $"places nobody marked have a few crawlers where insects live: {keptWith} of {keptPlaces} places, {crawlers} in all");
         Check(ruined / Math.Max(1, ruinedN) > active / Math.Max(1, activeN), "a ruin has more crawlers than a lived-in place");
