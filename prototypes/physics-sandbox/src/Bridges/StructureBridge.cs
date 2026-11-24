@@ -352,7 +352,8 @@ public sealed class StructureVessel : IVesselStructure
         StructureStats stats = StructureStats.Compute(_s);
         _mass = (float)stats.Mass;
         float cell = _s.Grid.CellSize;
-        // Base Mode leaves its thrusters idle; hover plates lift in Hover Mode and do nothing in any other.
+        // Base Mode leaves its thrusters idle; hover plates lift in Hover Mode and do nothing in any other. Both need a
+        // powered core: with its generator gone a hover vessel has no lift and goes down (into water by its density).
         bool running = mode != CoreMode.Base && stats.HasCore && stats.Powered;
         bool hovering = mode == CoreMode.Hover;
         _cockpit = GVector3.Zero;
@@ -371,7 +372,7 @@ public sealed class StructureVessel : IVesselStructure
                     running ? t.Thrust : 0f, 0f));
             }
             else if (t.Function == "gyro") _gyros.Add(new GyroSpec(t.Id, at, t.Torque, 0f));
-            else if (t.Function == "hover" && hovering) _hover.Add(new HoverEngineSpec(t.Id, underside, t.Lift, t.RideHeight, 0f));
+            else if (t.Function == "hover" && hovering) _hover.Add(new HoverEngineSpec(t.Id, underside, running ? t.Lift : 0f, t.RideHeight, 0f));
             else if (t.Function == "gear") _gear.Add(new GearSpec(t.Id, underside, t.LegLength, 0f));
             else if (t.IsCommandChair)
             {
