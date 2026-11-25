@@ -65,6 +65,49 @@ Things owned by another faction (towns, raiders, wrecks with an owner) carry tha
 - **Change record per world** (and per diggable body): terrain edits, felled plants, mined deposits, deaths, place memory (doors, damage, loot taken), salvage progress, standing changes, things set down. It's kept when the world is freed, put back when it's made again, and is what a save writes. Regrowth runs on its timers while no one is near. This matches DESIGN.md 747: per-chunk edit lists on top of the seed.
 - **The galaxy clock:** one game-owned clock. Each world's day, season and sky come from it, so a parked world's sun is where it should be on return. *(Fixes A-6.4.)*
 
+## 4b. Storage: how world data is kept
+The foundation is designed and proven already. GalHack builds on it and does not invent a new one:
+- **The design:** DESIGN.md "Persistence: nothing ever disappears".
+- **The proof:** `prototypes/saves`. It keeps one small record per thing, each with a checksum, and commits with shadow paging (one atomic rename), so a crash leaves the old save or the new one, never a mix. Every load is audited against a manifest of counts, backups roll, and versions migrate.
+- **Already in the slice:** the slice's `ZoneLedger` uses this core today for crossings.
+
+**What is stored, and what isn't.**
+- **Stored:** the seed and the *differences* from it: what players and play changed, and everything a player owns.
+- **Not stored:** anything the generator makes again from the seed (terrain, unvisited places, wildlife rolls), runtime caches, physics IDs.
+
+So an untouched world costs nothing on disk, and a visited one costs only what changed (DESIGN.md 747: per-chunk edit lists on top of the seed).
+
+**Layout (proposed)**
+```
+saves/<game>/
+  manifest              last commit, counts of records, items, blocks and owned structures
+  game                  seed, galaxy clock, mode and settings, list of sleepers
+  faction               star charts, standing, the faction's ownership
+  sleepers/<id>         vitals, pack, progress and tech, where they are (world key + position, or a ship's cabin)
+  worlds/<world key>/
+    world               last visited (for regrowth timers), world-level facts
+    terrain/<chunk>     edit lists for that chunk (removed cells)
+    bodies/<body key>/  the same for each diggable rock in a field
+    places/<site id>    place memory: doors, damage, loot taken, dead, standing
+    life                felled plants, mined deposits, remembered creatures, deaths
+    things/<id>         structures, containers, bags, devices, bikes, replicators, respawn points
+```
+- **Location is one field:** every record says which world it is in, by world key, plus a ship ID when it's aboard, so the passengers and cargo ride inside the cabin. That world key replaces today's `surface` / `moon1` / `star3/surface/b2` names.
+- **When it's written:**
+  - The host is the only writer; clients are sent the differences.
+  - A world writes its records before it parks or is freed, and a crossing commits through the ledger.
+  - A timed autosave and the rolling backups run as in the saves prototype.
+- **Loading a world** = generate from the seed, then apply its folder: terrain edits, place memory, life, then things. Loading then checks that every recorded thing came back.
+- **One question settled when it's built:** a file per chunk, or chunks packed per region. Thousands of small files across a galaxy may be slow on some disks. The record format is the same either way.
+
+**Gaps today:**
+- The slice has no saves.
+- The ledger keeps only four kinds of thing (sleeper, structure, container, device).
+- Zone names aren't stable.
+- Place memory, terrain edits, deaths and salvage progress aren't records yet.
+
+Step 3 of the order of work (section 12) adds them as record types.
+
 ## 5. Joining and leaving a world
 ```
 Attach(world): register with the world's physics, weather, tracking, lists and events
