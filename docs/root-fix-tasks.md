@@ -239,6 +239,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 **T2.4 The world manager, interest points and freezing** (L, high effort, 3 slices: the world manager split out of `Spaceflight` (Spaceflight.cs 775 lines, Worlds 297, plus parking); streaming and collision per point; wildlife, weather and places per point; depends on T2.2, T2.3, and T1.3 for simulation size from the game settings)
 - **Builds:**
   - Each world keeps its interest points: a sleeper, an occupied cabin, a destination being prepared.
+  - **An occupied cabin keeps every world up its chain in play.** Cabins nest to any depth (ARCHITECTURE.md section 2, owner 26 Nov), and a nested ship is a body in the cabin around it.
   - Streaming, collision, wildlife, weather hazards and places run per point. Collision is streamed apart from drawing.
   - A world with no points freezes at once (owner). Until T3.4, other stars are still freed as they are today and the start system stays parked, so memory doesn't grow with every star visited. Freeing every world the same way comes in T3.4, once the change record (T3.2) and the safe ledger (T3.3b) can bring it back as it was.
   - **A world with an interest point is never freed.** Today `FreeAbroad` (Fold.cs:288, :303) frees every other star's system on every fold, so a second sleeper's fold would free the first sleeper's star.
@@ -335,6 +336,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - Engine-wide state (shader globals, environment, `AudioServer` buses) is written only by the drawn world's view.
   - Cabins are made for occupied ships only. When a cabin is freed, everything loose in it (cargo, bags, creatures) is committed into the ship's record and comes back when the cabin is made again (ARCHITECTURE.md 2c).
   - Things aboard get `Outside = ship.World`, which T4.4's lookup uses as a cabin's parent.
+  - **Cabins nest to any depth** (owner, 26 Nov: "A cabin can be inside a cabin can be inside a cabin"). `Outside` may itself be a cabin, and lookups walk the chain out to the first world that isn't one. Inner cabins are freed before outer ones, and a freed cabin commits the ships in it, each with its own record, into its ship's record.
   - A base isn't a cabin world: it never moves, so it stays a fixed body in its world (Vessel.cs:339-341). T4.4's lookup finds it by position.
   - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
   - **Engine-wide render state has one owner, the drawn world's view.** Today it's written by many places:
@@ -369,6 +371,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Proof:**
   - a passenger walks out mid-tunnel and arrives beside the ship;
   - clamped ships arrive clamped;
+  - **a nest arrives whole:** a carrier jumps with a frigate in its cabin and a shuttle in the frigate's, with a sleeper in the shuttle. All three arrive nested, and the sleeper's air and gravity are read up the chain throughout;
   - **nothing arrives Frozen.** The tunnel's `Hold` (Jump.cs:169) once left ships arriving "landed". ae0d775b's wake-on-turn covered it, but the root (`CheckLanding` settling after the hold) was never traced.
 - **Note:** "a crash mid-tunnel reloads at the start" is proven in T3.3b.
 
@@ -410,7 +413,8 @@ Needed before star travel ships and before saves. T3.1a and T3.3a are listed in 
 - **Proof:**
   - crash at every step of a park, a free, two crossings at once and a jump mid-tunnel (it reloads where the jump began); every count matches on reload;
   - quit and load: the clock, mode, charts and standing, and each sleeper's vitals, level, tech, pack and world all match;
-  - two sleepers are both saved and both come back.
+  - two sleepers are both saved and both come back;
+  - **ships nested three deep** (a shuttle in a frigate in a carrier, with loose cargo in each) come back nested with every count matching, after a save and reload and after their cabins are freed and made again.
 
 **T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3a, T3.3b, T3.1b (nothing may hold a freed world's objects), T2.4, and T2.5 and T2.6, which remove the roughly 20 starter holds)
 - **Builds:** freeing for every world: a frozen world stays loaded about 2 minutes, then is freed to its record, with a full collection spread over frames so its memory comes back (ARCHITECTURE.md 2b).
@@ -495,6 +499,7 @@ Each unifies a job and deletes the copies.
   - one answer for wind, lightning, creatures, rain and the suit at the same spot;
   - two sleepers in one cabin read the same air; opening its door in orbit drains it to vacuum for both;
   - a ship parked inside a sealed base room on an airless moon reads the room's air;
+  - **three deep:** a sleeper in a shuttle with no air of its own, inside a frigate with its life support off, inside a powered carrier, reads the carrier's air. Opening the carrier's bay in orbit drains all three in turn;
   - with life support powered, a sealed room on an ice world or a lava world eases to full oxygen and 20 °C; with it off, the room holds, then drifts to the outside's;
   - a room's air is the same after a save and reload. T4.4 adds pressure to the room record T3.3b saves.
 
@@ -525,7 +530,7 @@ Each unifies a job and deletes the copies.
   - the shared spring (`HoverController.Cushion`: 1.2 Hz, damping 0.4, vertical only, push only);
   - `Follow` (tilt keeps heading, no self-turn);
   - hover lift only on a powered core.
-- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. A bag tossed in orbit drifts; tossed in a powered cabin it falls at 1 g, and with the core's gravity off it drifts. Aboard a powered base on a high-g world you're at 1 g, and still are after its roof is blown off, while its air vents. A ship with its core off parked in a powered carrier is at the carrier's 1 g. Aboard a powered ship on a high-g world you and its loose cargo are at 1 g; switch its core gravity off and both take the world's. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
+- **Proof:** three deep, the innermost working core gives 1 g, and with its core off a ship takes the next one out, then the world. On a low-gravity moon the bike and creatures fall by the moon's gravity. A bag tossed in orbit drifts; tossed in a powered cabin it falls at 1 g, and with the core's gravity off it drifts. Aboard a powered base on a high-g world you're at 1 g, and still are after its roof is blown off, while its air vents. A ship with its core off parked in a powered carrier is at the carrier's 1 g. Aboard a powered ship on a high-g world you and its loose cargo are at 1 g; switch its core gravity off and both take the world's. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
 
 **T4.6 Events, sound and markers** (M, medium effort; depends on T2.7, and T2.5, which moves markers onto the sleeper's world)
 - **Builds:**
