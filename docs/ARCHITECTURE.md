@@ -24,6 +24,7 @@ These rules are the general case. No band-aids: a fix that patches one case brea
    - A system acting for a thing reads `thing.World` on each call and keeps no copy. No system stores a world, planet, weather, wildlife, places or sound reference in a field.
    - There is no game-wide "current world".
    - A worker job (world building, place building, sky baking) carries the world key plus that world's generation number. It drops its result if the world was freed or rebuilt meanwhile.
+     - Today's jobs with no such check: `Place.RebuildStale` (broken chunks meshed on a worker and put in a piece at a time), the `DepositFinder` recount, and `TerrainStreamer`'s voxel and height jobs. Step 1 sweeps them.
 2. **Each world in play has its own Godot world** (DESIGN.md 1578): its own World3D, physics space, navigation and scene root.
    - Rays and shape queries go only through that world's `WorldQuery` (section 6), never through `GetWorld3D()` of whatever node is at hand.
    - Parking a world pauses its space. It never shelves bodies by clearing collision layers, as `Spaceflight.Park` does today.
@@ -71,6 +72,9 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
 
   Bases, turrets, machines and parked ships never hold a world. A world with no points is frozen at once (owner: "there is literally no reason to have them active in memory"). It stays loaded but frozen for about 2 minutes (owner, 25 Nov), so hopping between surface and orbit doesn't regenerate it. Nothing in it ticks during that time. Then it is freed to its record.
 - **Several points on one world:** streaming, wildlife, weather hazards and places run around each point, not one `Focus`. *(A-R2.)*
+  - Collision streams around every interest point, and around any fight the host simulates.
+  - Today `Streamer.CollisionRadius` is set from one sleeper's vehicle (Game.cs:925), and rounds past it fall back to the height map.
+  - Collision streaming is separate from drawing. An undrawn world streams collision only (rule 12).
 - **Frames:** the host simulates each world in one fixed frame centred on the zone (DESIGN.md 1580: pinned origin, the map wraps, about 2 mm precision). Simulation positions never shift. Only clients offset what they draw. An orbit zone's size is limited so precision holds. *(A-2.2, A-4.6.)*
 - **Cabins:** each occupied ship's cabin is its own world (DESIGN.md 1582), made when a sleeper boards and freed when the ship is empty and parked. It isn't made for every vessel; today every vessel, wrecks included, builds a `CabinWorld` (Vessel.cs:406-409).
   - A thing aboard has `World = cabin` (where it moves) and reads `Outside = ship.World` for air, weather, exposure and gravity outside.
@@ -91,9 +95,18 @@ Co-op players may be any distance apart, systems apart included (owner). The hos
 The frame budget has to hold that peak.
 - **Simulation only, off the view:** the worlds not drawn run simulation only (rule 12).
 - **A tick budget per world:** each extra world runs AI, wildlife and places at a lower rate. *Its numbers come from the step 2a prototype.*
+- **Process-wide budgets are split or shared by a stated rule:**
+  - `FramePacer` paces at 60, and `TerrainStreamer.UploadBudgetMs = Pacer.Room` (Game.cs:924) is one room per frame.
+  - `GcPacer` collects every 16 MB, and the garbage from every world shares it. Damage work doubled the allocations.
+
+  Each gets a per-world share, or is split per world.
 - **Threads:** heavy world work (generation, place building, AI batches, record writing) runs on workers across the cores (owner: "use all the cores"). The plan for which thread runs which world comes from the prototype.
 - **No whole-world writes on the main thread:** records are dirty-tracked and written in small pieces off the main thread. *(The ledger's own note, Fold.cs:487-490: one wreck's blueprint at every commit "was 140 ms a fold".)*
 - **The gate:** 4 occupied worlds plus 2 cabins, on the 4-core GTX 1050 stand-in at the lowest preset, holding 16.7 ms with headroom.
+  - It runs as a multi-world PopRoute route.
+  - There is no headroom to assume. Today's single world on the owner's settings already fails bike and fly frame checks (13 fails on 18 Nov), so step 2a starts from a measured baseline.
+  - It's measured on the Mobile renderer. Forward+ was rolled back on 23 Nov (far lamps bloomed into flickering blobs) and stays off until that's understood.
+- **View-side jobs follow rule 12:** far tree models (proto/forests) and voxel ground to the horizon (`TerrainStreamer`). They exist only for the drawn world.
 - **Engine options for the owner** (engine work is on the table): physics spaces stepped on their own threads, and a simulation-only World3D with no rendering cost.
 
 ## 3. Who claims what, and where it is held
@@ -168,7 +181,7 @@ These are the paths the new model adds. Item loss is a release blocker (DESIGN.m
 
 The rules:
 - **One commit queue.** Commits run one at a time, on a worker. Parks, frees and every sleeper's crossings queue up; none overlap.
-- **Gone only when destroyed.** A record is removed only when its holder reports it destroyed (a body emptied, a block taken apart). A holder that is merely missing, because its world is parked, freed or loading, is never "gone".
+- **Gone only when destroyed.** A record is removed only when its holder reports it destroyed: a body emptied, a block taken apart, or a death bag that vanishes when its last item is taken (`Lootables.Tick`, owner 17 Nov). A holder that is merely missing, because its world is parked, freed or loading, is never "gone".
 - **The order of a `Move`:**
   1. commit the thing's new world;
   2. `Detach(from)`;
@@ -191,17 +204,25 @@ Move(from, to)           section 4c's order
 ## 6. One path per job
 | Job | The one path (proposed) | It replaces |
 |---|---|---|
-| Queries | `WorldQuery` per world, on that world's own physics space (rule 2), with named masks (Sight, ShotStop, Cover, Use); the look, the cabin and the ignore list handled once | About 15 direct `GetWorld3D().DirectSpaceState` calls, separate AI sight masks, along-the-look tests, the E-prompt order (B-R7) |
-| Harm | `Harm` event (amount, type, point, direction, radius, `Source`, tags) plus one spatial query; each target kind has an adapter with its own armour, resistance and HP; one falloff, one health unit | Three blast copies, two ram copies, two people sims' damage, two health units (B-R1) |
-| Take-apart | Salvage is harm by the tool class on a thing with HP and a bill; one yield formula, with the claim check inside it | Seven yield formulas, and orbit's hand salvage (B-R2, offworld #26) |
+| Queries | `WorldQuery` per world, on that world's own physics space (rule 2), with named masks (Sight, ShotStop, Cover, Use); the look, the cabin and the ignore list handled once | About 15 direct `GetWorld3D().DirectSpaceState` calls, ArmsHost's own `RayCast3D` node (ArmsHost.cs:50, 68), separate AI sight masks, along-the-look tests, the E-prompt order (B-R7) |
+| Harm | `Harm` event (amount, type, point, direction, radius, `Source`, tags) plus one spatial query; each target kind has an adapter with its own armour, resistance and HP; one falloff, one health unit | Three blast copies, two ram copies, two people sims' damage, two health units (B-R1); the per-target damage copies in `ArmsHost.World.cs`, `PoiPlaces.Damage.cs` and `SurfaceZone.Felling.cs` (`WearPlant`) |
+| Take-apart | Salvage is harm by the tool class on a thing with HP and a bill; one yield formula, with the claim check inside it | Seven yield formulas, `SleeperTool.CutPlant`, and orbit's hand salvage (B-R2, offworld #26) |
 | Built things | One block-world interface for `Structure` and `Place`: cells, HP, doors, rooms, collapse, damage look; doors, caches and collapse written once against it | Three forms of built thing, three door systems, two collapse rules (B-R3) |
 | Shelter | `Exposure(point)` on the world: sky open, roof, enclosed room (sealed or not, whose), depth | Nine shelter tests, the bunker special case (B-R4, C-E) |
-| Ground and gravity | A `Ground` service per diggable body (`Top`, `Natural`, `Gravity`) | Five ground lookups, gravity constants per system (B-R5) |
+| Ground and gravity | A `Ground` service per diggable body (`Top`, `Natural`, `Gravity`) | Five ground lookups; `ArmsHost.SolidHit` (ArmsHost.cs around 559-638), whose height-map fallback is `Streamer.CollidesAt` plus `TerrainStore.Raycast`; gravity constants per system (B-R5) |
 | Vehicles and seats | The bike is a small hover body in the shared physics; riding is one seated state | The bike's own integrator, the `Seated`/`OnBike` split (B-R6) |
-| Events | `WorldEvent` (kind, point, loudness, material, `Source`); audio, AI hearing, visor cues and effects subscribe | Four hand-made calls per event, four voice pools (B-R8) |
-| Markers | `Markers(world, viewer)`; the visor and maps only filter and draw | Three marker lists (B-R9) |
+| Events | `WorldEvent` (kind, point, loudness, material, `Source`); audio, AI hearing, visor cues and effects subscribe | Four hand-made calls per event, four voice pools (B-R8); `WildlifePatch.Noise` and `Town.Gunfire` from the NPC reactions work, turret gunfire included |
+| Markers | `Markers(world, viewer)`; the visor and maps only filter and draw. It keeps the owner's 17 Nov rule: only the viewer's own map marks and scan results, plus always our bags, our structures, and the bunker on its own world | Three marker lists (B-R9), `Visor.Markers`' `Game.Bunker` and `Zone == Surface` checks (Visor.cs:415) |
 | Entry points | The shared path is the only way in (`Planet.Felled` private to `Fell`; one inventory `Receive(bill, at, from)`) | Callers going round `Fell`, `Add`, `Spill` (B-R10) |
 | Wreck | One wreck state on the structure (no core, no claim) | Four definitions (C-F) |
+
+**The owner's damage rules (17 Nov) that Harm and Take-apart must keep** (playtest list, Combat, "SHOTS DAMAGE EVERYTHING"):
+- Any weapon, from any source, damages any block, place piece, door, piece of dressing, the ground and trees.
+- Only the Sleeper tool gives materials. In GATHER mode it wears blocks at 5 HP/s.
+- Each tool blast that hurts a person, animal or Husk gives +1 biomass.
+- Gathering a corpse gives 1 bio. Its loot goes to the bag, and the overflow to a sack.
+- A destroyed corpse spills one bag. Loot stays on corpses.
+- Trees, plants and boulders have HP, worn by the same path.
 
 ## 7. Facts, not names
 - **Item use:** an item's use and hand kind come from its data, not from its ID (`"hover-bike"`, `"scanner"`, `"meat"`).
@@ -245,6 +266,8 @@ From [test-coverage-audit.md](test-coverage-audit.md).
   - section 4c's crash points;
   - a 4-world soak against section 2b's budget.
 - **Tests don't quiet the world to pass.** Calming weather or freezing wildlife is only for a check about something else, and never across a crossing.
+  - The one allowed quieting is frame measurement. PopRoute `--check=1` freezes wildlife for a stable baseline.
+  - Every test-build frame check also runs once `--live`, and off the starter.
 - **No silent pass.** A check that finds nothing to test rolls again, up to a set number of tries, then fails and prints the seeds. Tests always quit themselves.
 - **One `Check`** in the shared testing code. Tests that assert a bug are rewritten to assert the rule.
 - **Seeds stay random every run.** At most 4 Godot runs machine-wide, through the queue scripts. Each multi-world test counts as one run.
@@ -290,7 +313,14 @@ Reject a change that:
 
 ## 12. Order of work
 Each step is a root fix, merged green with its checks, and gated on this doc's approval. A replacement merges only with the deletion of what it replaces. No step leaves the game broken.
-0. **The harness:** `WorldChoice` with a start `WorldKey`, `Harness` with `Arrive`, `AddSleeper` and `SaveAndReload`, the world probe, and one `Check`. Then write each audit finding's failing check. Every later step is proven against these.
+0. **The harness:**
+   - `WorldChoice` with a start `WorldKey`.
+   - `Harness` with `Arrive`, `AddSleeper` and `SaveAndReload`.
+   - The world probe, and one `Check`.
+   - Each audit finding's failing check.
+   - Into repo tools: the test queue, the quiet frame check (`quietpop.ps1`) and the owner's settings file (`owner-settings.cfg`). They live in the Director's scratchpad today.
+
+   Every later step is proven against these.
 1. **Statics, attach and settings:**
    - a per-world build context in place of the statics (structure S3), which fixes "every world is built as a start world" and the forced roll everywhere;
    - `Attach`/`Detach` with handles (S4), which fixes the weather leak and the shots' frame shift;
