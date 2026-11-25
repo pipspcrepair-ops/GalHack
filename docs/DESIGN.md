@@ -1037,6 +1037,8 @@ Players can leave the pilot seat and walk around inside any vessel while it flie
 | Core gravity on and core powered (the default) | 1 g toward the core's "down" axis, whatever the ship's attitude | Moves with the ship; walking, jumping and dropped items behave as if the ship were standing still |
 | Core gravity off or core unpowered, in space | Zero g | Floats and steers with the jetpack, still carried along with the ship |
 | Core gravity off or core unpowered, on or near a planet | The planet's gravity, toward the planet | Floors tilt with the ship |
+| Core gravity off or core unpowered, docked in a ship or base whose core gravity works | That structure's 1 g | Moves in the outer structure's frame |
+| Inside a base with its core working (its own bounds, open decks included; roof blown off or not) | 1 g, whatever the world's gravity | Air needs its sealed rooms, gravity doesn't: a holed room vents but stays at 1 g |
 | Stepping outside the hull | World gravity | Leaves the ship's frame, keeping the ship's velocity at that moment |
 
 - Inside the hull, players, guards, loose items and docked craft move in the ship's frame. They inherit its velocity and rotation, and its acceleration doesn't throw them around.

@@ -66,7 +66,7 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
   1. Rebuild every project, so a stale DLL can't fake a result (owner rule).
   2. Run the test suites through the queue, at most 4 Godot runs.
   3. Give every scene a hard timeout. A scene that doesn't quit itself fails the run and reports its PID to the owner. Nothing is killed (owner rule).
-  4. Run the frame check on the branch.
+  4. Run the frame check on the branch against the baseline from test-build's reflog (T0.2). Only a regression fails the gate: today's build already fails bike and fly frame checks (ARCHITECTURE.md 2b, 13 fails on 18 Nov), and those stand as the baseline.
   5. Scan the diff for the ARCHITECTURE.md section 10 patterns: a `readonly` world field, `Game.Surface` or `Game.Survivor` in simulation code, a `+=` on a world outside `Attach`, `?.` on a system, a direct `GetWorld3D()` query, string ID compares, new statics with state.
 - **Known failures:** built from a full run of test-build when T0.5 merges, so the gate is green on today's code. Every entry gives its cause and its owner: a T task, or "outside the root fixes" with its playtest item. The gate fails only on failures not on the list, and the owner takes its entry off when it fixes it. Known before that run:
   - InsideTest `--unseen` (T2.6), SleeperToolTest "a door on someone else's structure is shot out of it" (T4.2), MoonTest's climb into orbit (T1.6);
@@ -155,11 +155,11 @@ Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.6 are independent of each other. T1.4
   - SA C-C1, C-C2, A-3.6;
   - OW risk 2 (the suit's temperature clamp is the starter's);
   - the two settings stores (`user://settings.cfg`, GameSettings.cs:22, and `user://audio-settings.json`, SliceAudio.cs:39) become one;
-  - **a core's 1 g is one game constant** (`Units.StandardGravity`), not a planet rule. Today it reads `zone.Data.Rules.Planet.Gravity` (Vessel.cs:322, 360; Vessel.Hulk.cs:86), which this task makes per world, so cores would take a high-g world's pull;
+  - **a core's 1 g is one game constant** (`Units.StandardGravity`), not a planet rule. Today it reads `zone.Data.Rules.Planet.Gravity` (Vessel.cs:322, 360; Vessel.Hulk.cs:86), which this task makes per world, so cores would take a high-g world's pull. A wreck claimed in orbit takes the starter's surface gravity instead (`Claimed(Game.Surface.Physics.Zone.Strength)`, Spaceflight.Hands.cs:239). All four take the constant;
   - **a world's gravity is standard g × its own `GravityScale`** (DESIGN.md 588). Today a body's gravity is the starter's surface gravity scaled by its size against that system's home (`StarSystem.GravityOf`, StarSystem.cs:154, fed `Game.Surface`, Spaceflight.Worlds.cs:119, 129), so another star's worlds are scaled from the starter. `GravityOf` goes.
 - **Proof:** switch to Creative while away, arrive at a world made earlier, and its machines charge nothing. A frozen moon's own rules give its temperature range, not the starter's, checked on the world's rules. A world at another star has standard g × its own scale. A core on a high-g world still gives 1 g. (The suit reads them in T2.5, which proves it in play.)
 
-**T1.4 Every world has every system** (M, high effort; depends on T0.1a's probe and T1.3, because air and the other facts come from the world's own spec)
+**T1.4 Every world has every system** (L, high effort, 3 slices: every system on every world, with the probe; no swallowed faults and required collaborators; one air figure; faults it uncovers go on T0.5's known-failure list with an owner; depends on T0.1a's probe and T1.3, because air and the other facts come from the world's own spec)
 - **Builds:** orbit and every other zone get the same systems as a surface, with empty data and named facts (`HasAir`, `HasLife`, `HasWater`, ground present). This replaces stand-ins and nulls.
 - **Deletes:**
   - every `Zone?.Planet == null` early return: ArmsHost.cs:110, BlockDoors:166, ForceFields:62, SkyLight:91, PoiPlaces:127/144, RuinLoot:36, Underworld:57, PlaceFauna:599, Hulks:61, SkyTraffic:108, Game.Scanner:65, BuildTool.Whole:149;
@@ -170,6 +170,7 @@ Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.6 are independent of each other. T1.4
   - **No fault is swallowed** (SF R4). A generator or meshing fault is logged with its world key and seed and fails a test run, never dropped quietly: `catch (Exception) { continue; }` with no log (Place.Deco.cs:79, HullVessel.Finish.cs:143, Town.cs:513), `catch (KeyNotFoundException)` that skips or returns false with no log (Town.Rooms.cs:77, PlaceParts.cs:86), and places, hulks, meshes and routes dropped after `PushError` (PoiPlaces.cs:312, Hulks.cs:69, Place.cs:419, Town.cs:367, Town.Runs.cs:94).
   - **Dust reads the world's grit through the world,** not `Zone.Planet.Grit` (ArmsHost.cs:1069; SleeperTool.cs:338, 379, 451; SF #5), which throws once orbit has dust.
   - **Required collaborators are required.** SleeperTool's `Places`, `Debris`, `Sfx`, `Fx`, `Arms` and `Builder` are passed in when it's made, not set afterwards and called with `?.` 30 times (SleeperTool.cs:53-60; SF #10). A missing decorations library or physics `Hover` block fails loudly instead of falling back silently (Place.Deco.cs:36-45, HoverBike.cs:440; SF #11, #12). Hooks that default to stand-ins which look like they work go too, such as `Focus = () => Vector3.Zero` (PoiPlaces.cs:32, Hulks.cs:30, RuinLoot.cs:22, SkyTraffic.cs:31; SF #9): they're passed in when made.
+  - **Orbit's loot is made like a surface's:** today orbit's `Lootables` is made without `BodyAt`, `Settle` or `DrawnOf` (OrbitZone.cs:180; SA G1).
   - **Wrongness isn't forced to 0 in space** (Game.Wrongness.cs:52; SA C-G1). It comes from the world, which has no Husks in orbit until they're placed there.
   - Orbit's empty weather still gives the `Strike` and `Events` API, with no hits. (`Hazard` and `Hazards` are already gone.)
   - **Air is one fact per world, not a bool.** Today two oxygen sources disagree:
@@ -201,19 +202,19 @@ Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.6 are independent of each other. T1.4
 In slices, each merged on its own, within the budgets T0.4 set.
 
 
-**T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1a only, so it can start beside Tier 1; needed by T2.8a and T3.1a)
+**T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1a, and T1.4 so new air values feed one oxygen figure, not today's two; needed by T2.8a and T3.1a)
 - **Builds:** the galaxy made from the game seed, with the start star and body chosen in it.
 - **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
 - **One star model.** Today there are two: the galaxy's `StarKind` (12 kinds, shared/Galaxy/Core/Galaxy.cs:8, with only a brightness) and the system's `StarClass` (5 values, planet-surface/src/Sky/SkySystem.cs:8), which is what lights a world. `SkyRig.ClassOf` (SkyRig.cs:826) folds 12 into 5, so blue giants, pulsars, magnetars and black holes all become blue-white, and red giants become orange. `StarClass` and both mappings are deleted. Each star carries the physical numbers its class gives: temperature, radius, mass and brightness, from solar-systems.md step 1's star table. Subclasses and the wider spread are F7. Colour, light, its size in the sky, the zones and the worlds' temperatures all come from those numbers.
-- **The start is picked the right way round.** Today the planet is chosen first and the star rolled to suit it (`SkySystem.PickStar`, SkySystem.cs:172-176), which can give a start a red dwarf, white or blue-white star. solar-systems.md says start systems are always G or K.
+- **The start is picked the right way round.** Today the planet is chosen first and the star rolled to suit it (`SkySystem.PickStar`, SkySystem.cs:167-176), which can give a start a red dwarf, white or blue-white star. solar-systems.md says start systems are always G or K.
 - **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`); **MOONS: NO RINGS, SMALL ONES AIRLESS**: rings and air are rolled in the system model from the body's kind and size. This changes only how the planet's spec gets its values; T1.4's one oxygen figure already reads the spec.
-- **Proof:** the start star's system matches what the galaxy gives that star. A red giant, a white dwarf and a black hole each keep their own kind through to the sky (F1 then draws how a black hole lights).
+- **Proof:** the start star's system matches what the galaxy gives that star. A red giant, a white dwarf and a black hole each keep their own kind through to the sky (F1 then draws how a black hole lights). Small moons are airless and no moon has rings.
 
 **T2.2 Each world its own World3D, and `WorldQuery`** (L, high effort, 3 slices: a World3D per world with today's parking deleted; `WorldQuery` for every ray and shape query; one fixed frame and the A* grids per world; depends on T0.4 and Tier 1: worlds built from their own context (T1.1), things moved between worlds by handles (T1.2), and every world with every system (T1.4))
 - **Builds:** every world in play gets its own physics space and scene. Every ray and shape query goes through that world's `WorldQuery`, with named masks.
 - **Replaces:**
   - the direct `DirectSpaceState` calls (about 29 sites in slice and shared code);
-  - the static `WorldRay` (Game/WorldRay.cs, 27 uses, with its static `Ignored` list), so it doesn't survive as a second ray path;
+  - the static `WorldRay` (Game/WorldRay.cs, about 23 to 27 uses, with its static `Ignored` list), so it doesn't survive as a second ray path;
   - ArmsHost's `RayCast3D` node;
   - the separate AI sight masks;
   - parking by clearing collision layers.
@@ -229,10 +230,10 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds the claims** (ARCHITECTURE.md section 3): every lasting thing has a claim (a sleeper, the Sleepers faction, an NPC faction or none), kept apart from where it is held. The Sleepers faction record holds structures, vessels, bags, charts and standing. Today nothing records this: `Spaceflight.Claim` only takes a wreck. T2.5's command-chair check, T3.3's "the faction's last base", T4.3's yield and T4.7's `Spill` all read it. A destroyed core changes its claim: today `CoreDestroyed` (PoiPlaces.Interact.cs:327-335) has no subscriber, so shooting out a faction core changes nothing (SF #19).
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4). Respawn is per sleeper, not hard-wired to the bunker (decided-vs-built.md 2.2). The other respawn choices there (home base, clone chamber, tent) are features built on this later.
 - **World things come out of the sleeper's models** (SA A-R3, S7, A-3.1 to 3.4). Today the suit's survival sim (`SurvivalSim`) holds the world's replicators, pods, bushes and food caches as bare positions and counters, `Death` keeps backpacks on one suit's clock, and charts and travel state sit in `Spaceflight` (`Charts.Mark` has no world). The survival sim keeps only vitals. Replicators, pods, caches, bags and respawn devices become world things, held by the world they're in, so they take frame shifts like anything else (A-3.3). Charts and standing go to the Sleepers faction record.
-- **Room air comes off the suit too.** Today every room's air lives in the one sleeper's suit (`_roomsAir` and `_airOf`, Suit.cs:69-70): two sleepers in one cabin each keep their own copy, people and creatures can't read it, it's never saved, and a room's air only moves while that sleeper stands in it. Each room's `RoomAir` is held by its structure or place, keyed by the room, and advanced on the world's clock. The suit's `Breathe` (Suit.cs:258-300) moves out with it. T4.4 then makes these nested air volumes.
+- **Room air comes off the suit too.** Today every room's air lives in the one sleeper's suit (`_roomsAir` and `_airOf`, Suit.cs:69-70): two sleepers in one cabin each keep their own copy, people and creatures can't read it, it's never saved, and a room's air only moves while that sleeper stands in it. Each room's `RoomAir` is held by its structure or place, keyed by the room, and advanced on the world's clock. The suit's `Breathe` (Suit.cs:253-300) moves out with it. T4.4 then makes these nested air volumes.
 - **One breather model**, not a rule owned by the sleeper's suit (hold, tank, suffocation, from survival-vitals/data/vitals.json). Built for sleepers now, in a shape people can use later. It breathes the air of the room it's in, held by that room's structure or place; T4.4 then answers which volume a point is in. Today a closed town room gives people air but not the sleeper: a closed place sets the suit's room to `Closed` with its RoomAir (Suit.cs:290-297), but `InSealedRoom` is set in `Suit.Tick` (Suit.cs:314) only from structure rooms or the bunker.
 - **Closes:** OW#1 (respawn in the wrong world); SA A-R1 (A-1.1 to 1.9), A-R3 (A-3.1 to 3.4), A-6.3; `Harness.AddSleeper` goes live.
-- **Proof:** two sleepers on the start world are both targeted, hurt and credited (on other worlds once T2.4 hooks their wildlife to every sleeper). Each wakes in their own pod. (Saving both is proven in T3.3.)
+- **Proof:** two sleepers on the start world are both targeted, hurt and credited (on other worlds once T2.4 hooks their wildlife to every sleeper). Each wakes in their own pod. Two sleepers in one cabin share one room air, and a person in that room reads it too. (Saving both is proven in T3.3.)
 
 **T2.4 The world manager, interest points and freezing** (L, high effort, 3 slices: the world manager split out of `Spaceflight` (Spaceflight.cs 775 lines, Worlds 297, plus parking); streaming and collision per point; wildlife, weather and places per point; depends on T2.2, T2.3, and T1.3 for simulation size from the game settings)
 - **Builds:**
@@ -288,7 +289,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
 - **Force fields stay per vessel:** power draw (`v.Power.AddLoad(Draw(v))`) and `PoweredFor` read the vessel's own power and wreck state, never the world's. The door hook that feeds fields across open doors (`BlockDoors.OpenDoors`) keeps working.
 - **E always reaches doors and containers.** A held item never takes E from a door or a container. On vacarms, holding a blueprint off-world let the builder take the aim, and a wreck door's E prompt went blank at 3.0 m. The hands chain is Game/Game.cs:729-750. One E order comes from `WorldQuery`'s Use mask (T2.2).
-- **Claiming a wreck** (a core in hand) moves into the building slice as ordinary core placement through the build tool, at the same reach as any E action. Today `Spaceflight.Claim` works at any range; vacarms made it UseReach+1, derelicts only. The claimed wreck's core gives the standard 1 g, as a ground claim does (Vessel.Hulk.cs:86), not the starter's surface gravity (`Claimed(Game.Surface.Physics.Zone.Strength)`, Spaceflight.Hands.cs:239).
+- **Claiming a wreck** (a core in hand) moves into the building slice as ordinary core placement through the build tool, at the same reach as any E action. Today `Spaceflight.Claim` works at any range; vacarms made it UseReach+1, derelicts only.
 - **Proof:**
   - weapons, the tool and building work in orbit, on a vacuum moon and at another star, and shots step in orbit;
   - doors on any ship open and animate cleanly off-world;
@@ -304,8 +305,8 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - Undrawn worlds run simulation only.
   - Engine-wide state (shader globals, environment, `AudioServer` buses) is written only by the drawn world's view.
   - Cabins are made for occupied ships only.
-  - Things aboard read the ship first (its rooms' air, its core's gravity), then `Outside = ship.World`.
-  - A base isn't a cabin world: it never moves, so it is a frame on its world (Vessel.cs:339-341). The air and gravity rules find a base's rooms and core the same way as a cabin's.
+  - Things aboard get `Outside = ship.World`, which T4.4's lookup uses as a cabin's parent.
+  - A base isn't a cabin world: it never moves, so it stays a fixed body in its world (Vessel.cs:339-341). T4.4's lookup finds it by position.
   - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
   - **Engine-wide render state has one owner, the drawn world's view.** Today it's written by many places:
     - `SunShadows.Apply` sets the directional shadow atlas, the soft shadow filter qualities and the viewport's positional atlas (SunShadows.cs:63-66). It runs only from `ApplyScene` on a settings or zone change (Game.Settings.cs:112-139).
@@ -319,7 +320,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - **PLANET TO SPACE**: the planet left behind showing a low-detail skin (with T3.4).
 
   Far trees and horizon voxels follow this rule when built.
-- **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins.
+- **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins. After a return from another world, only the drawn world's suns cast shadows (PopRoute.Edges' shadow-casting sun count). The weather shader globals are the drawn world's, whichever zone was entered last.
 
 **T2.8a Jumps per vessel** (M, high effort; depends on T2.3, T2.4, T2.9 (fold targets are star indices today, `FoldTo(int)`), and T2.5, T2.6 and T2.7, so both sleepers can play at their stars)
 - **Targets are star keys** (T0.1a's `WorldKey`, from T2.9's galaxy), not list indices.
@@ -463,9 +464,10 @@ Each unifies a job and deletes the copies.
   - **every sealed volume owns its air:** a ship's or base's room, a closed room in a place, the bunker. It holds oxygen, temperature and pressure, and is kept with its structure or place;
   - **volumes nest:** each has a parent, another volume or the world's own air. A ship parked inside a sealed base room reads that room, which reads the planet;
   - **openings link a volume to its parent:** an open door or a hull breach. Air equalises through them, so a holed room drains to its parent (vacuum in orbit);
-  - **life support** tops up a structure's sealed rooms. The device already exists: the life support pod (`HasLifeSupportPod` and `Vessel.LifeSupport`, Vessel.cs:146-160; playtest LIFE SUPPORT IN CORE STRUCTURES). It feeds the volumes, on the power model; no new device. With the power off, a room holds a while, then drifts to its parent, as `RoomAir` does today;
+  - **life support regulates oxygen and temperature in every enclosed space** of its structure (owner, 25 Nov): powered, a sealed room eases to full oxygen and the comfortable temperature, as `RoomAir.Advance` does today (RoomAir.cs:27-36); off, it holds a while, then drifts to its parent's. The device already exists: the life support pod (`HasLifeSupportPod` and `Vessel.LifeSupport`, Vessel.cs:146-160; playtest LIFE SUPPORT IN CORE STRUCTURES). It feeds the volumes on the power model; no new device. A place's closed room without one only shelters part of the way from the outside temperature, as today;
   - **area sources** such as the survival climate pod (9 m, fuelled) warm a radius in the open; they're not volumes.
-- **Builds:** one `Exposure(point)` query that finds the innermost volume at a point, then its parents, then the world. Sleepers, people, creatures, weather and later fire (F3) all ask it. The air rule moves off the suit (`Suit.Outside`, Suit.cs about 142: no air below `SurfaceWeather.NoAir` density or above the 1,060 m ceiling) onto the world.
+- **Builds one lookup, "what am I inside"**, used by air here and by gravity in T4.5: for a point or a thing, the innermost structure and sealed volume it's in, then the parent. A volume's parent is the volume or structure around it; a ship's is the ship it's docked on (`ParkedOn`, PhysicsWorld.cs:126, 151), else `Outside`; a base's is its world. A base is found by position, since people on a base aren't riding it.
+- **Builds:** one `Exposure(point)` query on that lookup: the innermost volume at a point, then its parents, then the world. Sleepers, people, creatures, weather and later fire (F3) all ask it. The air rule moves off the suit (`Suit.Outside`, Suit.cs about 142: no air below `SurfaceWeather.NoAir` density or above the 1,060 m ceiling) onto the world.
 - **Closed rooms on every world:** places, ships' cabins and sleepers' bases answer the same closed-room question. Today room air is only `Place.Closed` (Places/Place.Air.cs:28) plus RoomAir's kinds (Player/RoomAir.cs:7), and the bunker is a hard-coded full shelter (Suit.cs:104). The bunker becomes a powered sealed structure like any other.
 - **Replaces:** the nine shelter tests, `RoomKind` and the suit's room check (`InRoom`, Suit.cs:211-235). `Breathe` already left the suit in T2.3.
 - **Closes:** SA B-B14 (a 3 m hole counts as shelter), OW#9's `Shelter` and `Enclosed`, C-E1 (the suit's shelter check knows only the bunker).
@@ -473,17 +475,19 @@ Each unifies a job and deletes the copies.
   - one answer for wind, lightning, creatures, rain and the suit at the same spot;
   - two sleepers in one cabin read the same air; opening its door in orbit drains it to vacuum for both;
   - a ship parked inside a sealed base room on an airless moon reads the room's air;
+  - with life support powered, a sealed room on an ice world or a lava world eases to full oxygen and the comfortable temperature; with it off, the room holds, then drifts to the outside's;
   - a room's air is the same after a save and reload. T4.4 adds pressure to the room record T3.3 saves.
 
-**T4.5 Ground, gravity and vehicles** (L, high effort, 3 slices: the gravity rule; the `Ground` service and the cave sims' one ground source; the bike and the seated state; depends on T2.2, T2.5 (the bike and digging moved per world), T2.7 (when cabins exist, and bases as frames on their world) and T4.1 (`ArmsHost.SolidHit` rewritten))
+**T4.5 Ground, gravity and vehicles** (L, high effort, 3 slices: the gravity rule; the `Ground` service and the cave sims' one ground source; the bike and the seated state; depends on T2.2, T2.5 (the bike and digging moved per world), T2.7 (when cabins exist), T4.1 (`ArmsHost.SolidHit` rewritten) and T4.4, whose "what am I inside" lookup it reads)
 - **Builds:**
   - one `Ground` service per diggable body, with `ArmsHost.SolidHit` folded in;
   - **one gravity rule, read from where a thing is** (like air, T4.4):
     - a world gives its own gravity: a planet or moon its own, the orbit zone 0 (OrbitZone.cs:166);
     - **gravity follows cabin-world logic** (owner, 25 Nov): inside a functioning ship or base you're at its core's fixed 1 g, whatever the world outside, so 1 g aboard on a high-g world. With a core off or unpowered, gravity comes from its parent, as air does: the structure it sits inside (a ship with its core off in a powered carrier gets the carrier's 1 g), else the world, turned into the ship's frame. Today `PhysicsWorld.GravityAt` falls back to the world only (PhysicsWorld.cs:222). Out on the hull, mag boots hold you to the face underfoot;
-    - **bases too:** a base is walked on in its world, not a cabin (Vessel.cs:339-341), so people on a base get the world's gravity today and its core gravity does nothing. The same rule finds a base's core;
+    - **bases too:** a base is walked on in its world, not a cabin (Vessel.cs:339-341), so people on a base get the world's gravity today and its core gravity does nothing. **Gravity follows the structure, air follows its sealed rooms** (owner, 25 Nov): a base's 1 g covers anyone inside its own bounds, standing on its floors, the same as anyone aboard a ship. Blow the roof off and the air vents, but you stay at 1 g while the core runs; lose the core or its power and gravity drops to the parent's. The outside of its roof and walls is its outer hull, as on a ship;
+    - **asteroids:** a diggable body's own gravity (ARCHITECTURE.md 2) is the world's gravity for anything on it;
     - characters already work this way (`PhysicsWorld.GravityAt`, PhysicsWorld.cs:215-222; power drops it, Vessel.Power.cs:38-41). Loose things in the cabin world don't: with the core off they get 0 g even on a planet (`CabinWorld.SetGravity`, StructureShapes.cs:167-173). One rule serves both;
-    - everything reads gravity from where it is: bodies, creatures, loot, people's falls, flung trees, the bike and claimed wrecks. The gravity constants go;
+    - everything reads gravity from where it is, through T4.4's lookup: bodies, creatures, loot, people's falls, flung trees, the bike and claimed wrecks. The hard-coded fallbacks go (Town.Falls.cs:39 `?? 9.8f`, Lootables.cs:100's standard gravity off a surface); `Units.StandardGravity` stays as the core's 1 g (T1.3);
   - the bike as a hover body in the shared physics;
   - one seated state.
 - **Closes:**
@@ -501,7 +505,7 @@ Each unifies a job and deletes the copies.
   - the shared spring (`HoverController.Cushion`: 1.2 Hz, damping 0.4, vertical only, push only);
   - `Follow` (tilt keeps heading, no self-turn);
   - hover lift only on a powered core.
-- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. A bag tossed in orbit drifts; tossed in a powered cabin it falls at 1 g, and with the core's gravity off it drifts. Aboard a powered base on a high-g world you're at 1 g. A ship with its core off parked in a powered carrier is at the carrier's 1 g. Aboard a powered ship on a high-g world you and its loose cargo are at 1 g; switch its core gravity off and both take the world's. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
+- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. A bag tossed in orbit drifts; tossed in a powered cabin it falls at 1 g, and with the core's gravity off it drifts. Aboard a powered base on a high-g world you're at 1 g, and still are after its roof is blown off, while its air vents. A ship with its core off parked in a powered carrier is at the carrier's 1 g. Aboard a powered ship on a high-g world you and its loose cargo are at 1 g; switch its core gravity off and both take the world's. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
 
 **T4.6 Events, sound and markers** (M, medium effort; depends on T2.7, and T2.5, which moves markers onto the sleeper's world)
 - **Builds:**
