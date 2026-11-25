@@ -217,7 +217,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - parking and freeing by one player's place;
   - the one `Away` and one `Orbit`.
 - **Closes:** SA A-R2 (A-2.1 to 2.9), A-3.5 (world manager split out of `Spaceflight`), OW#6, OW#10 (streaming and settings).
-- **A frozen or freed world drops its lights, not just its meshes.** At most one shadow-casting `DirectionalLight3D` is in the tree at a time, because all of them share the directional atlas. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges already prints the shadow-casting sun count after a landing; that becomes a check.
+- **A frozen or freed world drops its lights, not just its meshes.** The only shadow-casting `DirectionalLight3D`s in the tree are the drawn world's, one per star you can see (binary and trinary systems, owner design; see T2.10). They share the directional atlas by brightness, and a stale light must never take part of it. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges already prints the shadow-casting sun count after a landing; that becomes a check.
 - **Proof:** two sleepers far apart on one world both have ground and life. Two sleepers at two stars both play. A world nobody is on stops costing frame time.
 - **Note:** `ParkHome` stays until T3.4, and so does freeing.
 
@@ -310,6 +310,18 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
 - **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`).
 - **Proof:** the start star's system matches what the galaxy gives that star.
+
+**T2.10 Many suns: binaries, trinaries and black holes** (M, high effort; depends on T2.7, T2.9)
+- **Today:** the galaxy knows a star's companions (`Star.Companions`, `CompanionKind` in shared/Galaxy/Core/Galaxy.cs:20; the map shows "double" or "triple"). A system's model has one `Star` (planet-surface/src/Sky/StarSystem.cs:203), so every sky, sun direction, light and shadow comes from one star. There is no light model for a black hole.
+- **Design:** DESIGN.md 181 and 196 ("double shadows and sunsets, shifting temperatures"); solar-systems.md 112 and 148 (close pairs circled by planets, wide pairs with planets round one star, combined brightness sets the zones) and 144 and 660 (black holes and neutron stars).
+- **Builds:**
+  - Every star is a body in the system model, orbiting the pair's centre of mass, drawn from the one source of truth (celestial bodies are real).
+  - One light per star you can see, from its direction, with its colour and its brightness by distance. It drops out below the horizon or behind an eclipsing body. A wide companion is a bright point with negligible light.
+  - The shadow budget is shared by brightness. The brightest sun gets most of the atlas, a second close sun casts a softer shadow of its own (double shadows), and a third lights without shadow unless the budget allows. Each preset sets how many suns cast shadows, measured in T0.4 for the minimum spec.
+  - **Black holes:** the accretion disc is the light source (a large, soft, warm light from the disc, mostly ambient, weak shadows), plus the lensing look.
+  - **Neutron stars and pulsars:** dim point lights. A pulsar's sweep is a radiation event on its beat, not a light.
+  - Heat and climate come from the same suns: zones from the combined brightness for a close pair, and temperature shifting as each sun rises, sets or is eclipsed.
+- **Proof:** on a circumbinary world, two suns cross the sky on their own paths with two shadows. The same scene has one shadow at the lowest preset if T0.4 says so. A black-hole system is lit by its disc.
 
 ---
 
