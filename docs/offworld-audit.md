@@ -127,9 +127,21 @@ The fix sizes in the tables measure how far each symptom reaches, not a separate
 - **Events.** Player systems subscribe to the world they're in through one subscribe/unsubscribe point. They're never wired once at setup.
 - **No "home" special case.** The starter is just the first world. `Game.Surface`, `OnOtherBody` and the bunker checks become questions about the current world or the respawn point's world.
 
+- **Ground is what you hit, not the zone's planet (asteroids).**
+  - Asteroid fields are designed, not built:
+    - DESIGN.md 200, 702, 728.
+    - solar-systems.md: belts, field families; "a mined-out field stays visibly thinner until it regrows".
+    - space-pois.md: rock fields of 60 to 200 rocks with the near ones real; `hollow_rock` sites use asteroid generation.
+    - Playtest list: rings resolve into minable rock fields.
+    - decided-vs-built.md 19.
+  - One orbit zone will hold many diggable rocks. Today digging assumes one planet per zone: `PlanetEdits(Planet.Terrain, …)` (Surface/SurfaceZone.cs:265), and the tool's `_zone.Planet.Terrain`, `OreKindAt`, `Grit` and `Felled` (Player/SleeperTool.cs:187-455).
+  - So the root fix must not make "the current world's planet" the thing you dig. The tool, vessel drills and blasts dig whatever diggable body the ray hits (a world's ground, a rock), the way block work already takes the vessel it hits. Each body has its own terrain, ore, edits and gravity.
+  - Otherwise asteroids would bring a third digging system, beside the ground and the space salvage (#26).
+
 **Root 2: every world-tied fact carries a world key.**
 - **The key.** A stable world key from galaxy seed, star and body, never list order. It goes on every stored position, ID and discovery: respawn points, ledger zone names, record IDs, discovery IDs, chart IDs, deposits, edits.
 - **Per-world change record.** Edits, felled trees, mined deposits, deaths, place memory, bikes and devices go in a per-world record under that key, kept when a world is freed and put back when it's made again.
+  - The key names any body that can change, not only worlds: an asteroid field and its rocks (star, orbit, field, rock). A mined field stays thinner, and regrows on its timer while no one is near.
 
 **Proof it's fixed at the root:**
 - Tests start on any body (moon, vacuum world, another star), not just the starter, and every off-world finding above has a check there.
