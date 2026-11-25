@@ -2,6 +2,14 @@
 
 **25 Nov 2026.** This is the work that makes every system work on any world, at any star, for any of four sleepers. It turns [ARCHITECTURE.md](ARCHITECTURE.md) section 12 into jobs that can be briefed. Nothing starts until the owner approves ARCHITECTURE.md and there is quota.
 
+**Priority (owner, 25 Nov): "FIX CORE ISSUES FIRST".** These root fixes outrank all other work, the playtest list included. Owner bugs that come from these causes (weapons, tool and building off-world, door glitches, the compass) are fixed here, not patched sooner.
+
+**Revised 25 Nov after a second look:**
+- the prototype (T2.1) runs alongside Tier 0;
+- identity (T2.9, T3.1) starts beside the world model;
+- worlds only freeze in T2.4 and are freed in T3.4;
+- each task writes its own failing checks first.
+
 **How to read it:**
 - **Order:** work top to bottom. A task starts only when the tasks it depends on have merged. Tasks in the same tier with no dependency on each other can run side by side, about 3 agents at once.
 - **Each task gives:**
@@ -53,14 +61,19 @@ Nothing else can be shown fixed without these.
 - **Closes:** TC, the Director's notes.
 - **Proof:** the gate and the moving-picture check run from repo tools alone.
 
-**T0.3 Failing checks for every finding** (M, medium effort; depends on T0.1)
-- **Builds:** one check per audit finding, run off the starter, expected to fail until its fix lands.
-- **Also:**
-  - Rewrite the two tests that assert bugs: SleeperToolTest.cs:286-297 (coreless block back whole) and ClimateTest.cs:466 (tornado felling bypass).
-  - Remove about 30 silent passes: they retry up to N rolls, then fail with the seeds.
-  - Stop travel tests calming weather and freezing wildlife before they leave.
+**T0.3 Clean up the tests that hide bugs** (S, medium effort; depends on T0.1)
+- **Rewrites:** the two tests that assert bugs: SleeperToolTest.cs:286-297 (coreless block back whole) and ClimateTest.cs:466 (tornado felling bypass).
+- **Removes:** about 30 silent passes. They retry up to N rolls, then fail with the seeds.
+- **Stops:** travel tests calming weather and freezing wildlife before they leave.
 - **Closes:** TC.
-- **Proof:** the list of failing checks matches the audits. Each later task turns its own checks green.
+- **Rule for every later task:** its first step writes failing checks for the findings it closes, off the starter. It merges when they pass. Checks aren't written for all findings up front, because some need harness features that come later (two sleepers in T2.3, save and reload in T3.3).
+
+**T0.4 Prototype: one Godot world per world** (M, high effort; runs alongside T0.1 to T0.3, since it doesn't touch the game)
+- **What:** per DESIGN.md 1578, with 2 to 4 worlds simulating and one drawn, a simulation-only mode for undrawn worlds, and per-world physics spaces.
+- **Measures:** on the 4-core GTX 1050 stand-in, at the lowest preset, on the Mobile renderer, from today's measured baseline.
+- **Sets:** the per-world tick budget, the thread plan and the shares of the process-wide budgets (`FramePacer`, `UploadBudgetMs`, `GcPacer`, including the full collection on free).
+- **Then:** the engine options (physics spaces on threads, a no-render World3D) go to the owner.
+- **This is a decision gate. Tier 2 doesn't start before it.**
 
 ---
 
@@ -109,16 +122,10 @@ Independent of each other once Tier 0 is in.
 ---
 
 ## Tier 2: the world model
-In slices, each merged on its own. T2.1 decides budgets that the rest must meet.
+In slices, each merged on its own, within the budgets T0.4 set.
 
-**T2.1 Prototype: one Godot world per world** (M, high effort)
-- **What:** per DESIGN.md 1578, with 2 to 4 worlds simulating and one drawn, a simulation-only mode for undrawn worlds, and per-world physics spaces.
-- **Measures:** on the 4-core GTX 1050 stand-in, at the lowest preset, on the Mobile renderer, from today's measured baseline.
-- **Sets:** the per-world tick budget, the thread plan and the shares of the process-wide budgets (`FramePacer`, `UploadBudgetMs`, `GcPacer`, including the full collection on free).
-- **Then:** the engine options (physics spaces on threads, a no-render World3D) go to the owner.
-- **This is a decision gate. Nothing in T2.2 onward starts before it.**
 
-**T2.2 Each world its own World3D, and `WorldQuery`** (L, high effort; depends on T2.1)
+**T2.2 Each world its own World3D, and `WorldQuery`** (L, high effort; depends on T0.4)
 - **Builds:** every world in play gets its own physics space and scene. Every ray and shape query goes through that world's `WorldQuery`, with named masks.
 - **Replaces:**
   - about 15 direct `GetWorld3D().DirectSpaceState` calls;
@@ -139,7 +146,7 @@ In slices, each merged on its own. T2.1 decides budgets that the rest must meet.
 - **Builds:**
   - Each world keeps its interest points: a sleeper, an occupied cabin, a destination being prepared.
   - Streaming, collision, wildlife, weather hazards and places run per point. Collision is streamed apart from drawing.
-  - A world with no points freezes at once, stays loaded for about 2 minutes, then is freed (owner).
+  - A world with no points freezes at once (owner). It stays loaded and frozen until T3.4. Freeing comes only once the change record (T3.2) and the safe ledger (T3.3) can bring it back as it was.
   - Simulation size comes from game settings, not a client's display sliders.
 - **Replaces:**
   - the one `Focus` and one weather `Observer`;
@@ -148,7 +155,7 @@ In slices, each merged on its own. T2.1 decides budgets that the rest must meet.
   - the one `Away` and one `Orbit`.
 - **Closes:** SA A-R2 (A-2.1 to 2.9), A-3.5 (world manager split out of `Spaceflight`), OW#6, OW#10 (streaming and settings).
 - **Proof:** two sleepers far apart on one world both have ground and life. Two sleepers at two stars both play. A world nobody is on stops costing frame time.
-- **Note:** `ParkHome` stays until T3.4.
+- **Note:** `ParkHome` stays until T3.4, and so does freeing.
 
 **T2.5 Player systems read `thing.World`** (L, high effort; depends on T2.3, T2.4)
 - **Moves onto the sleeper's world:** suit, SleeperTool, BuildTool, ArmsHost, shots and effects (debris, gibs, blood), the doors' animator (`BlockDoors`), force fields, hover bikes, map, music and markers.
@@ -175,7 +182,7 @@ In slices, each merged on its own. T2.1 decides budgets that the rest must meet.
   - Cabins are made for occupied ships only.
   - Things aboard read `Outside = ship.World`.
 - **Closes:** architecture review findings 5 and 7. Far trees and horizon voxels follow this rule when built.
-- **Proof:** T2.1's budget holds with 4 occupied worlds plus 2 cabins.
+- **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins.
 
 **T2.8 Jumps per vessel, and the transit world** (M, high effort; depends on T2.3, T2.4)
 - **Moves:** each vessel's jump, target and fold destination onto the vessel, replacing `Spaceflight.Jumping`, `Target` and `FoldTo`.
@@ -187,7 +194,7 @@ In slices, each merged on its own. T2.1 decides budgets that the rest must meet.
 - **Closes:** ARCHITECTURE.md section 2c.
 - **Proof:** two sleepers jump their own ships to different stars at once. A passenger walks out mid-tunnel and arrives beside the ship. Clamped ships arrive clamped.
 
-**T2.9 The galaxy from the game seed** (M, medium effort; can run beside T2.4 to T2.8)
+**T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1 only, so it runs beside Tiers 1 and 2; before T3.1)
 - **Builds:** the galaxy made from the game seed, with the start star and body chosen in it.
 - **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
 - **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`).
@@ -196,9 +203,9 @@ In slices, each merged on its own. T2.1 decides budgets that the rest must meet.
 ---
 
 ## Tier 3: identity, records and the safe ledger
-Needed before star travel ships and before saves.
+Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is in, beside the world model. T3.2 onward follow T2.4.
 
-**T3.1 `WorldKey` everywhere, IDs and the seed helper** (M, high effort; depends on T0.1)
+**T3.1 `WorldKey` everywhere, IDs and the seed helper** (M, high effort; depends on T0.1, T2.9)
 - **Replaces:**
   - ledger zone names (`surface`, `moon<index>`, `star<n>/…`) and the `StartsWith` checks;
   - star and body list indices;
@@ -210,7 +217,7 @@ Needed before star travel ships and before saves.
   - SA A-R4 and A-R5, including A-5.1 (the same loot in every copy of a layout) and A-4.4 (creature drops rolled again).
 - **Proof:** a reordered generator list doesn't remap anything. Two copies of one layout roll different loot.
 
-**T3.2 A change record per world, and the clock catch-up** (L, high effort; depends on T3.1)
+**T3.2 A change record per world, and the clock catch-up** (L, high effort; depends on T3.1, T2.4)
 - **Builds:**
   - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down.
   - One galaxy clock; regrowth, decay, meteorites and the sky worked out from elapsed time on return, touching only unclaimed records.
@@ -228,7 +235,8 @@ Needed before star travel ships and before saves.
 - **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live.
 - **Proof:** crash at every step of a park, a free and two crossings at once. Every count matches on reload.
 
-**T3.4 The start system like any other** (S, medium effort; depends on T3.2, T3.3, T2.4)
+**T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3, T2.4)
+- **Builds:** freeing for every world: a frozen world stays loaded about 2 minutes, then is freed to its record.
 - **Deletes:** `ParkHome`. The start system is frozen, kept about 2 minutes and freed like any star's.
 - **Closes:** rule 3, OW risk 7.
 - **Proof:** fold away, come back, and the start world is as you left it.
