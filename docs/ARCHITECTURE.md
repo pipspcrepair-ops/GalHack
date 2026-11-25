@@ -347,7 +347,7 @@ Reject a change that:
 
 5. **A frozen world stays loaded for about 2 minutes before it is freed,** so hopping between surface and orbit doesn't regenerate it. It is frozen the whole time and nothing ticks. DESIGN.md "Zones under the hood" is reworded to match.
 
-6. **Air and gravity follow cabin-world logic.** Inside a functioning ship or base you breathe its rooms' air and stand at its core's 1 g, whatever the world outside. Sealed volumes nest and are linked by openings; a core that's off hands gravity to its parent. Orbit is 0 g, and loose things drift there.
+6. **Air and gravity follow cabin-world logic.** Inside a functioning ship or base you breathe its rooms' air and stand at its core's 1 g, whatever the world outside. Gravity follows the structure, air follows its sealed rooms: blow a base's roof off and its air vents, but you stay at 1 g while the core runs. Life support regulates oxygen and temperature in every enclosed space. Sealed volumes nest and are linked by openings; a core that's off hands gravity to its parent. Orbit is 0 g, and loose things drift there.
 
 **Still open:** the engine options in section 2b. These come after the step 2a prototype measures the cost.
 
