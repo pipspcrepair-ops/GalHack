@@ -5,7 +5,7 @@
 **Priority (owner, 25 Nov): "FIX CORE ISSUES FIRST".** These root fixes outrank all other work, the playtest list included. Owner bugs that come from these causes (weapons, tool and building off-world, door glitches, the compass) are fixed here, not patched sooner.
 
 **Revised 25 Nov after a second look:**
-- the prototype (T2.1) runs alongside Tier 0;
+- the prototype (now T0.4) runs in Tier 0;
 - identity (T2.9, T3.1) starts beside the world model;
 - worlds only freeze in T2.4 and are freed in T3.4;
 - each task writes its own failing checks first.
@@ -27,7 +27,10 @@
   - is a root fix, merged green on test-build;
   - deletes what it replaces in the same merge;
   - is reviewed against ARCHITECTURE.md section 10;
+  - passes the moving-picture check on its own branch before it merges, because test-build is the owner's build now (one branch);
   - leaves the game playable.
+- **Size:** an L task is split into slices of one subsystem each, one agent job per slice. One focused job on the shot damage frame cost used 366k tokens, and a second used 440k.
+- **Frame-sensitive tasks** (T1.1, T2.2, T2.4, T2.7, T4.1, T4.5) pass the frame check both quiet and live.
 - **Every brief carries:**
   - never touch the main checkout;
   - tests quit themselves, at most 4 Godot runs, through the queue;
@@ -38,42 +41,60 @@
 ---
 
 ## Tier 0: the proof first
-Nothing else can be shown fixed without these.
+Nothing else can be shown fixed without these. **Order:** T0.2 first, because every later gate and T0.4's numbers run on it. Then T0.1a, T0.1b and T0.4 side by side, then T0.3.
 
-**T0.1 Test harness and one `Check`** (M, high effort)
+**T0.2 Tools into the repo** (S, low effort; FIRST)
+- **Moves in:**
+  - the test queue scripts (`test-all-q.ps1` and the rest);
+  - the owner's settings file (`owner-settings.cfg`);
+  - the quiet frame check (`quietpop.ps1`). Its parameters are made explicit: today it hard-codes the Director's scratchpad paths, writes the "lead" pause, waits for Godot to exit, then runs PopRoute `--check=1 --settings=... --seed=`.
+- **Also:**
+  - the same-seed A/B step, with the baseline taken from test-build's reflog;
+  - PopRoute gets a `--live` pass;
+  - the gate passes `--airless`;
+  - one min-spec flag shared by every test: CombatTest `--minspec=1` and PopRoute's own stand-in become one;
+  - timing checks become load-aware. PhysicsTest's 2 ms physics-step check fails under machine load with no code change (2.17 to 2.23 ms), so the gate would flap;
+  - logs written as UTF-8 (PowerShell `*>` writes UTF-16).
+- **Closes:** TC, the Director's notes.
+- **Proof:** the gate and the moving-picture check run from repo tools alone, on a branch, before its merge.
+
+**T0.1a Test harness and probe** (M, high effort; after T0.2)
 - **Builds:**
   - `WorldKey` as a typed value (game seed, star key, orbital path, layer). Only the type here: storage comes in T3.1.
   - `WorldChoice` taking a start `WorldKey`.
   - `Harness` beside Driver.cs with `Arrive(body)`, `AddSleeper(world)` and `SaveAndReload()`. The last two are stubs that fail loudly until T2.3 and T3.3.
   - The world probe (every system present, `Ready`, attached).
-  - One shared `Check`, replacing the 81 copies.
 - **Closes:** TC harness gaps.
 - **Proof:** any existing suite runs started on a moon, a vacuum world, orbit and another star.
 
-**T0.2 Tools into the repo** (S, low effort)
-- **Moves in:**
-  - the test queue scripts (`test-all-q.ps1` and the rest);
-  - the quiet frame check (`quietpop.ps1`);
-  - the owner's settings file (`owner-settings.cfg`).
+**T0.1b One shared `Check`** (S, low effort; after T0.2)
+- **Replaces:** the 81 copies of `Check` with one in the shared testing code. This is mechanical.
 
-  The last two live in the Director's scratchpad today.
-- **Also:** PopRoute gets a `--live` pass, and the gate passes `--airless`.
-- **Closes:** TC, the Director's notes.
-- **Also:** timing checks become load-aware. PhysicsTest's 2 ms physics-step check fails under machine load with no code change (2.17 to 2.23 ms), so the proof gate would flap.
-- **Proof:** the gate and the moving-picture check run from repo tools alone.
-
-**T0.3 Clean up the tests that hide bugs** (S, medium effort; depends on T0.1)
+**T0.3 Clean up the tests that hide bugs** (S, medium effort; after T0.1a and T0.1b)
 - **Rewrites:** the two tests that assert bugs: SleeperToolTest.cs:286-297 (coreless block back whole) and ClimateTest.cs:466 (tornado felling bypass).
 - **Removes:** about 30 silent passes. They retry up to N rolls, then fail with the seeds.
 - **Stops:** travel tests calming weather and freezing wildlife before they leave.
 - **Closes:** TC.
 - **Rule for every later task:** its first step writes failing checks for the findings it closes, off the starter. It merges when they pass. Checks aren't written for all findings up front, because some need harness features that come later (two sleepers in T2.3, save and reload in T3.3).
 
-**T0.4 Prototype: one Godot world per world** (M, high effort; runs alongside T0.1 to T0.3, since it doesn't touch the game)
-- **What:** per DESIGN.md 1578, with 2 to 4 worlds simulating and one drawn, a simulation-only mode for undrawn worlds, and per-world physics spaces.
-- **Measures:** on the 4-core GTX 1050 stand-in, at the lowest preset, on the Mobile renderer, from today's measured baseline.
-- **Sets:** the per-world tick budget, the thread plan and the shares of the process-wide budgets (`FramePacer`, `UploadBudgetMs`, `GcPacer`, including the full collection on free).
-- **Then:** the engine options (physics spaces on threads, a no-render World3D) go to the owner.
+**T0.4 Prototype: several real worlds at once** (M, high effort; after T0.2, beside T0.1a and T0.1b)
+- **On a throwaway branch that never merges.**
+- **What:** 2 to 4 real slice worlds made by the game's own generator (the starter plus a moon, and more), with wildlife live, places and streaming running. Not empty scenes: a prototype without the game's load measures nothing useful. Also tried, per DESIGN.md 1578:
+  - one Godot world each, with per-world physics spaces;
+  - a simulation-only mode for the undrawn ones;
+  - a multi-world PopRoute route: one sleeper drawn and walking, the others simulating live.
+- **Measures:** in quiet windows only (it takes the pause file, as quietpop does, so it's scheduled); on the 4-core stand-in, lowest preset, Mobile renderer, from today's measured baseline. It records:
+  - FrameSplit and SystemSplit keyed by world;
+  - garbage per world's tick (`GC.GetAllocatedBytesForCurrentThread` round each tick);
+  - physics step time per space (needs manual stepping, or engine work);
+  - RAM for a world loaded, frozen and freed, including the full collection on free;
+  - GPU per layer from PopRoute.Gpu, as a ratio only (there's no real GTX 1050, and the stand-in limits only the CPU).
+- **Known numbers from the warp work,** to beat or spread out:
+  - a new zone's first ticks: 140 to 260 ms;
+  - adding a physics space: 140 to 320 ms (cabin worlds are already their own Jolt spaces);
+  - waking or parking a zone: 37 to 175 ms.
+- **Sets:** the per-world tick budget, the thread plan and the shares of the process-wide budgets (`FramePacer`, `UploadBudgetMs`, `GcPacer`).
+- **Then:** two things go to the owner: the engine options (physics spaces on threads, a no-render World3D), and the largest orbit zone that still holds precision.
 - **This is a decision gate. Tier 2 doesn't start before it.**
 
 ---
@@ -89,7 +110,8 @@ Independent of each other once Tier 0 is in.
   - SA C-A1 (every moon and star world is built as a start world);
   - C-A2 (the forced roll on every world);
   - C-A3 and C-A4 (counters and races).
-- **Proof:** a moon and another star's world roll their own profile and keep their forced roll off. Two worlds building at once give the same result as one at a time.
+- **Also swept:** `WildlifePatch.RollAhead` (the destination's first wildlife patch) and `MakeOrbit`'s wreck shapes built on a worker (`StructureShapes.Hold`/`Return`). Neither has a generation check.
+- **Proof:** a moon and another star's world roll their own profile and keep their forced roll off. Two worlds building at once give the same result as one at a time. After the `TerrainStreamer` changes, rerun the fly route's column-wait p95: a streamer change regressed fly on 14 Nov (fixed in 5987c13f).
 
 **T1.2 Attach and Detach with handles** (M, high effort)
 - **Replaces:** `Vessel.Register`, `Handover.Move` and `SurfaceZone.Remove`'s hand-kept lists with `Attach(world)` returning a handle, and `Detach(handle)`. Every `+=` on a world moves inside one.
@@ -103,10 +125,13 @@ Independent of each other once Tier 0 is in.
 - **Replaces:**
   - mode and Creative living in three flags and copied into every world and machine, with one game-level settings object read when acting;
   - planet and climate rules, which become the world's own, read from its spec.
-- **Closes:** SA C-C1, C-C2, A-3.6; OW risk 2 (the suit's temperature clamp is the starter's).
+- **Closes:**
+  - SA C-C1, C-C2, A-3.6;
+  - OW risk 2 (the suit's temperature clamp is the starter's);
+  - **MOONS: NO RINGS, SMALL ONES AIRLESS**, which becomes a world fact from the spec (`HasAir`).
 - **Proof:** switch to Creative while away, arrive at a world made earlier, and its machines charge nothing. A frozen moon isn't clamped to the starter's range.
 
-**T1.4 Every world has every system** (M, high effort; depends on T0.1's probe)
+**T1.4 Every world has every system** (M, high effort; depends on T0.1a's probe)
 - **Builds:** orbit and every other zone get the same systems as a surface, with empty data and named facts (`HasAir`, `HasLife`, `HasWater`, ground present). This replaces stand-ins and nulls.
 - **Deletes:**
   - every `Zone?.Planet == null` early return: ArmsHost.cs:110, BlockDoors:166, ForceFields:62, SkyLight:91, PoiPlaces:127/144, RuinLoot:36, Underworld:57, PlaceFauna:599, Hulks:61;
@@ -134,6 +159,9 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - ArmsHost's `RayCast3D` node;
   - the separate AI sight masks;
   - parking by clearing collision layers.
+- **Deletes all of today's parking:** `Spaceflight.Park` (Spaceflight.cs:481) is `SetProcess(false)` plus `Hold` (out of physics) plus `Shelve`, with the Run, Park and Prepare piece machinery and the `CanProcess()` skip at :493.
+- **Frames:** `FrameAt` (Spaceflight.Jump.cs:260) switches the frame to the body whose reach you arrive in, and zones shift frames. That breaks "simulation positions never shift". Each world gets one fixed frame, within the orbit-zone size the owner signs off from T0.4.
+- **Also per world:** our own A* grids (`NavGrid`, `SpaceNav` and the town walking grid). Pathing leftovers wait on this: getting stuck indoors, cliffs.
 - **Closes:** architecture review finding 1; SA B-B19, B-B20.
 - **Proof:** two occupied worlds never collide or hit each other's rays. Parking pauses a space without touching layers.
 
@@ -144,11 +172,12 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Closes:** SA A-R1 (A-1.1 to 1.9), A-6.3; `Harness.AddSleeper` goes live.
 - **Proof:** two sleepers on one world are both targeted, hurt, credited and saved. Each wakes in their own pod.
 
-**T2.4 Interest points, freeze and free** (L, high effort; depends on T2.2, T2.3)
+**T2.4 The world manager, interest points and freezing** (L, high effort, 3 slices: the world manager split out of `Spaceflight` (Spaceflight.cs 775 lines, Worlds 297, plus parking); streaming and collision per point; wildlife, weather and places per point; depends on T2.2, T2.3)
 - **Builds:**
   - Each world keeps its interest points: a sleeper, an occupied cabin, a destination being prepared.
   - Streaming, collision, wildlife, weather hazards and places run per point. Collision is streamed apart from drawing.
   - A world with no points freezes at once (owner). It stays loaded and frozen until T3.4. Freeing comes only once the change record (T3.2) and the safe ledger (T3.3) can bring it back as it was.
+  - **A world with an interest point is never freed.** Today `FreeAbroad` (Fold.cs:288, :303) frees every other star's system on every fold, so a second sleeper's fold would free the first sleeper's star.
   - Simulation size comes from game settings, not a client's display sliders.
 - **Replaces:**
   - the one `Focus` and one weather `Observer`;
@@ -159,7 +188,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Proof:** two sleepers far apart on one world both have ground and life. Two sleepers at two stars both play. A world nobody is on stops costing frame time.
 - **Note:** `ParkHome` stays until T3.4, and so does freeing.
 
-**T2.5 Player systems read `thing.World`** (L, high effort; depends on T2.3, T2.4)
+**T2.5 Player systems read `thing.World`** (L, high effort, 3 slices: arms and the tool; building and doors; the view bits (compass, map, music, markers, effects); depends on T2.3, T2.4)
 - **Moves onto the sleeper's world:** suit, SleeperTool, BuildTool, ArmsHost, shots and effects (debris, gibs, blood), the doors' animator (`BlockDoors`), force fields, hover bikes, map, music and markers.
 - **Deletes:**
   - `Spaceflight.TakeHands`, its "NO BUILDING IN ORBIT" and its stand-in shot;
@@ -168,13 +197,16 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Also:** the compass shows only on a world's surface, tuned to that world's poles.
 - **Closes:**
   - OW#1, #2, #4, #5, #9, #11, #12, #13, #14, #17, #19, #25;
-  - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**.
+  - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**;
+  - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
 - **Proof:** weapons, the tool and building work in orbit, on a vacuum moon and at another star. Doors on any ship open and animate cleanly off-world. The suit reads the world you're on.
 - **Note:** vacarms' MoonTest.Hands checks are reused here.
 
 **T2.6 The places stack per world** (L, high effort; depends on T1.1, T2.4)
 - **Builds:** `PoiPlaces`, `RuinLoot`, `Hulks`, `SkyTraffic`, `Caves` and `Underworld` made with each world, not once on the starter. The starter's bunker gets no special rules.
-- **Closes:** OW#3, #18, #20; SA C-E1 to E3.
+- **Closes:**
+  - OW#3, #18, #20; SA C-E1 to E3;
+  - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places.
 - **Proof:** a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile.
 
 **T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2)
@@ -184,20 +216,37 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - Cabins are made for occupied ships only.
   - Things aboard read `Outside = ship.World`.
   - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
-- **Closes:** architecture review findings 5 and 7. Far trees and horizon voxels follow this rule when built.
+- **Closes:**
+  - architecture review findings 5 and 7;
+  - **DARK DISC AFTER RETURNING FROM ANOTHER PLANET**: engine-wide shadow and environment state left by a world that isn't drawn;
+  - **PLANET TO SPACE**: the planet left behind showing a low-detail skin (with T3.4).
+
+  Far trees and horizon voxels follow this rule when built.
 - **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins.
 
-**T2.8 Jumps per vessel, and the transit world** (M, high effort; depends on T2.3, T2.4)
-- **Moves:** each vessel's jump, target and fold destination onto the vessel, replacing `Spaceflight.Jumping`, `Target` and `FoldTo`.
+**T2.8a Jumps per vessel** (M, high effort; depends on T2.3, T2.4, T2.9 (fold targets are star indices today, `FoldTo(int)`))
+- **Moves:** each vessel's jump, target and fold destination onto the vessel, replacing `Spaceflight.Jumping`, `Target` and `FoldTo` (Jump 282, Warp 308 and Fold 506 lines; WarpTest has about 260 checks).
+- **Rules:** only the command-chair pilot cancels, with J, during the spool only. Everyone aboard gets the spool warning (owner, 25 Nov).
+- **Proof:** two sleepers jump their own ships to different stars at once.
+
+**T2.8b The transit world** (M, high effort; depends on T2.8a, T2.7 (passengers read `Outside`, which becomes the transit world))
 - **Builds:**
   - the tunnel as a transit world per jump;
   - commit takes the cabin, hull riders, and ships clamped on or inside it;
-  - stepping out mid-tunnel arrives beside the ship;
-  - only the command-chair pilot cancels, with J, during the spool only (owner, 25 Nov).
+  - stepping out mid-tunnel arrives beside the ship.
 - **Closes:** ARCHITECTURE.md section 2c.
-- **Proof:** two sleepers jump their own ships to different stars at once. A passenger walks out mid-tunnel and arrives beside the ship. Clamped ships arrive clamped.
+- **Proof:**
+  - a passenger walks out mid-tunnel and arrives beside the ship;
+  - clamped ships arrive clamped;
+  - **nothing arrives Frozen.** The tunnel's `Hold` (Jump.cs:169) once left ships arriving "landed". ae0d775b's wake-on-turn covered it, but the root (`CheckLanding` settling after the hold) was never traced.
+- **Note:** "a crash mid-tunnel reloads at the start" is proven in T3.3.
 
-**T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1 only, so it runs beside Tiers 1 and 2; before T3.1)
+**T2.8c The climb and descent between surface and orbit** (M, high effort; depends on T2.8a, T2.7)
+- **What:** the seam (Spaceflight.Seam.cs, 621 lines) becomes a vessel `Move`, like warp and fold.
+- **Its view half goes under rule 12:** the sky fade, the environment swap, the wreck fade through `GeometryInstance.Transparency`, the sky's `eye_lift` and `HoldSurfaceBehind`.
+- **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's.
+
+**T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1a only, so it runs beside Tiers 1 and 2; before T3.1)
 - **Builds:** the galaxy made from the game seed, with the start star and body chosen in it.
 - **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
 - **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`).
@@ -208,7 +257,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 ## Tier 3: identity, records and the safe ledger
 Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is in, beside the world model. T3.2 onward follow T2.4.
 
-**T3.1 `WorldKey` everywhere, IDs and the seed helper** (M, high effort; depends on T0.1, T2.9)
+**T3.1 `WorldKey` everywhere, IDs and the seed helper** (M, high effort; depends on T0.1a, T2.9)
 - **Replaces:**
   - ledger zone names (`surface`, `moon<index>`, `star<n>/…`) and the `StartsWith` checks;
   - star and body list indices;
@@ -236,9 +285,9 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
   - devices restored;
   - records dirty-tracked and written in pieces off the main thread.
 - **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live.
-- **Proof:** crash at every step of a park, a free and two crossings at once. Every count matches on reload.
+- **Proof:** crash at every step of a park, a free, two crossings at once and a jump mid-tunnel (it reloads where the jump began). Every count matches on reload.
 
-**T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3, T2.4)
+**T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3, T2.4, and T2.5 and T2.6, which remove the roughly 20 starter holds)
 - **Builds:** freeing for every world: a frozen world stays loaded about 2 minutes, then is freed to its record.
 - **Deletes:** `ParkHome`. The start system is frozen, kept about 2 minutes and freed like any star's.
 - **Closes:** rule 3, OW risk 7.
@@ -249,7 +298,7 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
 ## Tier 4: one path per job
 Each unifies a job and deletes the copies.
 
-**T4.1 Harm** (L, high effort; depends on T2.2)
+**T4.1 Harm** (L, high effort, 2 slices; depends on T2.2 and T2.5, because both rewrite ArmsHost. Its arms part may fold into T2.5's arms slice instead.)
 - **Builds:** one `Harm` event and an adapter per target kind, with one falloff and one health unit.
 - **Must keep:** the owner's 17 Nov damage rules.
 - **Replaces:** the three blast copies, the two ram copies, both people sims' damage, and the per-target copies (`ArmsHost.World`, `PoiPlaces.Damage`, `WearPlant`).
@@ -267,7 +316,10 @@ Each unifies a job and deletes the copies.
 - **Builds:** one interface for `Structure` and `Place`.
 - **Unifies:** the three door systems, the two collapse rules and the copied cache-making.
 - **Makes:** flavour ruins into Places.
-- **Closes:** SA B-B3, B-B11 to B-B13.
+- **Closes:**
+  - SA B-B3, B-B11 to B-B13;
+  - **A DOOR WON'T OPEN AGAIN** (the bunker door), **WINDOWS LET YOU THROUGH**, **CORE STRUCTURE DOOR ANIMATION** (17 Nov);
+  - SleeperToolTest "a door on someone else's structure is shot out of it", which fails on plain batch2 (18 Nov).
 - **Proof:** a POI wall cracks like a ship's. One door behaves the same everywhere.
 
 **T4.3 Salvage** (M, high effort; depends on T4.1, T4.2)
