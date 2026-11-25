@@ -347,6 +347,8 @@ Reject a change that:
 **Still open:** the engine options in section 2b. These come after the step 2a prototype measures the cost.
 
 ## 12. Order of work
+The jobs, with what each closes, its proof and its size, are in [root-fix-tasks.md](root-fix-tasks.md).
+
 Each step is a root fix, merged green with its checks, and gated on this doc's approval. A replacement merges only with the deletion of what it replaces. No step leaves the game broken.
 0. **The harness:**
    - `WorldChoice` with a start `WorldKey`.
