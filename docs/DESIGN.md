@@ -96,7 +96,7 @@ The core loop is **explore → gather → craft → build → expand reach**, an
 - **Friction (constraints):** every device draws power, adds mass and consumes CPU budget. A bigger ship needs better thrusters, generators and CPU extenders, which need rarer ores, which sit in more dangerous places.
 - **Anchor (the base):** each expansion step repeats the arc in miniature: land, build a foothold, exploit, move on. Bases are the safe hub where loot turns into components.
 
-**Fail states are soft.** Death drops the backpack at the corpse and respawns the player at a healing booth or clone chamber or a fallback spawn point. The cost is time and a risky corpse run, never the save. Being stranded works the same way: there's always a way back (section 14).
+**Fail states are soft.** Death drops the backpack at the corpse and respawns the player at a cryopod (their own start pod, or one built on a structure) or a fallback spawn point. The cost is time and a risky corpse run, never the save. Being stranded works the same way: there's always a way back (section 14).
 
 ## 4. World generation
 
@@ -573,7 +573,7 @@ There's no farming. Replicators turn **organics** (plant matter, creature meat a
 **Death and respawn**
 
 - On death the player drops a backpack at the corpse. It never despawns: it stays, marked on the map, until the player recovers it. Anything a player drops follows the same rule. What drops is a difficulty setting: everything, inventory only, or nothing. The survival tool and everything in the player's toolbar are never dropped.
-- Respawn options: the home base (a clone chamber or healing booth flagged as home), the nearest clone chamber or healing booth, the nearest survival tent, or a **fresh start** in a new cryo bunker on a start planet that keeps level, unlocks, structures and faction standing.
+- Respawn options (owner, 25 Nov: respawn points are cryopods we build on our structures, not clone chambers): the home base (a cryopod flagged as home), the nearest built cryopod, the sleeper's own start pod, the nearest survival tent, or a **fresh start** in a new cryo bunker on a start planet that keeps level, unlocks, structures and faction standing.
 - The player respawns at full health; there is no death spiral. Worn armor loses durability on death.
 - At night single players can sleep in a tent to skip ahead; servers can't skip night.
 
@@ -867,7 +867,7 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 | --- | --- | --- |
 | Control | Core, command chairs, remote-control console | All |
 | Power | Generators sized per class, fuel tanks T1–T3, solar panels and capacitors | All; solar on bases and capital vessels |
-| Life support | Healing booth, respawn (clone) chamber; air and gravity are built into the core | Mostly bases and capital vessels |
+| Life support | Healing booth (restores health), cryopod (a respawn point, built on any structure); air and gravity are built into the core | Mostly bases and capital vessels |
 | Food | Replicators T1–T3 | Portable (T1); small vessels, bases and capital vessels |
 | Propulsion | Thrusters (small, medium, large, jet), RCS gyros, hover engines, landing gear, docking pads | Per class |
 | Travel | Warp drive and warp cell tank; hyperdrive T1/T2 and fold crystal tank | Warp drive on small and capital vessels; hyperdrive on capital vessels only |
