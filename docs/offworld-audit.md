@@ -117,7 +117,9 @@ The findings are symptoms of two root causes. Fix those, and the findings must f
 
 The fix sizes in the tables measure how far each symptom reaches, not a separate job.
 
-**Root 1: one current world, read by every system.**
+**Root 1: every system reads the world of the thing it acts for.**
+
+**Co-op changes what "current world" means.** DESIGN.md 14 and 85 plan co-op over Steam, and 747 has the server holding every world's edits. Two players can be on two worlds at once, so a single game-wide "current world" would be the next band-aid. The world belongs to each thing: a player, a vessel, a creature, a dropped bag. Systems ask "which world is *this* in". The same goes for "the player": `Game.Survivor` is used 81 times in slice/src, all assuming one player. The design pass must settle both together.
 - **One accessor.** Systems read the world they act in through one accessor (the current world, or the world a thing belongs to). No system stores a zone, planet, weather, wildlife, places or sound reference past one call.
   - Remove `readonly SurfaceZone` fields and constructor-captured zones everywhere (Suit, SleeperTool, BuildTool, HoverBikes, HullBlocks, SurfaceGround, ScatterSolids).
   - Remove the `Zone = Zone` assignments in setup.
