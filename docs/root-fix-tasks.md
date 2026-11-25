@@ -144,6 +144,7 @@ Independent of each other once Tier 0 is in.
   - SA C-B1 (vessel weather subscription leaks; ships never struck by lightning on another world), with the `VesselDamage.OnWeather` guard deleted;
   - C-B2 (shots in flight jump on another world's frame shift);
   - C-B3 (SkyTraffic).
+- **Force fields re-bind** their emitters on `Attach` and `Detach`, so fields on a ship that crosses worlds keep working.
 - **Proof:** a ship flown to a stormy moon is struck there. A freed hulk is gone from every list. Shots in flight in orbit stay on their line across a frame shift.
 
 **T1.3 One settings object, and rules per world** (S, medium effort)
@@ -216,6 +217,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - parking and freeing by one player's place;
   - the one `Away` and one `Orbit`.
 - **Closes:** SA A-R2 (A-2.1 to 2.9), A-3.5 (world manager split out of `Spaceflight`), OW#6, OW#10 (streaming and settings).
+- **A frozen or freed world drops its lights, not just its meshes.** At most one shadow-casting `DirectionalLight3D` is in the tree at a time, because all of them share the directional atlas. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges already prints the shadow-casting sun count after a landing; that becomes a check.
 - **Proof:** two sleepers far apart on one world both have ground and life. Two sleepers at two stars both play. A world nobody is on stops costing frame time.
 - **Note:** `ParkHome` stays until T3.4, and so does freeing.
 
@@ -230,6 +232,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - OW#1, #2, #4, #5, #9, #11, #12, #13, #14, #17, #19, #25;
   - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**;
   - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
+- **Force fields stay per vessel:** power draw (`v.Power.AddLoad(Draw(v))`) and `PoweredFor` read the vessel's own power and wreck state, never the world's. The door hook that feeds fields across open doors (`BlockDoors.OpenDoors`) keeps working.
 - **E always reaches doors and containers.** A held item never takes E from a door or a container. On vacarms, holding a blueprint off-world let the builder take the aim, and a wreck door's E prompt went blank at 3.0 m. The hands chain is Game/Game.cs:729-750. One E order comes from `WorldQuery`'s Use mask (T2.2).
 - **Claiming a wreck** (a core in hand) moves into the building slice as ordinary core placement through the build tool, at the same reach as any E action. Today `Spaceflight.Claim` works at any range; vacarms made it UseReach+1, derelicts only. Wreck salvage moves to T4.3.
 - **Proof:**
@@ -248,6 +251,12 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Closes:**
   - OW#3, #18, #20; SA C-E1 to E3;
   - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places.
+- **Caves and undergrounds per world** (line numbers from test-build):
+  - **The bunker becomes a stamp.** Delete `Keep` and the bunker rules (`Game.Places.cs:64-65`; consumed at `PlaceFauna.cs:571, 639, 704`). Part of the cave bleed is already fixed: 4acacb45 makes `LoadedVoxels` read `PlanetTerrainSource.Dug` as rock. Rerun InsideTest `--unseen` first to see what still fails.
+  - **`Underworld` serves every underground on a world,** not only the start town's (`Underworld.cs:68`, :102). `IncidentalTest.cs:206-211`, which asserts the starter, is rewritten.
+  - **Stamps are planned before a world's first chunk column is read.** Otherwise the `_columns` cache (`PlanetTerrainSource.cs:61`) bakes in no cave mouths, because `CaveMouths` returns null while `Stamps.Count == 0` (`CaveMouths.cs:45`, :54).
+  - **Caves follow the world's archetype.** `CaveStrength` (`PlanetTerrainSource.cs:766`) takes none, but DESIGN.md 213 gives cave networks to only some archetypes. With T1.3's rules from the spec.
+  - **Airless worlds:** caves and the underworld are empty there today (`Deep` is null, `Game.Places.cs:50`). *Open: empty by intent, or vacuum fauna later?*
 - **Towns fit their world's air** (DESIGN.md 362): sealed habitats on vacuum and unbreathable-air worlds, with suits worn outside. On an airless test world only 67 of 150 town spots stood in closed rooms. NPC air comes back as part of this (owner, 24 Nov), not before.
 - **Proof:**
   - a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile;
@@ -260,6 +269,12 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - Cabins are made for occupied ships only.
   - Things aboard read `Outside = ship.World`.
   - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
+  - **Engine-wide render state has one owner, the drawn world's view.** Today it's written by many places:
+    - `SunShadows.Apply` sets the directional shadow atlas, the soft shadow filter qualities and the viewport's positional atlas (SunShadows.cs:63-66). It runs only from `ApplyScene` on a settings or zone change (Game.Settings.cs:112-139).
+    - `SkyRig` sets the sun's shadow opacity and enable, the night light's enable, and the shadow skew every frame (SkyRig.cs:94, 608-617), although SunShadows' doc says nothing else touches a light's shadow.
+    - Global shader values: `shade_fill` (SkyRig.cs:687), `sky_ground` and `sky_ground_rect` (SkyLight.cs:337-392), `sky_field`, `planet_size`, and `weather_*` from three places (SurfaceWeather.cs:960-963, WeatherRig.cs:239-242, Spaceflight.Fold.cs:353). SurfaceZone.cs:339-343 zeroes them on zone entry, so today they belong to whichever zone entered last, not the drawn one.
+  - **Every drawn world's sky gets the shadow settings.** `Suns()` (Game.Settings.cs:125-133) walks only the starter, the current orbit and the space sun.
+  - **Shaders:** nothing moves vertices from `CAMERA_POSITION_WORLD` in a shadow-casting shader, because in the shadow pass that is the light's eye. It's fixed in terrain.gdshader:946 and flora.gdshader:51-54. water.gdshader:72 (`round_sink`) has the same pattern: check whether water casts.
 - **Closes:**
   - architecture review findings 5 and 7;
   - **DARK DISC AFTER RETURNING FROM ANOTHER PLANET**: engine-wide shadow and environment state left by a world that isn't drawn;
@@ -316,12 +331,14 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
 **T3.2 A change record per world, and the clock catch-up** (L, high effort; depends on T3.1, T2.4)
 - **Builds:**
   - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down.
+  - **Caves:** found caves and their deaths, by cell key. Today `Caves._caves` and `Underworld._spots` live only in nodes (`PlaceFauna.cs:584`, `Underworld.cs:37`), and which caves exist depends on the walk (:630-640). A freed world's caves would refill and its kills be undone, against the owner's "find things as you left them". The cave sims' time comes from the galaxy clock (`PlaceFauna.cs:640`, `Underworld.cs:113` copy the zone's).
   - One galaxy clock; regrowth, decay, meteorites and the sky worked out from elapsed time on return, touching only unclaimed records.
 - **Closes:** OW#7, SA B-B10 (salvage resets), A-6.4.
 - **Proof:** leave a star, come back, and every change is as left, with regrowth by the time away.
 
 **T3.3 The safe ledger** (M, high effort; depends on T3.1)
 - **Builds:**
+  - force field state (powered, field HP) saved with its vessel, which nobody has checked yet;
   - one commit queue on a worker;
   - a record is gone only when its holder reports it destroyed (death bags included);
   - the `Move` order (commit, detach, attach, with roll-back);
@@ -362,11 +379,17 @@ Each unifies a job and deletes the copies.
 - **Unifies:** the three door systems, the two collapse rules and the copied cache-making.
 - **Makes:** flavour ruins into Places.
 - **A surface query on the interface:** ray to the real wall, solid behind, open floor in front. Its consumers:
-  - creature cracks and lairs, which today are placed from room boxes and float (`WallCrack`, PoiFauna.cs:935; CaveFauna.cs:51; drawn by shared/Bestiary/View/DeepView.cs:205-233);
+  - creature cracks and lairs in places, which today are placed from room boxes and float (`WallCrack`, PoiFauna.cs:935; drawn by shared/Bestiary/View/DeepView.cs:205-233). Cave wall cracks were removed on 24 Nov (dcb7052d), so `CaveFauna`'s leftover `sim.Cracks` read (shared/Bestiary/Sim/CaveFauna.cs:56) is deleted;
+  - cave sims, which use the voxel `ISolidSpace` through `SpaceMath` today, a working model for the query;
   - the owner's planned real holes;
   - the worm masses, which do this ad hoc today (PoiFauna.cs:957 `Root`, :980 `Faces`, through `ISolidSpace`/`SpaceMath`).
 
   Creature cracks stay their own nodes, never part of the damage look.
+
+  The query:
+  - runs read-only on a worker and never generates chunks (`Caves.Search` is `Task.Run`; `LoadedVoxels` returns solid for unbuilt chunks, `PlaceFauna.cs:707`);
+  - can answer "this cell belongs to another body" (today's `Kept`/`Dug` test, `PlaceFauna.cs:704`);
+  - works in a sim's local frame (integer `_offset`, `NearestCopy`/`Canonical`).
 - **Wear stays paint.** Place cracks are surface paint, not damage (owner, 25 Nov):
   - age cracks are painted by the place shader by age, View/MeshBuild.cs:1249;
   - the weak-wall tell is a line figure on one face, Gen/Mesher.cs:914;
@@ -405,6 +428,11 @@ Each unifies a job and deletes the copies.
   - the bike as a hover body in the shared physics;
   - one seated state.
 - **Closes:** SA B-B15 to B-B18, B-B4 (the bike rams nothing).
+- **One ground source for cave sims too.** Today they read three:
+  - the voxel store plus `Streamer.IsReady` (`PlaceFauna.cs:707`);
+  - the analytic `planet.GroundHeight` (`PlaceFauna.cs:651`, `Underworld.cs:111`);
+  - `Zone.GroundAt` (`PlaceFauna.cs:637`).
+- **Ground edits reach every sim on that body.** `Edits.Edited` feeds only `Places.Dug` and `Wildlife.Dug` (`Game.Places.cs:54`, `SurfaceZone.cs:268`). A dug floor is never seen by a cave's `WNav`, which is built once (`PlaceFauna.cs:660`).
 - **The bike keeps its feel.** The port must keep:
   - the probe reading the higher of ground and water, with lava not counted as water;
   - the shared spring (`HoverController.Cushion`: 1.2 Hz, damping 0.4, vertical only, push only);
