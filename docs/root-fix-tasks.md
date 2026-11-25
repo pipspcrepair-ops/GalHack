@@ -69,12 +69,13 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 - **Today:** `tools/test-all.ps1` and the queue scripts exist, but they're run by hand. The rebuild and quit-yourself rules live only in briefs and memory.
 - **Proof:** a branch with a stale DLL, a hanging test or a captured zone fails the gate on its own.
 
-**T0.6 Repo hygiene** (S, low effort; owner decisions first)
-- **The owner decides, item by item:**
-  - the zero-byte stray `.cs` files in the main checkout's root (`CapitalWorld.cs`, `Craft.cs`, `Homes.cs`, `Library.cs`, `TerrainStreamer.cs` and others): delete them, or say what they're for;
-  - untracked work that should be committed or ignored: `asset-notes/`, `docs/mockups/`, `docs/font/`, `docs/music-samples/`, and the research PDFs (private? keep out of git);
-  - `.git` at about 665 MB: Git LFS for binaries, a history clean-up, or leave it.
-- **Then:** carry out what was decided, and add what stays untracked to `.gitignore`.
+**T0.6 Repo hygiene** (S, low effort; mostly done 25 Nov)
+- **Done (owner, 25 Nov: "that should get a clean"):**
+  - the 16 zero-byte stray `.cs` files in the main checkout (7 in the root, and 9 empty copies of files that have content on test-build) were removed;
+  - `asset-notes/` was committed;
+  - `.gitignore` now keeps out new screenshots (`prototypes/*/screenshots/`, `shots/`), `scratchpad/`, and the working folders the owner chose to keep local: `docs/font/`, `docs/mockups/`, `docs/music-samples/` and the research PDFs.
+- **Screenshots from now on:** a shot a README or the gallery needs is added on purpose with `git add -f`. The gallery's images live in `docs/gallery/`. Agents' proof shots go to their scratchpad, never into git.
+- **Left for later:** `.git` is about 930 MB, and 482 MB of that is 904 PNGs in history. The owner chose to stop the growth now and not rewrite history, since a rewrite means re-cutting every branch and the roughly 250 worktrees. Revisit once fewer branches are live. Pruning stale worktrees goes with it.
 
 **T0.1a Test harness and probe** (M, high effort; after T0.2)
 - **Builds:**
@@ -364,12 +365,12 @@ Each unifies a job and deletes the copies.
   - the worm masses, which do this ad hoc today (PoiFauna.cs:957 `Root`, :980 `Faces`, through `ISolidSpace`/`SpaceMath`).
 
   Creature cracks stay their own nodes, never part of the damage look.
-- **Wear drawn once.** Place cracks are baked into the place mesh at generation, not driven by HP:
-  - weak-wall strokes, poi-generator Gen/Mesher.cs:914;
-  - the crack round an unsafe floor, Gen/Arch/BuildingRooms.cs:400;
-  - age cracks, View/MeshBuild.cs:1249.
+- **Wear stays paint.** Place cracks are surface paint, not damage (owner, 25 Nov):
+  - age cracks are painted by the place shader by age, View/MeshBuild.cs:1249;
+  - the weak-wall tell is a line figure on one face, Gen/Mesher.cs:914;
+  - the unsafe-floor warning is painted round a hole, Gen/Arch/BuildingRooms.cs:400.
 
-  Structures draw damage from HP (building Structures/Damage.cs, Presentation/ChunkMesher.cs). Proposed: age wear becomes a starting damage state drawn by the one damage look, so nothing is drawn twice. *(Owner to confirm.)*
+  HP damage is its own look, drawn on top. They never mean the same thing, so nothing is drawn twice.
 - **Keep:** the hidden-room cracked panel, a secret wall with its own HP (PoiPlaces.Interact.cs:116, :180, :303; Place.Fixtures.cs:334, its draft dust). It survives the merge into one door, cache and collapse path.
 - **Keep for later, untouched:** the in-wall crack network (Brain.Deep.cs:160-200, travel within 60 m). The colony half (PoiFauna.cs:176-198) may be superseded by the 24 Nov "insects are decoration" rule.
 - **Part-work:** proto/nocracks acea648c, untested and not merged. Re-cut from test-build if it's used.
