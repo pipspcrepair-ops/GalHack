@@ -17,7 +17,7 @@ These rules are the general case. No band-aids: a fix that patches one case brea
 
 ## 1. The rules
 1. **Everything is in a world, and asks its own.** Every system acts for a thing (a sleeper, a vessel, a creature, a bag, a shot). It reads that thing's world when it acts. Nothing stores a world, planet, weather, wildlife, places or sound reference past one call. There is no game-wide "current world".
-2. **There is no special starter.** The start world is the first world. Code never asks "is this the starter", "is this home" or "is this the first orbit".
+2. **There is no special starter.** The start world is the first world, and the start system is just where you begin (owner, 25 Nov: "it's unlikely we'd ever return to it once we leave"). Code never asks "is this the starter", "is this home" or "is this the first orbit". The start system is parked, freed and restored by the same rules as any other system. Nothing keeps it in memory.
 3. **There are many players.** A sleeper is one of a list. Simulation code takes the sleeper it acts for. Only the view (camera, visor, menus, audio listener) reads "the local sleeper".
 4. **Ownership is decided once per system** (section 3). Something owned by a world is made with that world and dies with it. Something owned by a player travels with them. Something owned by the faction is kept by the game.
 5. **Joining a world is one step.** Each world-held thing has one `Attach(world)` and one `Detach(world)`, which hold every subscription and registration. Spawning, crossing between worlds and removal call only those two.
@@ -41,6 +41,7 @@ Game (one per server: the seed, the clock, the faction record, the list of sleep
 ```
 - **The galaxy comes from the game seed.** The start star and start body are chosen inside it. The start world is generated like any other body: one path, no `SkySystem.For(spec)` beside `StarProfile.Of`. *(Fixes structure A-6.1 and A-6.2.)*
 - **A world is in play while anything wants it.** Each world holds interest points: one per sleeper on it, plus any vessel or system that asks. Streaming, wildlife, weather hazards and places run around each point, not one `Focus`. A world parks when it has no points, and is freed to its record when nothing needs it in memory. *(Fixes A-R2.)*
+- **No system is kept in memory for being first.** Today a fold parks the whole start system and keeps it loaded (`ParkHome`), while every other star's system is freed to the ledger (`FreeAbroad`, Spaceflight.Fold.cs:288-289). No design calls for it. It survives because about 20 systems hold the starter zone, so freeing it would break them. Once rule 1 holds, `ParkHome` goes, and the start system is freed and restored like any star's.
 - **Frames:** positions are stored in canonical planet coordinates. Each viewer's floating origin is that viewer's own. Moving a frame never teleports another player. *(Fixes A-2.2 and A-4.6.)*
 - **Diggable bodies:** a world's ground and each asteroid in a field are each a diggable body, with their own terrain, ore, change record and gravity. Digging acts on the body the ray hits, never on "the zone's planet". *(See offworld-audit, asteroids.)*
 - **The world manager** (today mixed into `Spaceflight`) makes, parks, frees and restores worlds. Travel (one vessel's or sleeper's climb, warp, fold) is separate and belongs to the traveller. *(Fixes A-3.5.)*
