@@ -59,6 +59,7 @@ Nothing else can be shown fixed without these.
   The last two live in the Director's scratchpad today.
 - **Also:** PopRoute gets a `--live` pass, and the gate passes `--airless`.
 - **Closes:** TC, the Director's notes.
+- **Also:** timing checks become load-aware. PhysicsTest's 2 ms physics-step check fails under machine load with no code change (2.17 to 2.23 ms), so the proof gate would flap.
 - **Proof:** the gate and the moving-picture check run from repo tools alone.
 
 **T0.3 Clean up the tests that hide bugs** (S, medium effort; depends on T0.1)
@@ -113,6 +114,7 @@ Independent of each other once Tier 0 is in.
 - **Also:**
   - Join `Progress.Earned` to the visor's XP line.
   - Make the Fold.cs:473 restore failure keep its record and block the commit.
+  - Orbit's empty weather still gives the `Strike` and `Events` API, with no hits. (`Hazard` and `Hazards` are already gone.)
 - **Closes:**
   - SF (about 105 hiding calls);
   - **NO WEAPONS IN SPACE** in part: shots and NPC weapons never step in orbit;
@@ -181,6 +183,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - Engine-wide state (shader globals, environment, `AudioServer` buses) is written only by the drawn world's view.
   - Cabins are made for occupied ships only.
   - Things aboard read `Outside = ship.World`.
+  - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
 - **Closes:** architecture review findings 5 and 7. Far trees and horizon voxels follow this rule when built.
 - **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins.
 
@@ -250,6 +253,13 @@ Each unifies a job and deletes the copies.
 - **Builds:** one `Harm` event and an adapter per target kind, with one falloff and one health unit.
 - **Must keep:** the owner's 17 Nov damage rules.
 - **Replaces:** the three blast copies, the two ram copies, both people sims' damage, and the per-target copies (`ArmsHost.World`, `PoiPlaces.Damage`, `WearPlant`).
+- **Weather hits are Harm sources on every target kind.**
+  - Today `Game.OnWeather` hurts the player from lightning and debris.
+  - `VesselDamage.OnWeather` hurts blocks from lightning only.
+  - planet-surface debris does no damage.
+  - Nothing weather-borne hits people or creatures.
+
+  Weather hits stay untelegraphed (owner, 24 Nov), and Harm never adds a warning.
 - **Closes:** SA B-B1 to B-B6 (the fuel drum that spares townsfolk; fire and wind that never touch them; health in two units).
 - **Proof:** every source hurts every target kind by the same rule.
 
@@ -275,14 +285,19 @@ Each unifies a job and deletes the copies.
 - **Closes:** SA B-B14 (a 3 m hole counts as shelter).
 - **Proof:** one answer for wind, lightning, creatures, rain and the suit at the same spot.
 
-**T4.5 Ground, gravity and vehicles** (M, medium effort; depends on T2.2)
+**T4.5 Ground, gravity and vehicles** (L, high effort; depends on T2.2)
 - **Builds:**
   - one `Ground` service per diggable body, with `ArmsHost.SolidHit` folded in;
   - the gravity constants replaced by the body's own gravity;
   - the bike as a hover body in the shared physics;
   - one seated state.
 - **Closes:** SA B-B15 to B-B18, B-B4 (the bike rams nothing).
-- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity.
+- **The bike keeps its feel.** The port must keep:
+  - the probe reading the higher of ground and water, with lava not counted as water;
+  - the shared spring (`HoverController.Cushion`: 1.2 Hz, damping 0.4, vertical only, push only);
+  - `Follow` (tilt keeps heading, no self-turn);
+  - hover lift only on a powered core.
+- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
 
 **T4.6 Events, sound and markers** (M, medium effort; depends on T2.7)
 - **Builds:**
@@ -322,6 +337,9 @@ Each unifies a job and deletes the copies.
 - **Closes:** SA C-H.
 
 ---
+
+## Fire waits for these
+Fire (planned, not started) is briefed only once these are in: T1.4 (wind and rain on every world), T2.7 (fire effects in the view only), T4.1 (burn damage through Harm), T4.2 (blocks and plants as burnable material), T4.4 (rain, wet and shelter put fire out), and T4.6 (crackle, smoke, AI hearing). Fire hits are never telegraphed.
 
 ## After the root fixes
 **T6 Host and clients**
