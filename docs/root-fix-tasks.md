@@ -41,7 +41,7 @@
 ---
 
 ## Tier 0: the proof first
-Nothing else can be shown fixed without these. **Order:** T0.2 first, because every later gate and T0.4's numbers run on it. Then T0.1a, T0.1b and T0.4 side by side, then T0.3.
+Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 first, because every later gate and T0.4's numbers run on them. Then T0.1a, T0.1b and T0.4 side by side, then T0.3. T0.6 can run any time.
 
 **T0.2 Tools into the repo** (S, low effort; FIRST)
 - **Moves in:**
@@ -57,6 +57,24 @@ Nothing else can be shown fixed without these. **Order:** T0.2 first, because ev
   - logs written as UTF-8 (PowerShell `*>` writes UTF-16).
 - **Closes:** TC, the Director's notes.
 - **Proof:** the gate and the moving-picture check run from repo tools alone, on a branch, before its merge.
+
+**T0.5 One scripted merge gate** (M, medium effort; after T0.2)
+- **What:** one script that every merge runs, so the owner's playtest stops being the only safety net between merges.
+- **Steps:**
+  1. Rebuild every project, so a stale DLL can't fake a result (owner rule).
+  2. Run the test suites through the queue, at most 4 Godot runs.
+  3. Give every scene a hard timeout. A scene that doesn't quit itself fails the run and reports its PID to the owner. Nothing is killed (owner rule).
+  4. Run the frame check on the branch.
+  5. Scan the diff for the ARCHITECTURE.md section 10 patterns: a `readonly` world field, `Game.Surface` or `Game.Survivor` in simulation code, a `+=` on a world outside `Attach`, `?.` on a system, a direct `GetWorld3D()` query, string ID compares, new statics with state.
+- **Today:** `tools/test-all.ps1` and the queue scripts exist, but they're run by hand. The rebuild and quit-yourself rules live only in briefs and memory.
+- **Proof:** a branch with a stale DLL, a hanging test or a captured zone fails the gate on its own.
+
+**T0.6 Repo hygiene** (S, low effort; owner decisions first)
+- **The owner decides, item by item:**
+  - the zero-byte stray `.cs` files in the main checkout's root (`CapitalWorld.cs`, `Craft.cs`, `Homes.cs`, `Library.cs`, `TerrainStreamer.cs` and others): delete them, or say what they're for;
+  - untracked work that should be committed or ignored: `asset-notes/`, `docs/mockups/`, `docs/font/`, `docs/music-samples/`, and the research PDFs (private? keep out of git);
+  - `.git` at about 665 MB: Git LFS for binaries, a history clean-up, or leave it.
+- **Then:** carry out what was decided, and add what stays untracked to `.gitignore`.
 
 **T0.1a Test harness and probe** (M, high effort; after T0.2)
 - **Builds:**
