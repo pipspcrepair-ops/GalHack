@@ -144,6 +144,7 @@ Independent of each other once Tier 0 is in.
   - SA C-B1 (vessel weather subscription leaks; ships never struck by lightning on another world), with the `VesselDamage.OnWeather` guard deleted;
   - C-B2 (shots in flight jump on another world's frame shift);
   - C-B3 (SkyTraffic).
+- **Force fields re-bind** their emitters on `Attach` and `Detach`, so fields on a ship that crosses worlds keep working.
 - **Proof:** a ship flown to a stormy moon is struck there. A freed hulk is gone from every list. Shots in flight in orbit stay on their line across a frame shift.
 
 **T1.3 One settings object, and rules per world** (S, medium effort)
@@ -230,6 +231,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - OW#1, #2, #4, #5, #9, #11, #12, #13, #14, #17, #19, #25;
   - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**;
   - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
+- **Force fields stay per vessel:** power draw (`v.Power.AddLoad(Draw(v))`) and `PoweredFor` read the vessel's own power and wreck state, never the world's. The door hook that feeds fields across open doors (`BlockDoors.OpenDoors`) keeps working.
 - **E always reaches doors and containers.** A held item never takes E from a door or a container. On vacarms, holding a blueprint off-world let the builder take the aim, and a wreck door's E prompt went blank at 3.0 m. The hands chain is Game/Game.cs:729-750. One E order comes from `WorldQuery`'s Use mask (T2.2).
 - **Claiming a wreck** (a core in hand) moves into the building slice as ordinary core placement through the build tool, at the same reach as any E action. Today `Spaceflight.Claim` works at any range; vacarms made it UseReach+1, derelicts only. Wreck salvage moves to T4.3.
 - **Proof:**
@@ -322,6 +324,7 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
 
 **T3.3 The safe ledger** (M, high effort; depends on T3.1)
 - **Builds:**
+  - force field state (powered, field HP) saved with its vessel, which nobody has checked yet;
   - one commit queue on a worker;
   - a record is gone only when its holder reports it destroyed (death bags included);
   - the `Move` order (commit, detach, attach, with roll-back);
