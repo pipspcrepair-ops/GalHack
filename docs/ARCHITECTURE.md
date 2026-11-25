@@ -1,6 +1,6 @@
 # GalHack architecture: the rules the code follows
 
-**Status: DRAFT v2 for the owner's design pass (25 Nov 2026). Nothing here is built yet.**
+**Status: APPROVED, 26 Nov 2026** (the owner left the approval to Claude: "I'm trusting you on the approvals"), after seven independent reviews. Nothing here is built yet. Work starts on the owner's go.
 - **v2:** revised after an adversarial review that checked v1 against the code, DESIGN.md and the owner's rules. It found 19 problems; all are folded in here, and the largest are rules 2 and 12, section 2b, section 4c and the new order of work.
 - **Where it comes from:** the root fixes in [offworld-audit.md](offworld-audit.md) and [structure-audit.md](structure-audit.md), the rules from [silent-failure-audit.md](silent-failure-audit.md) and [test-coverage-audit.md](test-coverage-audit.md), and the owner's decisions of 25 Nov.
 - **Once approved:** every brief cites it, and every merge review checks against it (section 10).
@@ -174,7 +174,7 @@ Owner decisions, 25 Nov.
   - Terrain edits per chunk; for a rock field, one record keyed by rock ID, written only for rocks that were touched.
   - Felled plants, mined deposits, deaths, place memory (doors, damage, loot taken), salvage progress, standing changes, things set down.
   - It's what a save writes (DESIGN.md 747: edit lists on top of the seed).
-- **Time passing while frozen:** one game-owned galaxy clock. A frozen world doesn't tick (owner). When it's made again, anything that should have moved on is worked out from the elapsed time: regrowth, decay, resource meteorites below about 10% deposits (DESIGN.md 706), and the sun's and moons' places. This uses `Seed(worldKey, …, elapsed bucket)`, so a reload gives the same result. These only ever touch records with no claim (DESIGN.md 1592).
+- **Time passing while frozen:** one game-owned galaxy clock. A frozen world doesn't tick (owner). When it's made again, anything that should have moved on is worked out from the elapsed time: regrowth, decay, resource meteorites below about 10% deposits (DESIGN.md 706), and the sun's and moons' places. This uses `Seed(worldKey, …, elapsed bucket)`, so a reload gives the same result. Regrowth, decay and meteorites only ever touch records with no claim (DESIGN.md 1592). The sky, running timers and rooms' air catch up on every record, claimed or not.
 
 ## 4b. Storage
 The foundation is designed and proven already. GalHack builds on it and does not invent a new one:
