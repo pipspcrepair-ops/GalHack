@@ -77,7 +77,8 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
   - Collision streaming is separate from drawing. An undrawn world streams collision only (rule 12).
 - **Frames:** the host simulates each world in one fixed frame centred on the zone (DESIGN.md 1580: pinned origin, the map wraps, about 2 mm precision). Simulation positions never shift. Only clients offset what they draw. An orbit zone's size is limited so precision holds. *(A-2.2, A-4.6.)*
 - **Cabins:** each occupied ship's cabin is its own world (DESIGN.md 1582), made when a sleeper boards and freed when the ship is empty and parked. It isn't made for every vessel; today every vessel, wrecks included, builds a `CabinWorld` (Vessel.cs:406-409).
-  - A thing aboard has `World = cabin` (where it moves) and reads `Outside = ship.World` for air, weather, exposure and gravity outside.
+  - A thing aboard has `World = cabin` (where it moves). It reads the ship first: its sealed rooms' air and its core's fixed 1 g while the core works. Only then does it read `Outside = ship.World`, for weather, and for air and gravity where the ship gives none (owner, 25 Nov).
+  - A base never moves, so it isn't a cabin world: it is a frame on its world. Its rooms and core answer air and gravity the same way.
   - When a ship moves, only the ship goes through the ledger. Things aboard stay in the cabin and re-read `Outside`, in one call from the ship's `Move`.
 - **Diggable bodies:** a world's ground and each asteroid in a field are each a diggable body, with their own terrain, ore, change record and gravity. Digging acts on the body the ray hits, never on "the zone's planet".
 - **The world manager** (today mixed into `Spaceflight`) makes, parks, frees and restores worlds and runs the commit queue (section 4c). Travel (a vessel's climb, warp or fold) belongs to the vessel.
@@ -245,7 +246,7 @@ Move(from, to)           section 4c's order
 | Take-apart | Salvage is harm by the tool class on a thing with HP and a bill; one yield formula, with the claim check inside it | Seven yield formulas, `SleeperTool.CutPlant`, and orbit's hand salvage (B-R2, offworld #26) |
 | Built things | One block-world interface for `Structure` and `Place`: cells, HP, doors, rooms, collapse, damage look; doors, caches and collapse written once against it | Three forms of built thing, three door systems, two collapse rules (B-R3) |
 | Shelter and air | `Exposure(point)` on the world: sky open, roof, depth, and the innermost air volume at the point. Air volumes work like cabin worlds: each sealed room owns its air, held by its structure or place; volumes nest, each reading its parent and then the world; openings (doors, breaches) link a volume to its parent; life support tops it up | Nine shelter tests, the bunker special case (B-R4, C-E) |
-| Ground and gravity | A `Ground` service per diggable body (`Top`, `Natural`, `Gravity`) | Five ground lookups; `ArmsHost.SolidHit` (ArmsHost.cs around 559-638), whose height-map fallback is `Streamer.CollidesAt` plus `TerrainStore.Raycast`; gravity constants per system (B-R5) |
+| Ground and gravity | A `Ground` service per diggable body (`Top`, `Natural`). Gravity follows cabin-world logic: the innermost working core gives a fixed 1 g, else its parent structure, else the world (its own: standard g × its scale; orbit 0 g) | Five ground lookups; `ArmsHost.SolidHit` (ArmsHost.cs around 559-638), whose height-map fallback is `Streamer.CollidesAt` plus `TerrainStore.Raycast`; gravity constants per system (B-R5) |
 | Vehicles and seats | The bike is a small hover body in the shared physics; riding is one seated state | The bike's own integrator, the `Seated`/`OnBike` split (B-R6) |
 | Events | `WorldEvent` (kind, point, loudness, material, `Source`); audio, AI hearing, visor cues and effects subscribe | Four hand-made calls per event, four voice pools (B-R8); `WildlifePatch.Noise` and `Town.Gunfire` from the NPC reactions work, turret gunfire included |
 | Markers | `Markers(world, viewer)`; the visor and maps only filter and draw. It keeps the owner's 17 Nov rule: only the viewer's own map marks and scan results, plus always our bags, our structures, and the bunker on its own world | Three marker lists (B-R9), `Visor.Markers`' `Game.Bunker` and `Zone == Surface` checks (Visor.cs:415) |
@@ -345,6 +346,8 @@ Reject a change that:
 4. **Each sleeper has their own numbered cryopod and locker,** four in all, so co-op is up to four sleepers. Each pod is its sleeper's wake point and first respawn record. Each locker is a Sleepers-faction container labelled with its sleeper. Today only one pod is alive and only `Pods[0]` is a locker (structure A-6.3).
 
 5. **A frozen world stays loaded for about 2 minutes before it is freed,** so hopping between surface and orbit doesn't regenerate it. It is frozen the whole time and nothing ticks. DESIGN.md "Zones under the hood" is reworded to match.
+
+6. **Air and gravity follow cabin-world logic.** Inside a functioning ship or base you breathe its rooms' air and stand at its core's 1 g, whatever the world outside. Sealed volumes nest and are linked by openings; a core that's off hands gravity to its parent. Orbit is 0 g, and loose things drift there.
 
 **Still open:** the engine options in section 2b. These come after the step 2a prototype measures the cost.
 
