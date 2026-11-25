@@ -1,6 +1,6 @@
 # Root-fix task list, in priority order
 
-**25 Nov 2026.** This is the work that makes every system work on any world, at any star, for any of four sleepers. It turns [ARCHITECTURE.md](ARCHITECTURE.md) section 12 into jobs that can be briefed. Nothing starts until the owner approves ARCHITECTURE.md and there is quota.
+**25 Nov 2026.** This is the work that makes every system work on any world, at any star, for any of four sleepers. It turns [ARCHITECTURE.md](ARCHITECTURE.md) section 12 into jobs that can be briefed. **Approved 26 Nov 2026**, with ARCHITECTURE.md, after seven independent reviews (the owner left the approval to Claude). Nothing starts until the owner says go, because of usage quota. Each task's agent re-checks its task against the code as it stands when it's briefed.
 
 **Priority (owner, 25 Nov): "FIX CORE ISSUES FIRST".** These root fixes outrank all other work, the playtest list included. Owner bugs that come from these causes (weapons, tool and building off-world, door glitches, the compass) are fixed here, not patched sooner.
 
@@ -227,7 +227,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds:** a `Sleeper` object owning body, suit, pack, progress, tools, shots' `Source`, death bag and the open container. `Game` holds the list and "the local sleeper".
 - **`Game.Zone` becomes the local sleeper's view world only.** Today it is the one "current world" (48 uses), and simulation reads it: creature contact bodies exist only on it (CreatureBodies.cs:80, 97, 255-271), and creatures' weapons fire into it (`SimArms.Zone => _host.Game.Zone`, SimArms.cs:67). T2.4 and T2.5 move those readers onto their own world.
 - **Replaces:** `Game.Survivor` in simulation code: wildlife's one `Player`, towns' one "you", shots' `owner == 0` and static `You`, the crossing's `Carrier()`, death and aftermath.
-- **Builds the claims** (ARCHITECTURE.md section 3): every lasting thing carries its claim as a field (a sleeper, the Sleepers faction, an NPC faction or none), kept apart from where it is held. The Sleepers faction record holds only what isn't physical: charts and standing. Its index of claimed things by ID comes in T3.1b, once IDs exist; it never holds the objects. Today ownership is an owner string compared by name: `Structure.Owner = Building.DefaultOwner` (Vessel.Hulk.cs:84, BuildTool.Whole.cs:320, BlueprintLibrary.cs:157, Spaceflight.Hands.cs:230), read by `Vessel.IsPlayers` (Vessel.cs:201), `SleeperTool.Ours` (SleeperTool.cs:683), `StructureArea.Linkable` (StructureArea.cs:52) and Visor.cs:417; bags carry `bag.Owner` (Lootables.cs:157). The claim field replaces the owner string and those compares, which are deleted in the same merge, so there is never a second way to check ownership. T2.5's command-chair check, T3.3b's "the faction's last base", T4.3's yield and T4.7's `Spill` all read it. A destroyed core changes its claim: today `CoreDestroyed` (PoiPlaces.Interact.cs:327-335) has no subscriber, so shooting out a faction core changes nothing (SF #19).
+- **Builds the claims** (ARCHITECTURE.md section 3): every lasting thing carries its claim as a field (a sleeper, the Sleepers faction, an NPC faction or none), kept apart from where it is held. The Sleepers faction record holds only what isn't physical: charts and standing. Its index of claimed things by ID comes in T3.1b, once IDs exist; it never holds the objects. Today ownership is an owner string compared by name: `Structure.Owner = Building.DefaultOwner` (Vessel.Hulk.cs:84, BuildTool.Whole.cs:320, BlueprintLibrary.cs:157, Spaceflight.Hands.cs:230), read by `Vessel.IsPlayers` (Vessel.cs:201), `SleeperTool.Ours` (SleeperTool.cs:683), `StructureArea.Linkable` (StructureArea.cs:52) and Visor.cs:417; the string is also set in the shared building code: `Building.DefaultOwner = "player"` (prototypes/building/src/Structures/Building.cs:90), `Place(..., owner = DefaultOwner)` on every core placed (:145, :152), `Blueprint.Load` and `Build` defaulting it (Blueprint.cs:70, 318, 326, 346) and Designer.cs:24. The fold restore calls `Blueprint.Load` with no owner (Spaceflight.Fold.cs:470), so any restored structure with a core is stamped as the player's. A bag's "ours" is `Lootable.Yours` (Lootables.cs:54, 146, 156; InfoSections.cs:181). The claim field replaces the owner string, its setters and compares, and `Yours`, all deleted in the same merge, so there is never a second way to check ownership. The claim is carried in the blueprint and structure record, so it survives a crossing. `bag.Owner` (Lootables.cs:56, 157) stays as the label of whose body it was (ARCHITECTURE.md 3), typed as a sleeper ID; the corpse check reads it (SleeperTool.cs:644). T2.5's command-chair check, T3.3b's "the faction's last base", T4.3's yield and T4.7's `Spill` all read it. A destroyed core changes its claim: today `CoreDestroyed` (PoiPlaces.Interact.cs:327-335) has no subscriber, so shooting out a faction core changes nothing (SF #19).
 - **XP on the visor reads the local sleeper's own progress** (today `Progress.Earned` isn't joined to the visor's XP line).
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4). Respawn is per sleeper, not hard-wired to the bunker (decided-vs-built.md 2.2). The other respawn choices there (home base, a cryopod built on a structure, tent) are F8, built on this.
 - **World things come out of the sleeper's models** (SA A-R3, S7, A-3.1 to 3.4). Today the suit's survival sim (`SurvivalSim`) holds the world's replicators, pods, bushes and food caches as bare positions and counters, `Death` keeps backpacks on one suit's clock, and charts and travel state sit in `Spaceflight` (`Charts.Mark` has no world). The survival sim keeps only vitals. Replicators, pods, caches and bags become world things, held by the world they're in, so they take frame shifts like anything else (A-3.3). Charts and standing go to the Sleepers faction record. There are no respawn devices yet: no respawn or healing block was ever built in the slice (the survival-vitals prototype has them only as fixed points, planet.json:62-63). Built cryopods come in F8, as world things the same way.
@@ -244,6 +244,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - **A world with an interest point is never freed.** Today `FreeAbroad` (Fold.cs:288, :303) frees every other star's system on every fold, so a second sleeper's fold would free the first sleeper's star.
   - Simulation size comes from game settings, not a client's display sliders.
   - **Wildlife population doesn't depend on the path walked** (A-2.8). The roll is keyed by the world and the patch's cell, not the patch origin the player happened to arrive at (`Rng.For(Fauna.Seed ^ (Origin.X*31 + Origin.Z), "population")`, WildlifePatch.cs:366). The refills (:453) are keyed by a running count, so they depend on the path too.
+  - **One galaxy clock** that every world in play reads, so two sleepers on two worlds see the same sky (structure-audit 6.4: each world advances its own `SkyRig.Days` today). T3.2 adds the catch-up on it.
   - **The multi-world budget T0.4 measured:** the per-world tick rate and budget, the thread plan, and each world's share of `FramePacer`, `UploadBudgetMs` and `GcPacer`.
   - **Making a world ready never costs one long frame.** Approaching the moon today gives one frame of 18 to 24 ms when its terrain streamer is set up (`TerrainStreamer.SetWorld`, playtest-list.md, "Approaching the moon: one frame of 18-24 ms"). Setting up a world's streaming is split across frames, within the budget T0.4 sets.
 - **Replaces:**
@@ -253,7 +254,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - what triggers parking and freeing: one player's place today, interest points after (the pause itself is T2.2's);
   - the one `Away` and one `Orbit`.
 - **Closes:** SA A-R2 (A-2.1, A-2.3 to 2.9; A-2.2, the frame shift, is T2.2), A-3.5 (world manager split out of `Spaceflight`), OW#6, OW#9's weather observer, OW#10's streaming and streamer settings (its shadow settings are T2.7).
-- **A frozen or freed world drops its lights, not just its meshes.** The only shadow-casting `DirectionalLight3D`s in the tree are the drawn world's, one per star you can see (binary and trinary systems, owner design; see F1). They share the directional atlas by brightness, and a stale light must never take part of it. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges already prints the shadow-casting sun count after a landing; that becomes a check.
+- **A frozen or freed world's view nodes leave the drawn scene,** its lights included. Which lights cast shadows is T2.7's (engine-wide view state).
 - **Proof:** two sleepers far apart on one world both have ground and life. A ship flown to a stormy moon is struck there, with the moon's weather centred on its sleeper. Two sleepers on a moon are both targeted by its wildlife. A world nobody is on stops costing frame time. (Two sleepers at two stars is proven in T2.8a, which builds jumps per vessel.)
 - **Note:** `ParkHome` and today's freeing of other stars stay until T3.4.
 
@@ -280,6 +281,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 **T2.5 Player systems read `thing.World`** (L, high effort, 3 slices: arms and the tool; building and doors; the view bits (compass, map, music, markers, effects); depends on T2.3, T2.4, and T2.6, because weapons' fire lines and music read the world's places (SimArms.cs:111, 186; OW#3, #17))
 - **Creatures' weapons fire into their own world,** not `Game.Zone` (SimArms.cs:67).
 - **`Arming`'s statics become per world** (shared/Bestiary/Sim/Arming.cs:13-22: `Reach`, `Fire`, `BlowDamage`, `Masked`), set by each world's arms, not by closures on one ArmsHost. Unset today, armed creatures quietly fall back to melee (SF #21).
+- **Moves onto the drawn world's view (rule 12):** `WindHowl` and `AmbientExposure`, made once as children of the starter with a fixed `Zone` today (Game.cs:384-387; WindHowl.cs:20, 65; OW#9).
 - **Moves onto the sleeper's world:** suit, SleeperTool, BuildTool, ArmsHost, shots and effects (debris, gibs, blood), the doors' animator (`BlockDoors`), force fields, hover bikes, map, music and markers.
 - **Deletes:**
   - `Spaceflight.TakeHands`, its "NO BUILDING IN ORBIT", its stand-in shot and its hand salvage (Spaceflight.Hands.cs:97). Orbit salvage runs on the ground path until T4.3 makes one yield formula;
@@ -287,7 +289,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - `Game.Surface` uses outside world management.
 - **Also:** the compass shows only on a world's surface, tuned to that world's poles.
 - **Closes:**
-  - OW#2, #4, #5, #11, #16 (the bunker marker and "home" checks against `Game.Surface`, Visor.cs:414, Spaceflight.Moon.cs:37, in the view slice), #12, #13, #14, #17, #19, #25, and OW#9's hits reaching you (its observer is T2.4, its shelter T4.4);
+  - OW#2, #4, #5, #11, #16's "home" checks against `Game.Surface` (`OnOtherBody`, Spaceflight.Moon.cs:37; its bunker marker, Visor.cs:415, is T4.6's), #12, #13, #14, #17, #19, #25, and OW#9's hits reaching you and its wind and exposure sound (its observer is T2.4, its shelter T4.4);
   - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**;
   - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
 - **Force fields stay per vessel:** power draw (`v.Power.AddLoad(Draw(v))`) and `PoweredFor` read the vessel's own power and wreck state, never the world's. The door hook that feeds fields across open doors (`BlockDoors.OpenDoors`) keeps working.
@@ -297,33 +299,12 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - weapons, the tool and building work in orbit, on a vacuum moon and at another star, and shots step in orbit;
   - doors on any ship open and animate cleanly off-world;
   - the suit reads the world you're on, including a frozen moon's temperature range;
+  - a vacuum moon is silent, and a moon with air has its own wind;
   - OrbitTest's door and "box: take-all" step passes with a blueprint in hand.
 - **Test lessons from vacarms (6aca3cad), reused here:**
   - in orbit the test's aim hit its own Skiff cabin at 2.1 m, so "0 hits" proved nothing: the sleeper floats clear before aiming;
   - TestRows needs a row that can be placed in space.
 - **Note:** vacarms' MoonTest.Hands checks are reused here.
-
-**T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2; T2.3 and T2.4, because cabins are made only for ships with a sleeper aboard; and T2.5 and T2.6, so its budget is measured with places and per-world arms live)
-- **Builds:**
-  - Undrawn worlds run simulation only.
-  - Engine-wide state (shader globals, environment, `AudioServer` buses) is written only by the drawn world's view.
-  - Cabins are made for occupied ships only. When a cabin is freed, everything loose in it (cargo, bags, creatures) is committed into the ship's record and comes back when the cabin is made again (ARCHITECTURE.md 2c).
-  - Things aboard get `Outside = ship.World`, which T4.4's lookup uses as a cabin's parent.
-  - A base isn't a cabin world: it never moves, so it stays a fixed body in its world (Vessel.cs:339-341). T4.4's lookup finds it by position.
-  - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
-  - **Engine-wide render state has one owner, the drawn world's view.** Today it's written by many places:
-    - `SunShadows.Apply` sets the directional shadow atlas, the soft shadow filter qualities and the viewport's positional atlas (SunShadows.cs:63-66). It runs only from `ApplyScene` on a settings or zone change (Game.Settings.cs:112-139).
-    - `SkyRig` sets the sun's shadow opacity and enable, the night light's enable, and the shadow skew every frame (SkyRig.cs:94, 608-617), although SunShadows' doc says nothing else touches a light's shadow.
-    - Global shader values: `shade_fill` (SkyRig.cs:687), `sky_ground` and `sky_ground_rect` (SkyLight.cs:337-392), `sky_field`, `planet_size`, and `weather_*` from three places (SurfaceWeather.cs:960-963, WeatherRig.cs:239-242, Spaceflight.Fold.cs:353). SurfaceZone.cs:339-343 zeroes them on entering a zone with no weather sim, so today they belong to whichever zone entered last, not the drawn one.
-  - **Every drawn world's sky gets the shadow settings.** `Suns()` (Game.Settings.cs:125-133) walks only the starter, the current orbit and the space sun.
-  - **Shaders:** nothing moves vertices from `CAMERA_POSITION_WORLD` in a shadow-casting shader, because in the shadow pass that is the light's eye. terrain.gdshader:946 and flora.gdshader:51-54 already follow the rule. water.gdshader:72 (`round_sink`) is brought under it too, and the merge gate's diff scan (T0.5) flags the pattern in any shader.
-- **Closes:**
-  - architecture review findings 5 and 7; OW#10's shadow settings (`Suns()`);
-  - **DARK DISC AFTER RETURNING FROM ANOTHER PLANET**: engine-wide shadow and environment state left by a world that isn't drawn;
-  - **PLANET TO SPACE**: the planet left behind showing a low-detail skin (with T3.4).
-
-  Far trees and horizon voxels follow this rule when built.
-- **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins. After a return from another world, only the drawn world's suns cast shadows (PopRoute.Edges' shadow-casting sun count). The weather shader globals are the drawn world's, whichever zone was entered last. Drop a bag in a cabin, everyone leaves, come back: the bag is there and the counts match.
 
 **T3.1a `WorldKey` everywhere, IDs and the seed helper** (M, high effort; depends on T0.1a, T2.9)
 - **Replaces:**
@@ -338,7 +319,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Proof:** a reordered generator list doesn't remap anything. Two copies of one layout roll different loot.
 - **Note:** the ledger's zone names live in Spaceflight.Worlds.cs, which T2.4's first slice moves into the world manager. That part of this task merges after that slice, so the two don't collide.
 
-**T3.3a One ledger for many crossings** (M, high effort; depends on T1.2 (`Move` is commit, detach, attach), T2.3 (every sleeper is a holder), T2.4 (the world manager) and T3.1a (IDs); needed before T2.8a and T2.8c, whose proofs run two crossings at once)
+**T3.3a One ledger for many crossings** (M, high effort; listed before T2.7, whose cabin freeing commits through it; depends on T1.2 (`Move` is commit, detach, attach), T2.3 (every sleeper is a holder), T2.4 (the world manager) and T3.1a (IDs); needed before T2.8a and T2.8c, whose proofs run two crossings at once)
 - **Today:** the ledger has one commit, one plan and one "before" record (`_commit`, `_plan`, `_before`, ZoneLedger.cs:167, 194-196), so a second `Begin` while a commit is in flight overwrites the first. `Holders()` yields one sleeper record, the constant `ZoneLedger.Sleeper` (Spaceflight.cs:684-687). A second sleeper's crossing would throw or corrupt the first's, and items could be lost.
 - **Builds:**
   - one commit queue on a worker;
@@ -347,6 +328,29 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - a record is gone only when its holder reports it destroyed (death bags included);
   - the conservation audit (`Ledger.Audit`) refuses and rolls back a crossing or jump that loses or duplicates items, instead of only printing (Spaceflight.cs:677, Jump.cs:251). A structure whose restore fails (Spaceflight.Fold.cs:473) keeps its record and blocks the commit.
 - **Proof (at the ledger, since the climb is still one crossing at a time until T2.8c: `Pending _pending`, Spaceflight.cs:82-83):** two `Begin`s queued through the harness both commit, with every count matching; a crossing commits while another world parks and frees (ARCHITECTURE.md 9); a forced loss is refused and rolled back.
+
+**T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2; T2.3 and T2.4, because cabins are made only for ships with a sleeper aboard; T2.5 and T2.6, so its budget is measured with places and per-world arms live; and T3.1a and T3.3a, because freeing a cabin commits its things through the ledger: today `Refresh` deletes any record whose holder isn't seen, unless it sits in a star zone (ZoneLedger.cs:127-137, `KeptInLedger` at Spaceflight.Fold.cs:446), and one commit slot would clash with a crossing)
+- **Builds:**
+  - Undrawn worlds run simulation only.
+  - Engine-wide state (shader globals, environment, `AudioServer` buses) is written only by the drawn world's view.
+  - Cabins are made for occupied ships only. When a cabin is freed, everything loose in it (cargo, bags, creatures) is committed into the ship's record and comes back when the cabin is made again (ARCHITECTURE.md 2c).
+  - Things aboard get `Outside = ship.World`, which T4.4's lookup uses as a cabin's parent.
+  - A base isn't a cabin world: it never moves, so it stays a fixed body in its world (Vessel.cs:339-341). T4.4's lookup finds it by position.
+  - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
+  - **Engine-wide render state has one owner, the drawn world's view.** Today it's written by many places:
+    - `SunShadows.Apply` sets the directional shadow atlas, the soft shadow filter qualities and the viewport's positional atlas (SunShadows.cs:63-66). It runs only from `ApplyScene` on a settings or zone change (Game.Settings.cs:112-139).
+    - `SkyRig` sets the sun's shadow opacity and enable, the night light's enable, and the shadow skew every frame (SkyRig.cs:94, 608-617), although SunShadows' doc says nothing else touches a light's shadow.
+    - Global shader values: `shade_fill` (SkyRig.cs:687), `sky_ground` and `sky_ground_rect` (SkyLight.cs:337-392), `sky_field`, `planet_size`, and `weather_*` from three places (SurfaceWeather.cs:960-963, WeatherRig.cs:239-242, Spaceflight.Fold.cs:353). SurfaceZone.cs:339-343 zeroes them on entering a zone with no weather sim, so today they belong to whichever zone entered last, not the drawn one.
+  - **Only the drawn world's lights cast shadows:** one per star you can see (binary and trinary systems, owner design; see F1), sharing the directional atlas by brightness; a stale light never takes part of it. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges' shadow-casting sun count after a landing becomes a check.
+  - **Every drawn world's sky gets the shadow settings.** `Suns()` (Game.Settings.cs:125-133) walks only the starter, the current orbit and the space sun.
+  - **Shaders:** nothing moves vertices from `CAMERA_POSITION_WORLD` in a shadow-casting shader, because in the shadow pass that is the light's eye. terrain.gdshader:946 and flora.gdshader:51-54 already follow the rule. water.gdshader:72 (`round_sink`) is brought under it too, and the merge gate's diff scan (T0.5) flags the pattern in any shader.
+- **Closes:**
+  - architecture review findings 5 and 7; OW#10's shadow settings (`Suns()`);
+  - **DARK DISC AFTER RETURNING FROM ANOTHER PLANET**: engine-wide shadow and environment state left by a world that isn't drawn;
+  - **PLANET TO SPACE**: the planet left behind showing a low-detail skin (with T3.4).
+
+  Far trees and horizon voxels follow this rule when built.
+- **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins. After a return from another world, only the drawn world's suns cast shadows (PopRoute.Edges' shadow-casting sun count). The weather shader globals are the drawn world's, whichever zone was entered last. Drop a bag in a cabin, everyone leaves, come back: the bag is there and the counts match.
 
 **T2.8a Jumps per vessel** (M, high effort; depends on T3.3a, T2.3, T2.4, T2.9 (fold targets are star indices today, `FoldTo(int)`), and T2.5, T2.6 and T2.7, so both sleepers can play at their stars)
 - **Targets are star keys** (T0.1a's `WorldKey`, from T2.9's galaxy), not list indices.
@@ -389,11 +393,11 @@ Needed before star travel ships and before saves. T3.1a and T3.3a are listed in 
 - **Builds:**
   - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down, plus the survival points and bags T2.3 moves out of the suit (replicators, pods, bushes, food caches, backpacks), and the air of places' closed rooms.
   - **Caves:** found caves and their deaths, by cell key. Today `Caves._caves` and `Underworld._spots` live only in nodes (`PlaceFauna.cs:584`, `Underworld.cs:37`), and which caves exist depends on the walk (:630-640). A freed world's caves would refill and its kills be undone, against the owner's "find things as you left them". The cave sims' time comes from the galaxy clock (`PlaceFauna.cs:640`, `Underworld.cs:113` copy the zone's).
-  - One galaxy clock, and a catch-up hook run on return with the elapsed time, touching only unclaimed records. It catches up what exists today: the sky's positions, running timers and rooms' air. Regrowth, decay and resource meteorites aren't built yet (DESIGN.md 706, 725); they are feature F9, on this hook.
+  - A catch-up hook on T2.4's galaxy clock, run on return with the elapsed time. Physical catch-up applies to every record, claimed or not: the sky's positions, running timers, and rooms' air (`RoomAir.Advance` already catches up from a clock, RoomAir.cs:26-36), so a claimed base's unpowered rooms drift by the time away too. Regrowth, decay and resource meteorites aren't built yet (DESIGN.md 706, 725); they are feature F9, on this hook, and only they are limited to unclaimed records (DESIGN.md 1592).
 - **Closes:** OW#7, SA B-B10 (salvage resets), A-6.4.
 - **Proof:** leave a star, come back, and every change is as left, with the sky and timers moved on by the time away.
 
-**T3.3b Crash safety and the saved game** (L, high effort, 3 slices: crash points and reload; the game, faction and sleeper records with loading a game; the remaining structure records; depends on T3.2 (the galaxy clock and the per-world records), T3.3a, T3.1a, T3.1b (the faction's index of claimed things by ID), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
+**T3.3b Crash safety and the saved game** (L, high effort, 3 slices: crash points and reload; the game, faction and sleeper records with loading a game; the remaining structure records; depends on T3.2 (the per-world records), T2.4 (the galaxy clock), T3.3a, T3.1a, T3.1b (the faction's index of claimed things by ID), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
 - **Builds:**
   - the records ARCHITECTURE.md 4b lists that nothing writes today: `game` (seed, galaxy clock, mode and settings, the sleepers), `faction` (charts, standing, the index of claimed things by ID), `sleepers/<id>` (vitals, pack, progress and tech, world key and place, or cabin) and `manifest`. Today the ledger's sleeper record holds only the pack contents (Spaceflight.cs:687);
   - loading a game from disk;
@@ -530,7 +534,7 @@ Each unifies a job and deletes the copies.
   - `SoundCues.Heard` (Game/SoundCues.cs:13-15) carries its world, so the visor shows only the viewer's world's cues (SA A-1.11);
   - every event has a subscriber or is deleted (SF #20 lists the unused ones);
   - one `Markers(world, viewer)` source, keeping the owner's 17 Nov marker rule. The playtest marker entries (playtest-list.md's "Markers (places, deposits, the bunker, scanner pings)", "Compass marks discovered POIs", "POIs reveal in proximity", "Compass crowded by ore labels" and "SCANNER: PLACE MARKERS ALWAYS SHOWN": markers on the thing, discovered POIs, scanner pings) are built on this source, not each on their own.
-- **Closes:** SA B-B21 to B-B24.
+- **Closes:** SA B-B21 to B-B24; OW#16's bunker marker (`Game.Bunker && Zone == Surface`, Visor.cs:415), on the one marker source.
 - **Proof:** a fuel drum is heard by creatures and towns and shows on the visor. One marker shows the same in all three views.
 
 **T4.7 Shared entry points** (S, low effort; after T2.3, which builds the claims `Spill` takes)
