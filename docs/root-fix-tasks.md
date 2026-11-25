@@ -251,6 +251,12 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Closes:**
   - OW#3, #18, #20; SA C-E1 to E3;
   - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places.
+- **Caves and undergrounds per world** (line numbers from test-build):
+  - **The bunker becomes a stamp.** Delete `Keep` and the bunker rules (`Game.Places.cs:64-65`; consumed at `PlaceFauna.cs:571, 639, 704`). Part of the cave bleed is already fixed: 4acacb45 makes `LoadedVoxels` read `PlanetTerrainSource.Dug` as rock. Rerun InsideTest `--unseen` first to see what still fails.
+  - **`Underworld` serves every underground on a world,** not only the start town's (`Underworld.cs:68`, :102). `IncidentalTest.cs:206-211`, which asserts the starter, is rewritten.
+  - **Stamps are planned before a world's first chunk column is read.** Otherwise the `_columns` cache (`PlanetTerrainSource.cs:61`) bakes in no cave mouths, because `CaveMouths` returns null while `Stamps.Count == 0` (`CaveMouths.cs:45`, :54).
+  - **Caves follow the world's archetype.** `CaveStrength` (`PlanetTerrainSource.cs:766`) takes none, but DESIGN.md 213 gives cave networks to only some archetypes. With T1.3's rules from the spec.
+  - **Airless worlds:** caves and the underworld are empty there today (`Deep` is null, `Game.Places.cs:50`). *Open: empty by intent, or vacuum fauna later?*
 - **Towns fit their world's air** (DESIGN.md 362): sealed habitats on vacuum and unbreathable-air worlds, with suits worn outside. On an airless test world only 67 of 150 town spots stood in closed rooms. NPC air comes back as part of this (owner, 24 Nov), not before.
 - **Proof:**
   - a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile;
@@ -325,6 +331,7 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
 **T3.2 A change record per world, and the clock catch-up** (L, high effort; depends on T3.1, T2.4)
 - **Builds:**
   - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down.
+  - **Caves:** found caves and their deaths, by cell key. Today `Caves._caves` and `Underworld._spots` live only in nodes (`PlaceFauna.cs:584`, `Underworld.cs:37`), and which caves exist depends on the walk (:630-640). A freed world's caves would refill and its kills be undone, against the owner's "find things as you left them". The cave sims' time comes from the galaxy clock (`PlaceFauna.cs:640`, `Underworld.cs:113` copy the zone's).
   - One galaxy clock; regrowth, decay, meteorites and the sky worked out from elapsed time on return, touching only unclaimed records.
 - **Closes:** OW#7, SA B-B10 (salvage resets), A-6.4.
 - **Proof:** leave a star, come back, and every change is as left, with regrowth by the time away.
@@ -372,11 +379,17 @@ Each unifies a job and deletes the copies.
 - **Unifies:** the three door systems, the two collapse rules and the copied cache-making.
 - **Makes:** flavour ruins into Places.
 - **A surface query on the interface:** ray to the real wall, solid behind, open floor in front. Its consumers:
-  - creature cracks and lairs, which today are placed from room boxes and float (`WallCrack`, PoiFauna.cs:935; CaveFauna.cs:51; drawn by shared/Bestiary/View/DeepView.cs:205-233);
+  - creature cracks and lairs in places, which today are placed from room boxes and float (`WallCrack`, PoiFauna.cs:935; drawn by shared/Bestiary/View/DeepView.cs:205-233). Cave wall cracks were removed on 24 Nov (dcb7052d), so `CaveFauna`'s leftover `sim.Cracks` read (shared/Bestiary/Sim/CaveFauna.cs:56) is deleted;
+  - cave sims, which use the voxel `ISolidSpace` through `SpaceMath` today, a working model for the query;
   - the owner's planned real holes;
   - the worm masses, which do this ad hoc today (PoiFauna.cs:957 `Root`, :980 `Faces`, through `ISolidSpace`/`SpaceMath`).
 
   Creature cracks stay their own nodes, never part of the damage look.
+
+  The query:
+  - runs read-only on a worker and never generates chunks (`Caves.Search` is `Task.Run`; `LoadedVoxels` returns solid for unbuilt chunks, `PlaceFauna.cs:707`);
+  - can answer "this cell belongs to another body" (today's `Kept`/`Dug` test, `PlaceFauna.cs:704`);
+  - works in a sim's local frame (integer `_offset`, `NearestCopy`/`Canonical`).
 - **Wear stays paint.** Place cracks are surface paint, not damage (owner, 25 Nov):
   - age cracks are painted by the place shader by age, View/MeshBuild.cs:1249;
   - the weak-wall tell is a line figure on one face, Gen/Mesher.cs:914;
@@ -415,6 +428,11 @@ Each unifies a job and deletes the copies.
   - the bike as a hover body in the shared physics;
   - one seated state.
 - **Closes:** SA B-B15 to B-B18, B-B4 (the bike rams nothing).
+- **One ground source for cave sims too.** Today they read three:
+  - the voxel store plus `Streamer.IsReady` (`PlaceFauna.cs:707`);
+  - the analytic `planet.GroundHeight` (`PlaceFauna.cs:651`, `Underworld.cs:111`);
+  - `Zone.GroundAt` (`PlaceFauna.cs:637`).
+- **Ground edits reach every sim on that body.** `Edits.Edited` feeds only `Places.Dug` and `Wildlife.Dug` (`Game.Places.cs:54`, `SurfaceZone.cs:268`). A dug floor is never seen by a cave's `WNav`, which is built once (`PlaceFauna.cs:660`).
 - **The bike keeps its feel.** The port must keep:
   - the probe reading the higher of ground and water, with lava not counted as water;
   - the shared spring (`HoverController.Cushion`: 1.2 Hz, damping 0.4, vertical only, push only);
