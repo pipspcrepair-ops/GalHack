@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refresh docs/DESIGN.md from an export of the living design doc.
+"""Refresh DESIGN.md on the docs branch (G:\\GalHack-docs) from an export of the living design doc.
 
 Usage: python tools/sync-design-doc.py <export-result-file>
 
@@ -14,7 +14,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TARGET = ROOT / "docs" / "DESIGN.md"
+TARGET = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else pathlib.Path("G:/GalHack-docs/DESIGN.md")  # the one copy, on the docs branch
 NOTE = (
     "> This is a published copy of GalHack's living design document, last refreshed from "
     "revision {rev}. The design doc is the authority on how the game should work; the code "
@@ -46,7 +46,7 @@ def main():
             sys.exit(f"refusing to publish: {pattern} matched {hit.group(0)!r}")
     TARGET.parent.mkdir(exist_ok=True)
     TARGET.write_text(f"{title}\n\n{NOTE.format(rev=rev)}{rest.lstrip()}", encoding="utf-8", newline="\n")
-    print(f"docs/DESIGN.md refreshed from revision {rev}: {len(text)} characters")
+    print(f"{TARGET} refreshed from revision {rev}: {len(text)} characters")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The mechanical pass from docs/world-layers.md to data/world-layers.txt (section 8.1 of that file).
+"""The mechanical pass from world-layers.md (docs branch, G:\GalHack-docs) to data/world-layers.txt (section 8.1 of that file).
 
   python layers_from_doc.py <path to world-layers.md>
 
@@ -15,7 +15,7 @@ import sys
 RENAMES = {"barrow_downs": "old_ground", "yurt_camp": "felt_camp", "church_chapel": "shrine_hall"}
 LEFT_BEHIND = {"oldtype"}
 
-HEADER = """# World layers: every table of docs/world-layers.md, one record to a line, fields split by ' | '.
+HEADER = """# World layers: every table of world-layers.md (docs branch, G:\GalHack-docs), one record to a line, fields split by ' | '.
 # Written by tools/layers_from_doc.py: edit the doc and run that, not this file.
 # A world is whatever its layers add up to, and no generator names a value from here.
 """

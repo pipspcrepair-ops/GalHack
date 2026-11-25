@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The mechanical pass from docs/signs/sigils/png to data/sigils.txt: each faction's sigil as a grid of
+"""The mechanical pass from signs/sigils/png on the docs branch to data/sigils.txt: each faction's sigil as a grid of
 painted cells, in its own colours, the size a wall carries it (one cell a metre).
 
-  python sigils_from_png.py <docs/signs/sigils/png> [cells]
+  python sigils_from_png.py <G:/GalHack-docs/signs/sigils/png> [cells]
 
 Each pixel block takes the colour that covers most of it, or none where the art is mostly clear. Edit the
 art, not the data file.
@@ -18,7 +18,7 @@ LETTERS = "abcdefgh"
 
 def main():
     src = pathlib.Path(sys.argv[1])
-    out = ["# Faction sigils as painted cells: written by tools/sigils_from_png.py from docs/signs/sigils/png.",
+    out = ["# Faction sigils as painted cells: written by tools/sigils_from_png.py from signs/sigils/png on the docs branch.",
            "# sigil <faction>, a colour per letter, then rows top to bottom; '.' is unpainted.", ""]
     for f in FACTIONS:
         im = Image.open(src / f"{f}.png").convert("RGBA")

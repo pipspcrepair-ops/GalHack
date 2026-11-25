@@ -109,7 +109,7 @@ A head stands on the surface: a blockhouse with vents and a mast, a hatch, a low
 
 ### Shapes
 
-A spawned place's plain cubes take the shapes its builders used, last of all, round whatever was set down (`Shaping.cs`, docs/place-patterns.md rule P6). The places' own block set on the 1 m grid adds half and quarter cubes, thin walls, beams, round columns and hung slopes (a chamfer and its two corners) to the cube, ramp, corner, post and pane; each is solid to the walking grids and collides as its real shape. Only a cube with nothing against it is shaped, and a top anything stands on stays whole.
+A spawned place's plain cubes take the shapes its builders used, last of all, round whatever was set down (`Shaping.cs`, place-patterns.md (docs branch) rule P6). The places' own block set on the 1 m grid adds half and quarter cubes, thin walls, beams, round columns and hung slopes (a chamfer and its two corners) to the cube, ramp, corner, post and pane; each is solid to the walking grids and collides as its real shape. Only a cube with nothing against it is shaped, and a top anything stands on stays whole.
 
 - **Low and mid tech**: facades in panels set back between pilasters, a cornice under the roof's edge; walls with more behind them coved at the ceiling and panelled; joists across the ceilings with beams under them; thin walls between rooms; posts in big halls; mines timbered with posts and cap beams.
 - **High tech** (and alien): every storey of a facade with a sloped foot and a chamfered head, the corners turned; rooms coved at the ceiling and cut back at the floor, their inner corners turned; ceilings folded in V-bays between ribs; round columns in big halls.

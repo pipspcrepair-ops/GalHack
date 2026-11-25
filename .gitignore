@@ -33,13 +33,9 @@ Desktop.ini
 
 # Repo hygiene (owner, 25 Nov): stop the repo growing with screenshots and loose files.
 # New screenshots stay out of git. A shot a README or the gallery needs is added on purpose
-# (git add -f), and the gallery's own images live in docs/gallery.
+# (git add -f), and the gallery's own images live in readme/gallery.
 prototypes/*/screenshots/
 prototypes/*/screenshots/*.import
 shots/
 scratchpad/
 # Kept out of git by the owner's choice (25 Nov): large or private working files.
-/docs/font/
-/docs/mockups/
-/docs/music-samples/
-/docs/research/*.pdf
