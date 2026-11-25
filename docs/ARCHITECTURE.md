@@ -141,10 +141,22 @@ Move(from, to) = Detach(from) + Attach(to)  (the zone ledger commits around it)
 - **Space:** "In space" questions become questions about the place: air here, ground or a diggable body in reach, gravity, life present. Orbit gets the same world-owned systems as any world, made from what is in it, never empty stand-ins.
 
 ## 8. Required and optional systems
-To be finalised from the silent-failure audit.
-- **Required in every world:** physics, loot, devices, sound, effects, the change record, the query and event paths.
-- **Optional, declared per world from its facts:** weather (none in a vacuum), wildlife (none where nothing lives), water, places.
-- An optional system is reached through a declared "may be absent" accessor. Everything else throws when missing (tests and debug), so a broken wiring shows the first time it runs.
+From the silent-failure audit, [silent-failure-audit.md](silent-failure-audit.md).
+
+**What that audit found:**
+- About 224 null-conditional calls on systems: about 95 legitimately optional, about 105 hiding a system that should exist, about 25 unsure.
+- 14 early returns on missing state, 17 catches and 13 events never subscribed.
+- The worst: shots never step in orbit. ArmsHost returns on `Zone?.Planet == null`, and an orbit zone never has a `Planet` (confirmed). Force fields and doors use the same guard.
+
+**The rule:**
+- **Every world always has the same systems, made in one place.** "Nothing here" is a real, empty system plus a named fact (`HasAir`, `HasLife`, `HasWater`), never a null. An orbit has a weather system that holds no weather, and a wildlife system that holds whatever lives there (maybe nothing).
+- **"Not ready yet" is a state, not a null.** A system that is still building says so (`Ready`), and callers that must wait are written to wait.
+- **Optional is declared.** A reference that may truly be absent is typed `T?` with a comment saying why. Every other system reference is non-null, and `?.` on it is not allowed (review checklist).
+- **A missing required system fails loudly.**
+  - In tests and debug builds it throws, so broken wiring shows the first time it runs.
+  - In a release build it logs once and refuses item-holding actions (salvage, take-down, spill, restore) rather than losing or duplicating items.
+- **No swallowed errors.** A failure that drops a thing logs it, keeps the record, and blocks the commit, as the ledger does. Spaceflight.Fold.cs:473 drops a structure that won't restore, with only a console line.
+- **Every event has a subscriber or is deleted.** An event with no listener is dead code that looks like a feature (the XP line: `Progress.Earned` is never joined to `Visor.Xp`).
 
 ## 9. Tests
 To be finalised from the test audit.
