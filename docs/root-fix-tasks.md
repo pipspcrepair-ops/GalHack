@@ -92,6 +92,10 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 - **Rewrites:** the two tests that assert bugs: SleeperToolTest.cs:286-297 (coreless block back whole) and ClimateTest.cs:466 (tornado felling bypass).
 - **Removes:** about 30 silent passes. They retry up to N rolls, then fail with the seeds.
 - **Stops:** travel tests calming weather and freezing wildlife before they leave.
+- **Sorts the known flaky and old failures** into a list with causes, so they don't hide new ones:
+  - SleeperToolTest fails different checks each run (the door; 8 core-aim fails, likely a rebuild mid-run; tree felling);
+  - WeaponTest "the burnt one is frightened" fails 1 in 102;
+  - OrbitTest's two body-direction fails (0.46°) are older and unrelated.
 - **Closes:** TC.
 - **Rule for every later task:** its first step writes failing checks for the findings it closes, off the starter. It merges when they pass. Checks aren't written for all findings up front, because some need harness features that come later (two sleepers in T2.3, save and reload in T3.3).
 
@@ -217,7 +221,17 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - OW#1, #2, #4, #5, #9, #11, #12, #13, #14, #17, #19, #25;
   - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**;
   - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
-- **Proof:** weapons, the tool and building work in orbit, on a vacuum moon and at another star. Doors on any ship open and animate cleanly off-world. The suit reads the world you're on.
+- **E always reaches doors and containers.** A held item never takes E from a door or a container. On vacarms, holding a blueprint off-world let the builder take the aim, and a wreck door's E prompt went blank at 3.0 m. The hands chain is Game/Game.cs:729-750. One E order comes from `WorldQuery`'s Use mask (T2.2).
+- **Claiming a wreck** (a core in hand) moves into the building slice as ordinary core placement through the build tool, at the same reach as any E action. Today `Spaceflight.Claim` works at any range; vacarms made it UseReach+1, derelicts only. Wreck salvage moves to T4.3.
+- **Proof:**
+  - weapons, the tool and building work in orbit, on a vacuum moon and at another star;
+  - doors on any ship open and animate cleanly off-world;
+  - the suit reads the world you're on;
+  - OrbitTest's door and "box: take-all" step passes with a blueprint in hand.
+- **Test lessons from vacarms (6aca3cad), reused here:**
+  - in orbit the test's aim hit its own Skiff cabin at 2.1 m, so "0 hits" proved nothing: the sleeper floats clear before aiming;
+  - the moon has no wildlife sim until T1.4;
+  - TestRows needs a row that can be placed in space.
 - **Note:** vacarms' MoonTest.Hands checks are reused here.
 
 **T2.6 The places stack per world** (L, high effort; depends on T1.1, T2.4)
@@ -357,7 +371,7 @@ Each unifies a job and deletes the copies.
 
 **T4.3 Salvage** (M, high effort; depends on T4.1, T4.2)
 - **Builds:** one yield formula, with the claim check inside.
-- **Deletes:** the other six formulas, `SleeperTool.CutPlant` and orbit's hand salvage.
+- **Deletes:** the other six formulas, `SleeperTool.CutPlant` and orbit's hand salvage, which T2.5 hands over here.
 - **Closes:**
   - OW#26;
   - SA B-B7 to B-B9, including B-B8 (a coreless hulk taken apart 1:1);
