@@ -83,33 +83,6 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
 - **The world manager** (today mixed into `Spaceflight`) makes, parks, frees and restores worlds and runs the commit queue (section 4c). Travel (a vessel's climb, warp or fold) belongs to the vessel.
   - Any vessel, NPC ships included, may `Move` between two worlds that are both in play: pirates following you up, sky traffic.
   - **Jumps** (warp and fold) are described in section 2c.
-
-## 2c. Jumps with several players
-Players warp and fold independently and may each be in any system (owner, 25 Nov). Several sleepers may be aboard one ship that another sleeper jumps, seated or standing.
-
-**What exists today:**
-- One jump, one target and one fold hook for the whole game: `Spaceflight.Jumping`, `Target`, `FoldTo` (Spaceflight.Jump.cs:22, 80, 83).
-- The tunnel isn't a place. The ship stays frozen in the world it left (`Hold`, Spaceflight.Jump.cs:169), and the tunnel is only drawn over the screen. A sleeper who opened a door mid-tunnel would step into the old world and be left behind.
-
-**The rules:**
-1. **Every vessel has its own jump.** Spool, tunnel and arrival are the vessel's state. Any number of ships can jump at once, to different destinations. Each destination is prepared as its own interest point (section 2b), and each ship's tunnel lasts until its own destination is ready.
-2. **The pilot jumps the ship.**
-   - The sleeper in the pilot seat chooses the target and starts the spool.
-   - Leaving the pilot seat during the spool calls it off.
-   - Once committed at the end of the spool, the jump finishes without a pilot.
-   - Passengers can't call it off. *(Proposed; not yet confirmed by the owner.)*
-3. **Everyone aboard is warned.** The spool shows on every aboard sleeper's visor and its sound is heard, seated or standing, on the hull or inside.
-4. **The tunnel is a real world.** At commit the ship moves into its own transit world, which exists only for that jump, with the tunnel as its sky. Everything always has a world (rule 1). Two ships' tunnels never meet.
-5. **What goes is decided at commit:**
-   - Everything in the ship's cabin, seated or standing, rides inside it: sleepers, cargo, and ships docked inside.
-   - Sleepers on the outer hull go into the transit world with the ship.
-   - Anything that stepped off before commit stays behind.
-6. **Stepping out of the cabin mid-tunnel** puts the sleeper in the transit world, outside the hull. At arrival they come out floating beside the ship at the destination (owner, 25 Nov: "arrive beside the ship"). The same goes for hull riders. Nobody is lost in a jump.
-7. **Saves:**
-   - The ship's record stays in its source world until arrival commits, through section 4c's queue. A crash mid-tunnel reloads the ship where the jump began.
-   - Passengers ride inside the ship's record.
-   - Sleepers outside the hull in the transit world are committed with the ship's arrival, in the same commit.
-8. **Disconnects:** a sleeper who drops out mid-tunnel stays where they were, in the cabin or in the transit world. They're aboard, or beside the ship, at the destination when they reconnect.
   - NPC travel between stars is not simulated. NPC traffic is placed on a world, by rule, when the world is made (owner: "we don't need to track every trader and raider").
 - **References across worlds** (an AI's target, a marker, an open container, the ledger's `_ids` map) are IDs resolved through the world manager. A world out of play gives back "not here", never a stale object.
 - **The start system** is freed like any other (rule 3). Today `ParkHome` keeps it loaded and `FreeAbroad` frees every other star's (Spaceflight.Fold.cs:288-289). No design calls for that. It survives because about 20 systems hold the starter zone. `ParkHome` goes only after section 4's change record exists, or the start system's digging, places and deaths would be lost on the first fold.
@@ -137,6 +110,33 @@ The frame budget has to hold that peak.
   - It's measured on the Mobile renderer. Forward+ was rolled back on 23 Nov (far lamps bloomed into flickering blobs) and stays off until that's understood.
 - **View-side jobs follow rule 12:** far tree models (proto/forests) and voxel ground to the horizon (`TerrainStreamer`). They exist only for the drawn world.
 - **Engine options for the owner** (engine work is on the table): physics spaces stepped on their own threads, and a simulation-only World3D with no rendering cost.
+
+## 2c. Jumps with several players
+Players warp and fold independently and may each be in any system (owner, 25 Nov). Several sleepers may be aboard one ship that another sleeper jumps, seated or standing.
+
+**What exists today:**
+- One jump, one target and one fold hook for the whole game: `Spaceflight.Jumping`, `Target`, `FoldTo` (Spaceflight.Jump.cs:22, 80, 83).
+- The tunnel isn't a place. The ship stays frozen in the world it left (`Hold`, Spaceflight.Jump.cs:169), and the tunnel is only drawn over the screen. A sleeper who opened a door mid-tunnel would step into the old world and be left behind.
+
+**The rules:**
+1. **Every vessel has its own jump.** Spool, tunnel and arrival are the vessel's state. Any number of ships can jump at once, to different destinations. Each destination is prepared as its own interest point (section 2b), and each ship's tunnel lasts until its own destination is ready.
+2. **The pilot jumps the ship.**
+   - The sleeper in the pilot seat chooses the target and starts the spool.
+   - Leaving the pilot seat during the spool calls it off.
+   - Once committed at the end of the spool, the jump finishes without a pilot.
+   - Passengers can't call it off. *(Proposed; not yet confirmed by the owner.)*
+3. **Everyone aboard is warned.** The spool shows on every aboard sleeper's visor and its sound is heard, seated or standing, on the hull or inside.
+4. **The tunnel is a real world.** At commit the ship moves into its own transit world, which exists only for that jump, with the tunnel as its sky. Everything always has a world (rule 1). Two ships' tunnels never meet.
+5. **What goes is decided at commit:**
+   - Everything in the ship's cabin, seated or standing, rides inside it: sleepers, cargo, and ships docked inside.
+   - Sleepers on the outer hull go into the transit world with the ship.
+   - Anything that stepped off before commit stays behind.
+6. **Stepping out of the cabin mid-tunnel** puts the sleeper in the transit world, outside the hull. At arrival they come out floating beside the ship at the destination (owner, 25 Nov: "arrive beside the ship"). The same goes for hull riders. Nobody is lost in a jump.
+7. **Saves:**
+   - The ship's record stays in its source world until arrival commits, through section 4c's queue. A crash mid-tunnel reloads the ship where the jump began.
+   - Passengers ride inside the ship's record.
+   - Sleepers outside the hull in the transit world are committed with the ship's arrival, in the same commit.
+8. **Disconnects:** a sleeper who drops out mid-tunnel stays where they were, in the cabin or in the transit world. They're aboard, or beside the ship, at the destination when they reconnect.
 
 ## 3. Who claims what, and where it is held
 Owner decisions, 25 Nov.
