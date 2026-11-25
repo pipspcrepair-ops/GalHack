@@ -41,7 +41,7 @@
 ---
 
 ## Tier 0: the proof first
-Nothing else can be shown fixed without these. **Order:** T0.2 first, because every later gate and T0.4's numbers run on it. Then T0.1a, T0.1b and T0.4 side by side, then T0.3.
+Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 first, because every later gate and T0.4's numbers run on them. Then T0.1a, T0.1b and T0.4 side by side, then T0.3. T0.6 can run any time.
 
 **T0.2 Tools into the repo** (S, low effort; FIRST)
 - **Moves in:**
@@ -57,6 +57,24 @@ Nothing else can be shown fixed without these. **Order:** T0.2 first, because ev
   - logs written as UTF-8 (PowerShell `*>` writes UTF-16).
 - **Closes:** TC, the Director's notes.
 - **Proof:** the gate and the moving-picture check run from repo tools alone, on a branch, before its merge.
+
+**T0.5 One scripted merge gate** (M, medium effort; after T0.2)
+- **What:** one script that every merge runs, so the owner's playtest stops being the only safety net between merges.
+- **Steps:**
+  1. Rebuild every project, so a stale DLL can't fake a result (owner rule).
+  2. Run the test suites through the queue, at most 4 Godot runs.
+  3. Give every scene a hard timeout. A scene that doesn't quit itself fails the run and reports its PID to the owner. Nothing is killed (owner rule).
+  4. Run the frame check on the branch.
+  5. Scan the diff for the ARCHITECTURE.md section 10 patterns: a `readonly` world field, `Game.Surface` or `Game.Survivor` in simulation code, a `+=` on a world outside `Attach`, `?.` on a system, a direct `GetWorld3D()` query, string ID compares, new statics with state.
+- **Today:** `tools/test-all.ps1` and the queue scripts exist, but they're run by hand. The rebuild and quit-yourself rules live only in briefs and memory.
+- **Proof:** a branch with a stale DLL, a hanging test or a captured zone fails the gate on its own.
+
+**T0.6 Repo hygiene** (S, low effort; owner decisions first)
+- **The owner decides, item by item:**
+  - the zero-byte stray `.cs` files in the main checkout's root (`CapitalWorld.cs`, `Craft.cs`, `Homes.cs`, `Library.cs`, `TerrainStreamer.cs` and others): delete them, or say what they're for;
+  - untracked work that should be committed or ignored: `asset-notes/`, `docs/mockups/`, `docs/font/`, `docs/music-samples/`, and the research PDFs (private? keep out of git);
+  - `.git` at about 665 MB: Git LFS for binaries, a history clean-up, or leave it.
+- **Then:** carry out what was decided, and add what stays untracked to `.gitignore`.
 
 **T0.1a Test harness and probe** (M, high effort; after T0.2)
 - **Builds:**
@@ -74,6 +92,10 @@ Nothing else can be shown fixed without these. **Order:** T0.2 first, because ev
 - **Rewrites:** the two tests that assert bugs: SleeperToolTest.cs:286-297 (coreless block back whole) and ClimateTest.cs:466 (tornado felling bypass).
 - **Removes:** about 30 silent passes. They retry up to N rolls, then fail with the seeds.
 - **Stops:** travel tests calming weather and freezing wildlife before they leave.
+- **Sorts the known flaky and old failures** into a list with causes, so they don't hide new ones:
+  - SleeperToolTest fails different checks each run (the door; 8 core-aim fails, likely a rebuild mid-run; tree felling);
+  - WeaponTest "the burnt one is frightened" fails 1 in 102;
+  - OrbitTest's two body-direction fails (0.46°) are older and unrelated.
 - **Closes:** TC.
 - **Rule for every later task:** its first step writes failing checks for the findings it closes, off the starter. It merges when they pass. Checks aren't written for all findings up front, because some need harness features that come later (two sleepers in T2.3, save and reload in T3.3).
 
@@ -140,6 +162,11 @@ Independent of each other once Tier 0 is in.
   - Join `Progress.Earned` to the visor's XP line.
   - Make the Fold.cs:473 restore failure keep its record and block the commit.
   - Orbit's empty weather still gives the `Strike` and `Events` API, with no hits. (`Hazard` and `Hazards` are already gone.)
+  - **Air is one fact per world, not a bool.** Today two oxygen sources disagree:
+    - Bestiary's `BadAir` (Vacuum or Oxygen < 15, shared/Bestiary/Core/Conditions.cs:72) uses archetype figures;
+    - the sky's `OxygenByAir` gives Ash 13% and Sulfurous 6%.
+
+    They become one oxygen figure per world, from its spec. `HasAir` is derived from it. T4.4 adds the query at a point.
 - **Closes:**
   - SF (about 105 hiding calls);
   - **NO WEAPONS IN SPACE** in part: shots and NPC weapons never step in orbit;
@@ -169,6 +196,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds:** a `Sleeper` object owning body, suit, pack, progress, tools, shots' `Source`, death bag and the open container. `Game` holds the list and "the local sleeper".
 - **Replaces:** `Game.Survivor` in simulation code: wildlife's one `Player`, towns' one "you", shots' `owner == 0` and static `You`, the crossing's `Carrier()`, death and aftermath.
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4).
+- **One breather model** for sleepers and people (hold, tank, suffocation, from survival-vitals/data/vitals.json), not a rule owned by the sleeper's suit. Today a closed town room gives people air but not the sleeper: `Suit.InSealedRoom` (Suit.cs:43) is set only by RoomAir. proto/npcair (a0a0da94, shelved) has people reading the sleeper's rules through `Town.Breathe`, which is a starting point, not a merge.
 - **Closes:** SA A-R1 (A-1.1 to 1.9), A-6.3; `Harness.AddSleeper` goes live.
 - **Proof:** two sleepers on one world are both targeted, hurt, credited and saved. Each wakes in their own pod.
 
@@ -199,7 +227,17 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - OW#1, #2, #4, #5, #9, #11, #12, #13, #14, #17, #19, #25;
   - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**;
   - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
-- **Proof:** weapons, the tool and building work in orbit, on a vacuum moon and at another star. Doors on any ship open and animate cleanly off-world. The suit reads the world you're on.
+- **E always reaches doors and containers.** A held item never takes E from a door or a container. On vacarms, holding a blueprint off-world let the builder take the aim, and a wreck door's E prompt went blank at 3.0 m. The hands chain is Game/Game.cs:729-750. One E order comes from `WorldQuery`'s Use mask (T2.2).
+- **Claiming a wreck** (a core in hand) moves into the building slice as ordinary core placement through the build tool, at the same reach as any E action. Today `Spaceflight.Claim` works at any range; vacarms made it UseReach+1, derelicts only. Wreck salvage moves to T4.3.
+- **Proof:**
+  - weapons, the tool and building work in orbit, on a vacuum moon and at another star;
+  - doors on any ship open and animate cleanly off-world;
+  - the suit reads the world you're on;
+  - OrbitTest's door and "box: take-all" step passes with a blueprint in hand.
+- **Test lessons from vacarms (6aca3cad), reused here:**
+  - in orbit the test's aim hit its own Skiff cabin at 2.1 m, so "0 hits" proved nothing: the sleeper floats clear before aiming;
+  - the moon has no wildlife sim until T1.4;
+  - TestRows needs a row that can be placed in space.
 - **Note:** vacarms' MoonTest.Hands checks are reused here.
 
 **T2.6 The places stack per world** (L, high effort; depends on T1.1, T2.4)
@@ -207,7 +245,10 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Closes:**
   - OW#3, #18, #20; SA C-E1 to E3;
   - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places.
-- **Proof:** a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile.
+- **Towns fit their world's air** (DESIGN.md 362): sealed habitats on vacuum and unbreathable-air worlds, with suits worn outside. On an airless test world only 67 of 150 town spots stood in closed rooms. NPC air comes back as part of this (owner, 24 Nov), not before.
+- **Proof:**
+  - a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile;
+  - a quiet town on a fresh vacuum world runs 15 minutes with no air deaths.
 
 **T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2)
 - **Builds:**
@@ -309,6 +350,7 @@ Each unifies a job and deletes the copies.
   - Nothing weather-borne hits people or creatures.
 
   Weather hits stay untelegraphed (owner, 24 Nov), and Harm never adds a warning.
+- **Exposure is a Harm source too:** suffocation, cold, heat and radiation, for sleepers and people alike. Today npcair takes health off people directly, with a kinetic `Struck` for the killing blow (Town.Air.cs about 55-57), while the sleeper takes it through `Suit.Hit` with its own damage kind. The target adapter carries a "doesn't breathe" flag (`Species.Mechanical` today).
 - **Closes:** SA B-B1 to B-B6 (the fuel drum that spares townsfolk; fire and wind that never touch them; health in two units).
 - **Proof:** every source hurts every target kind by the same rule.
 
@@ -316,6 +358,21 @@ Each unifies a job and deletes the copies.
 - **Builds:** one interface for `Structure` and `Place`.
 - **Unifies:** the three door systems, the two collapse rules and the copied cache-making.
 - **Makes:** flavour ruins into Places.
+- **A surface query on the interface:** ray to the real wall, solid behind, open floor in front. Its consumers:
+  - creature cracks and lairs, which today are placed from room boxes and float (`WallCrack`, PoiFauna.cs:935; CaveFauna.cs:51; drawn by shared/Bestiary/View/DeepView.cs:205-233);
+  - the owner's planned real holes;
+  - the worm masses, which do this ad hoc today (PoiFauna.cs:957 `Root`, :980 `Faces`, through `ISolidSpace`/`SpaceMath`).
+
+  Creature cracks stay their own nodes, never part of the damage look.
+- **Wear drawn once.** Place cracks are baked into the place mesh at generation, not driven by HP:
+  - weak-wall strokes, poi-generator Gen/Mesher.cs:914;
+  - the crack round an unsafe floor, Gen/Arch/BuildingRooms.cs:400;
+  - age cracks, View/MeshBuild.cs:1249.
+
+  Structures draw damage from HP (building Structures/Damage.cs, Presentation/ChunkMesher.cs). Proposed: age wear becomes a starting damage state drawn by the one damage look, so nothing is drawn twice. *(Owner to confirm.)*
+- **Keep:** the hidden-room cracked panel, a secret wall with its own HP (PoiPlaces.Interact.cs:116, :180, :303; Place.Fixtures.cs:334, its draft dust). It survives the merge into one door, cache and collapse path.
+- **Keep for later, untouched:** the in-wall crack network (Brain.Deep.cs:160-200, travel within 60 m). The colony half (PoiFauna.cs:176-198) may be superseded by the 24 Nov "insects are decoration" rule.
+- **Part-work:** proto/nocracks acea648c, untested and not merged. Re-cut from test-build if it's used.
 - **Closes:**
   - SA B-B3, B-B11 to B-B13;
   - **A DOOR WON'T OPEN AGAIN** (the bunker door), **WINDOWS LET YOU THROUGH**, **CORE STRUCTURE DOOR ANIMATION** (17 Nov);
@@ -324,7 +381,7 @@ Each unifies a job and deletes the copies.
 
 **T4.3 Salvage** (M, high effort; depends on T4.1, T4.2)
 - **Builds:** one yield formula, with the claim check inside.
-- **Deletes:** the other six formulas, `SleeperTool.CutPlant` and orbit's hand salvage.
+- **Deletes:** the other six formulas, `SleeperTool.CutPlant` and orbit's hand salvage, which T2.5 hands over here.
 - **Closes:**
   - OW#26;
   - SA B-B7 to B-B9, including B-B8 (a coreless hulk taken apart 1:1);
@@ -332,7 +389,8 @@ Each unifies a job and deletes the copies.
 - **Proof:** the same block gives the same yield on the ground and in orbit.
 
 **T4.4 Shelter** (M, medium effort; depends on T4.2)
-- **Builds:** one `Exposure(point)` query.
+- **Builds:** one `Exposure(point)` query, including oxygen % at the point. The air rule moves off the suit (`Suit.Outside`, Suit.cs about 142: no air below `SurfaceWeather.NoAir` density or above the 1,060 m ceiling) onto the world.
+- **Closed rooms on every world:** places, ships' cabins and sleepers' bases answer the same closed-room question. Today room air is only `Place.Closed` (Places/Place.Air.cs:28) plus RoomAir's bunker kinds (Player/RoomAir.cs:7).
 - **Replaces:** the nine shelter tests.
 - **Closes:** SA B-B14 (a 3 m hole counts as shelter).
 - **Proof:** one answer for wind, lightning, creatures, rain and the suit at the same spot.
