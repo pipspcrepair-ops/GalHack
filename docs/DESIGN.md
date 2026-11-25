@@ -117,7 +117,7 @@ The core loop is **explore → gather → craft → build → expand reach**, an
 - **Friction (constraints):** every device draws power and adds mass. A bigger ship needs better thrusters and generators, which need rarer ores, which sit in more dangerous places.
 - **Anchor (the base):** each expansion step repeats the arc in miniature: land, build a foothold, exploit, move on. Bases are the safe hub where loot turns into components.
 
-**Fail states are soft.** Death drops the backpack at the corpse and respawns the player at a healing booth or clone chamber or a fallback spawn point. The cost is time and a risky corpse run, never the save. Being stranded works the same way: there's always a way back (section 14).
+**Fail states are soft.** Death drops the backpack at the corpse and respawns the player at a cryopod (their own start pod, or one built on a structure) or a fallback spawn point. The cost is time and a risky corpse run, never the save. Being stranded works the same way: there's always a way back (section 14).
 
 ## 4. World generation
 
@@ -611,7 +611,7 @@ There's no farming. Replicators turn **organics** (plant matter, creature meat a
 **Death and respawn**
 
 - On death the player drops a backpack at the corpse. It never despawns: it stays, marked on the map, until the player recovers it. Anything a player drops follows the same rule. What drops is a difficulty setting: everything, inventory only, or nothing. The survival tool and everything in the player's toolbar are never dropped.
-- Respawn options: the home base (a clone chamber or healing booth flagged as home), the nearest clone chamber or healing booth, the nearest survival tent, or a **fresh start** in a new cryo bunker on a start planet that keeps level, unlocks, structures and faction standing.
+- Respawn options (owner, 25 Nov: respawn points are cryopods we build on our structures, not clone chambers): the home base (a cryopod flagged as home), the nearest built cryopod, the sleeper's own start pod, the nearest survival tent, or a **fresh start** in a new cryo bunker on a start planet that keeps level, unlocks, structures and faction standing.
 - The player respawns at full health; there is no death spiral. Worn armor loses durability on death.
 - **After the sleeper dies** (owner, 16 Nov), whoever was fighting stops attacking. People go back to their routine or go through the motions of rummaging through the sleeper's things, motions only: nothing is taken (owner: "Just go through the motions"). Animals may eat the body. A Husk that kills a sleeper puts worms into its face, and the body rises as a new Husk that can be met near the dropped bag.
 - **One generic bag** (owner, 16 Nov): a bag full of someone's stuff is the same thing everywhere. A threatened person may toss it on the ground in front of the sleeper. The sleeper drops it on death. A person or animal that dies and leaves a body keeps their things on the corpse (owner, 16 Nov); when the corpse is destroyed by any means, their things spill into this bag where the body was, and with no body at all the bag drops as they die. It is the backpack above and the bundles in docs/body-language-and-sound.md ("Drop the goods", "Offer something to make you leave").
@@ -906,7 +906,7 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 | --- | --- | --- |
 | Control | Core, command chairs, remote-control console | All |
 | Power | Generators sized per class, capacitors and solar panels (no fuel tanks: fuel sits in core storage) | All; solar on any structure |
-| Life support | Life support pod (air and comfort for the structure's sealed rooms, suit air top-up; owner, 23 Nov), healing booth, respawn (clone) chamber; gravity is built into the core | Any structure with sealed rooms |
+| Life support | Life support pod (air and comfort for the structure's sealed rooms, suit air top-up; owner, 23 Nov), healing booth (restores health), cryopod (a respawn point, built on any structure); gravity is built into the core | Any structure with sealed rooms |
 | Food | Replicators T1–T3 | Portable (T1); small vessels, bases and capital vessels |
 | Propulsion | Thrusters (small, medium, large, jet), RCS gyros, hover engines, landing gear, docking pads | Per class |
 | Travel | Warp drive; fold drive T1/T2 (their fuels sit in core storage) | Any Flight structure that fits the drive and can power it (owner, 22 Nov) |
