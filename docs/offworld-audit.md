@@ -104,12 +104,34 @@ These are patterns that will keep producing bugs like the ones above, not single
 
 ---
 
-## Suggested order
-1. **Small fixes first:** #4, #10, #12, #14, #9.
-   - One shared `EnterZone` hook does most of it: a list of nodes to reparent, plus `WireZone` and `UnwireZone` for event-wired systems (#6, #9).
-2. **Medium fixes:** #2 Suit and #1 respawn come next. These hit the player directly.
-3. **The data job** (#7, #8, #15, #21-24, and risks 1-3) needs a design pass before travel between stars ships.
-   - Pick the world key. It should be stable from the galaxy seed, star and body, not list order.
-   - Decide which changes each world records.
-   - Make respawn points, bikes, devices and edits carry the key.
-4. **Places per world** (#3, with #18 and #20) is the large build. It may be planned as "later", but nothing on other worlds will have people or POIs until it's done.
+## The fix: at the root, no band-aids (owner, 25 Nov)
+The findings are symptoms of two root causes. Fix those, and the findings must fall out of the result. Don't work through them one by one.
+
+**Not acceptable:**
+- Re-pointing captured zones on a crossing (the vacarms patch).
+- A longer reparent list in `EnterZone`.
+- `if (InOrbit)` or `if (Zone != Surface)` branches.
+- Per-item null checks.
+- Any fix in the table's "Fix" column that only moves a reference.
+
+The fix sizes in the tables measure how far each symptom reaches, not a separate job.
+
+**Root 1: one current world, read by every system.**
+- **One accessor.** Systems read the world they act in through one accessor (the current world, or the world a thing belongs to). No system stores a zone, planet, weather, wildlife, places or sound reference past one call.
+  - Remove `readonly SurfaceZone` fields and constructor-captured zones everywhere (Suit, SleeperTool, BuildTool, HoverBikes, HullBlocks, SurfaceGround, ScatterSolids).
+  - Remove the `Zone = Zone` assignments in setup.
+- **Ownership.** Decide for every system whether it belongs to the player (it travels and reads the current world) or to a world (each world has its own, made with that world).
+  - Player-owned: suit, hands, tools, arms, shots, debris, gibs, wind and exposure, doors' animator, settings, compass, map.
+  - World-owned: places stack (#3), bikes standing on that world, the world's weather and wildlife.
+- **Events.** Player systems subscribe to the world they're in through one subscribe/unsubscribe point. They're never wired once at setup.
+- **No "home" special case.** The starter is just the first world. `Game.Surface`, `OnOtherBody` and the bunker checks become questions about the current world or the respawn point's world.
+
+**Root 2: every world-tied fact carries a world key.**
+- **The key.** A stable world key from galaxy seed, star and body, never list order. It goes on every stored position, ID and discovery: respawn points, ledger zone names, record IDs, discovery IDs, chart IDs, deposits, edits.
+- **Per-world change record.** Edits, felled trees, mined deposits, deaths, place memory, bikes and devices go in a per-world record under that key, kept when a world is freed and put back when it's made again.
+
+**Proof it's fixed at the root:**
+- Tests start on any body (moon, vacuum world, another star), not just the starter, and every off-world finding above has a check there.
+- The merge review fails on a captured zone field, `Game.Surface` outside world management, or a stored position or ID without a world key.
+
+**Order:** the design pass first (the accessor, the ownership split, the world key; brought to the owner), then Root 1, then Root 2. Places per world (#3) is the largest single piece of Root 1.
