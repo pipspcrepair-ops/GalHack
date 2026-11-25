@@ -485,7 +485,7 @@ Each unifies a job and deletes the copies.
   - one seated state.
 - **Closes:**
   - a wreck claimed in orbit gets the starter planet's surface gravity as its core gravity, not 1 g (`Claimed(Game.Surface.Physics.Zone.Strength)`, Spaceflight.Hands.cs:239);
-  - loot in orbit falls at 1 g, because anything not on a planet surface falls at standard gravity (Lootables.cs:100); town falls default to 9.8 (Town.Falls.cs:39);
+  - **a bug today:** loot in orbit wrongly falls at 1 g, when in 0 g it should drift, because anything not on a planet surface falls at standard gravity (Lootables.cs:100); town falls default to 9.8 (Town.Falls.cs:39);
 - **Also closes:** SA B-B15 to B-B18, and B-B4's bike half (the bike rams nothing, through T4.1's one ram).
 - **One ground source for cave sims too.** Today they read three:
   - the voxel store plus `Streamer.IsReady` (`PlaceFauna.cs:707`);
