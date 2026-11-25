@@ -230,7 +230,8 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds the claims** (ARCHITECTURE.md section 3): every lasting thing has a claim (a sleeper, the Sleepers faction, an NPC faction or none), kept apart from where it is held. The Sleepers faction record holds structures, vessels, bags, charts and standing. Today nothing records this: `Spaceflight.Claim` only takes a wreck. T2.5's command-chair check, T3.3's "the faction's last base", T4.3's yield and T4.7's `Spill` all read it. A destroyed core changes its claim: today `CoreDestroyed` (PoiPlaces.Interact.cs:327-335) has no subscriber, so shooting out a faction core changes nothing (SF #19).
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4). Respawn is per sleeper, not hard-wired to the bunker (decided-vs-built.md 2.2). The other respawn choices there (home base, clone chamber, tent) are features built on this later.
 - **World things come out of the sleeper's models** (SA A-R3, S7, A-3.1 to 3.4). Today the suit's survival sim (`SurvivalSim`) holds the world's replicators, pods, bushes and food caches as bare positions and counters, `Death` keeps backpacks on one suit's clock, and charts and travel state sit in `Spaceflight` (`Charts.Mark` has no world). The survival sim keeps only vitals. Replicators, pods, caches, bags and respawn devices become world things, held by the world they're in, so they take frame shifts like anything else (A-3.3). Charts and standing go to the Sleepers faction record.
-- **One breather model**, not a rule owned by the sleeper's suit (hold, tank, suffocation, from survival-vitals/data/vitals.json). Built for sleepers now, in a shape people can use later. Whether a room is closed is T4.4's question; the breather only asks it. Today a closed town room gives people air but not the sleeper: a closed place sets the suit's room to `Closed` with its RoomAir (Suit.cs:290-297), but `InSealedRoom` is set in `Suit.Tick` (Suit.cs:314) only from structure rooms or the bunker.
+- **Room air comes off the suit too.** Today every room's air lives in the one sleeper's suit (`_roomsAir` and `_airOf`, Suit.cs:69-70): two sleepers in one cabin each keep their own copy, people and creatures can't read it, it's never saved, and a room's air only moves while that sleeper stands in it. Each room's `RoomAir` is held by its structure or place, keyed by the room, and advanced on the world's clock. T4.4 then makes these nested air volumes.
+- **One breather model**, not a rule owned by the sleeper's suit (hold, tank, suffocation, from survival-vitals/data/vitals.json). Built for sleepers now, in a shape people can use later. It breathes the air of the room it's in, held by that room's structure or place; T4.4 then answers which volume a point is in. Today a closed town room gives people air but not the sleeper: a closed place sets the suit's room to `Closed` with its RoomAir (Suit.cs:290-297), but `InSealedRoom` is set in `Suit.Tick` (Suit.cs:314) only from structure rooms or the bunker.
 - **Closes:** SA A-R1 (A-1.1 to 1.9), A-R3 (A-3.1 to 3.4), A-6.3; `Harness.AddSleeper` goes live.
 - **Proof:** two sleepers on one world are both targeted, hurt and credited. Each wakes in their own pod. (Saving both is proven in T3.3.)
 
@@ -369,7 +370,7 @@ Needed before star travel ships and before saves. T3.1a starts as soon as T2.9 i
 
 **T3.2 A change record per world, and the clock catch-up** (L, high effort, 4 slices: the record and its storage; terrain, plants and deposits; places, caves and survival points; the clock catch-up; depends on T3.1a, T2.4, T2.6 (caves and places made per world), and T1.5, because changes are stored against a world rebuilt from its seed)
 - **Builds:**
-  - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down, plus the survival points and bags T2.3 moves out of the suit (replicators, pods, bushes, food caches, backpacks).
+  - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down, plus the survival points and bags T2.3 moves out of the suit (replicators, pods, bushes, food caches, backpacks), and the air of places' closed rooms.
   - **Caves:** found caves and their deaths, by cell key. Today `Caves._caves` and `Underworld._spots` live only in nodes (`PlaceFauna.cs:584`, `Underworld.cs:37`), and which caves exist depends on the walk (:630-640). A freed world's caves would refill and its kills be undone, against the owner's "find things as you left them". The cave sims' time comes from the galaxy clock (`PlaceFauna.cs:640`, `Underworld.cs:113` copy the zone's).
   - One galaxy clock; regrowth, decay, meteorites and the sky worked out from elapsed time on return, touching only unclaimed records.
 - **Closes:** OW#7, SA B-B10 (salvage resets), A-6.4.
@@ -378,6 +379,7 @@ Needed before star travel ships and before saves. T3.1a starts as soon as T2.9 i
 **T3.3 The safe ledger** (M, high effort; depends on T3.1a, T1.2 (`Move` is commit, detach, attach), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
 - **Builds:**
   - force field state (powered, field HP) saved with its vessel, which nobody has checked yet;
+  - each room's air (oxygen, temperature, pressure, time unpowered) saved with its structure;
   - one commit queue on a worker;
   - a record is gone only when its holder reports it destroyed (death bags included);
   - the conservation audit (`Ledger.Audit`) refuses and rolls back a crossing or jump that loses or duplicates items, instead of only printing (Spaceflight.cs:677, Jump.cs:251);
@@ -455,12 +457,22 @@ Each unifies a job and deletes the copies.
   - SA C-F (four definitions of a wreck).
 - **Proof:** the same block gives the same yield on the ground and in orbit.
 
-**T4.4 Shelter** (M, medium effort; depends on T4.2, T1.4 for the world's air, and T2.7 for ships' cabins)
-- **Builds:** one `Exposure(point)` query, including oxygen % at the point. The air rule moves off the suit (`Suit.Outside`, Suit.cs about 142: no air below `SurfaceWeather.NoAir` density or above the 1,060 m ceiling) onto the world.
-- **Closed rooms on every world:** places, ships' cabins and sleepers' bases answer the same closed-room question. Today room air is only `Place.Closed` (Places/Place.Air.cs:28) plus RoomAir's bunker kinds (Player/RoomAir.cs:7).
-- **Replaces:** the nine shelter tests.
+**T4.4 Shelter and air: air volumes like cabin worlds** (M, medium effort; depends on T4.2, T1.4 for the world's air, and T2.7 for ships' cabins)
+- **The model (owner, 25 Nov: air follows the cabin worlds' logic).** A ship owns its cabin world and anything aboard reads the cabin, then `Outside`. Air works the same way:
+  - **every sealed volume owns its air:** a ship's or base's room, a closed room in a place, the bunker. It holds oxygen, temperature and pressure, and is kept with its structure or place;
+  - **volumes nest:** each has a parent, another volume or the world's own air. A ship's cabin in a pressurised hangar reads the hangar, which reads the planet;
+  - **openings link a volume to its parent:** an open door or a hull breach. Air equalises through them, so a holed room drains to its parent (vacuum in orbit);
+  - **life support** is a device on the structure that tops up its sealed rooms (playtest LIFE SUPPORT IN CORE STRUCTURES), on the power model. With the power off, a room holds a while, then drifts to its parent, as `RoomAir` does today;
+  - **area sources** such as the survival climate pod (9 m, fuelled) warm a radius in the open; they're not volumes.
+- **Builds:** one `Exposure(point)` query that finds the innermost volume at a point, then its parents, then the world. Sleepers, people, creatures, weather and later fire (F3) all ask it. The air rule moves off the suit (`Suit.Outside`, Suit.cs about 142: no air below `SurfaceWeather.NoAir` density or above the 1,060 m ceiling) onto the world.
+- **Closed rooms on every world:** places, ships' cabins and sleepers' bases answer the same closed-room question. Today room air is only `Place.Closed` (Places/Place.Air.cs:28) plus RoomAir's kinds (Player/RoomAir.cs:7), and the bunker is a hard-coded full shelter (Suit.cs:104). The bunker becomes a powered sealed structure like any other.
+- **Replaces:** the nine shelter tests, `RoomKind` and the suit's room logic (`InRoom`, `Breathe`, Suit.cs:211-300).
 - **Closes:** SA B-B14 (a 3 m hole counts as shelter), OW#9's `Shelter` and `Enclosed`, C-E1 (the suit's shelter check knows only the bunker).
-- **Proof:** one answer for wind, lightning, creatures, rain and the suit at the same spot.
+- **Proof:**
+  - one answer for wind, lightning, creatures, rain and the suit at the same spot;
+  - two sleepers in one cabin read the same air; opening its door in orbit drains it to vacuum for both;
+  - a ship's cabin inside a sealed hangar on an airless moon reads the hangar's air;
+  - a room's air is the same after a save and reload.
 
 **T4.5 Ground, gravity and vehicles** (L, high effort; depends on T2.2, T2.5 (the bike and digging moved per world) and T4.1 (`ArmsHost.SolidHit` rewritten))
 - **Builds:**
@@ -538,7 +550,7 @@ These came up during the reviews. They are **new behaviour or design work, not f
 - **Proof:** a quiet town on a fresh vacuum world runs 15 minutes with no air deaths.
 
 **F3 Fire** (planned, not started).
-Fire (planned, not started) is briefed only once these are in: T1.4 (wind and rain on every world), T2.7 (fire effects in the view only), T4.1 (burn damage through Harm), T4.2 (blocks and plants as burnable material), T4.4 (rain, wet and shelter put fire out), and T4.6 (crackle, smoke, AI hearing). Fire hits are never telegraphed.
+Fire (planned, not started) uses up a volume's oxygen through T4.4's air volumes. It is briefed only once these are in: T1.4 (wind and rain on every world), T2.7 (fire effects in the view only), T4.1 (burn damage through Harm), T4.2 (blocks and plants as burnable material), T4.4 (rain, wet and shelter put fire out), and T4.6 (crackle, smoke, AI hearing). Fire hits are never telegraphed.
 
 **F4 Host and clients: real co-op** (after T1.5 and Tiers 2 and 3). Was T6.
 - Confirm ARCHITECTURE.md section 9b against `prototypes/coop`.
