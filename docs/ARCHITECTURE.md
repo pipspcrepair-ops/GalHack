@@ -324,6 +324,7 @@ Co-op is host-authoritative (DESIGN.md 1532, 1550, 1581). To be confirmed agains
 Reject a change that:
 - adds a second `World` field, or stores a world or world system anywhere but the thing's one `World` field;
 - uses `Game.Surface`, "home" or "first orbit" outside the world manager;
+- reads `Game.Zone` in simulation code (it is the local view's world only);
 - reads `Game.Survivor` in simulation code (use the sleeper acted for);
 - adds a `+=` on a world outside `Attach`;
 - adds a static holding per-world state;
