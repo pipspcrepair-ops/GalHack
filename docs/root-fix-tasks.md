@@ -70,7 +70,7 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
   5. Scan the diff for the ARCHITECTURE.md section 10 patterns: a `readonly` world field, `Game.Surface`, `Game.Zone` or `Game.Survivor` in simulation code, a `+=` on a world outside `Attach`, `?.` on a system, a direct `GetWorld3D()` query, string ID compares, new statics with state.
 - **Known failures:** built from a full run of test-build when T0.5 merges, so the gate is green on today's code. Every entry gives its cause and its owner: a T task, or "outside the root fixes" with its playtest item. The gate fails only on failures not on the list, and the owner takes its entry off when it fixes it. Known before that run:
   - InsideTest `--unseen` (T2.6), SleeperToolTest "a door on someone else's structure is shot out of it" (T4.2), MoonTest's climb into orbit (T1.6);
-  - still to be traced and given an owner by the run: SleeperToolTest's varying fails (the door, 8 core-aim fails, tree felling), WeaponTest "the burnt one is frightened" (1 in 102), OrbitTest's two 0.46° body-direction fails, BestiaryTest 264/268 (playtest-list.md 871), SliceTest's vehicle checks (playtest-list.md 875), LayersTest, SurfaceTest's infrastructure checks and BuildTest's one-base check.
+  - still to be traced and given an owner by the run: SleeperToolTest's varying fails (the door, 8 core-aim fails, tree felling), WeaponTest "the burnt one is frightened" (1 in 102), OrbitTest's two 0.46° body-direction fails, BestiaryTest 264/268 (playtest-list.md, "BestiaryTest fails on batch2"), SliceTest's vehicle checks (playtest-list.md, "Open test failures (13 Nov)"), LayersTest, SurfaceTest's infrastructure checks and BuildTest's one-base check.
 - **Today:** `tools/test-all.ps1` and the queue scripts exist, but they're run by hand. The rebuild and quit-yourself rules live only in briefs and memory.
 - **Proof:** a branch with a stale DLL, a hanging test or a captured zone fails the gate on its own.
 
@@ -125,7 +125,7 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 ---
 
 ## Tier 1: small root fixes for live bugs
-Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.6 are independent of each other. T1.4 follows T1.3, and T1.5 follows T1.1.
+Once Tier 0 is in, T1.1, T1.2 and T1.3 are independent of each other. T1.4 and T1.6 follow T1.3, and T1.5 follows T1.1.
 
 **T1.1 A per-world build context instead of statics** (M, high effort; after T0.1a, which gives `WorldKey`)
 - **Replaces:**
@@ -155,7 +155,7 @@ Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.6 are independent of each other. T1.4
   - SA C-C1, C-C2, A-3.6;
   - OW risk 2 (the suit's temperature clamp is the starter's);
   - the two settings stores (`user://settings.cfg`, GameSettings.cs:22, and `user://audio-settings.json`, SliceAudio.cs:39) become one;
-  - the spawn distance becomes a host simulation setting in the game settings, not a static set from a client's display settings (`SpawnReach.Distance`, SpawnReach.cs:26-27, from Game.Settings.cs:120);
+  - the spawn distance becomes a host simulation setting in the game settings, and the static `SpawnReach` (SpawnReach.cs:26-27, set from a client's display settings at Game.Settings.cs:120) is deleted. T2.4 and T2.6 only read it;
   - **a core's 1 g is one game constant** (`Units.StandardGravity`), not a planet rule. Today it reads `zone.Data.Rules.Planet.Gravity` (Vessel.cs:322, 360; Vessel.Hulk.cs:86), which this task makes per world, so cores would take a high-g world's pull. A wreck claimed in orbit takes the starter's surface gravity instead (`Claimed(Game.Surface.Physics.Zone.Strength)`, Spaceflight.Hands.cs:239). All four take the constant;
   - **a world's gravity is standard g × its own `GravityScale`** (DESIGN.md 588). Today a body's gravity is the starter's surface gravity scaled by its size against that system's home (`StarSystem.GravityOf`, StarSystem.cs:154, fed `Game.Surface`, Spaceflight.Worlds.cs:119, 129), so another star's worlds are scaled from the starter. `GravityOf` goes.
 - **Proof:** switch to Creative while away, arrive at a world made earlier, and its machines charge nothing. A frozen moon's own rules give its temperature range, not the starter's, checked on the world's rules. A world at another star has standard g × its own scale. A core on a high-g world still gives 1 g. (The suit reads them in T2.5, which proves it in play.)
@@ -187,11 +187,11 @@ Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.6 are independent of each other. T1.4
 - **Today:** the world fingerprint test (`SurfaceTest --only=Dump`, 13 Nov) found city planning giving a different city, lots and grounds for the same seed on two runs: 2 of 12 worlds at 16 km and 1 of 4 at 64 km. Storage keeps only the seed and the changes (ARCHITECTURE.md 4b), so a world that rebuilds differently puts its saved changes on the wrong things. Co-op (F4) needs every machine to build the same world too.
 - **Finds and fixes the cause:** a step that depends on run order, time or threads (worker completion order, hash or dictionary order, a shared random stream drawn from more than one thread, the clock). Fixed at that step, not by retrying until two runs agree.
 - **Not this task:** seeds that change when the generator's order changes (SA 5.2: `SpawnSeed = rng.NextU64()` during placement). That is T3.1a's seed helper. This task is the same code giving two answers.
-- **Closes:** playtest "Worlds are not deterministic" (playtest-list.md 585).
+- **Closes:** playtest "Worlds are not deterministic" (playtest-list.md, "Worlds are not deterministic").
 - **Proof:** every fresh seed is built twice and fingerprinted, on the start world, a moon and another star's world, at 16 and 64 km, with random seeds each run. The check joins the merge gate (T0.5), so no later task can bring the drift back.
 
-**T1.6 The Skiff's climb into orbit stalls** (S, medium effort; after T0.5)
-- **Today:** MoonTest fails "it crossed into orbit" on some worlds, on clean code too: the Skiff climbs at only about 5 m/s (playtest-list.md 875). The entry's "6.8 km" can't be right with the 1,060 m crossing (orbit.json:59), so the job re-measures first. Before a guard in `Bindings.cs` it also threw at line 107 and never built the Skiff. That points at the vessel's climb (thrust, mass or drag against the world's gravity and air), not the surface-to-orbit seam.
+**T1.6 The Skiff's climb into orbit stalls** (S, medium effort; after T0.5 and T1.3, which changes every world's gravity and could undo the fix)
+- **Today:** MoonTest fails "it crossed into orbit" on some worlds, on clean code too: the Skiff climbs at only about 5 m/s (playtest-list.md, "Open test failures (13 Nov)"). The entry's "6.8 km" can't be right with the 1,060 m crossing (orbit.json:59), so the job re-measures first. Before a guard in `Bindings.cs` it also threw at line 107 and never built the Skiff. That points at the vessel's climb (thrust, mass or drag against the world's gravity and air), not the surface-to-orbit seam.
 - **Finds and fixes the cause** in the vessel's climb, not by easing the test.
 - **Proof:** MoonTest's climb passes on fresh worlds, and the entry comes off T0.5's known-failure list.
 
@@ -227,7 +227,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds:** a `Sleeper` object owning body, suit, pack, progress, tools, shots' `Source`, death bag and the open container. `Game` holds the list and "the local sleeper".
 - **`Game.Zone` becomes the local sleeper's view world only.** Today it is the one "current world" (48 uses), and simulation reads it: creature contact bodies exist only on it (CreatureBodies.cs:80, 97, 255-271), and creatures' weapons fire into it (`SimArms.Zone => _host.Game.Zone`, SimArms.cs:67). T2.4 and T2.5 move those readers onto their own world.
 - **Replaces:** `Game.Survivor` in simulation code: wildlife's one `Player`, towns' one "you", shots' `owner == 0` and static `You`, the crossing's `Carrier()`, death and aftermath.
-- **Builds the claims** (ARCHITECTURE.md section 3): every lasting thing carries its claim as a field (a sleeper, the Sleepers faction, an NPC faction or none), kept apart from where it is held. The Sleepers faction record holds only what isn't physical: charts and standing. Its index of claimed things by ID comes in T3.1b, once IDs exist; it never holds the objects. Today nothing records this: `Spaceflight.Claim` only takes a wreck. T2.5's command-chair check, T3.3b's "the faction's last base", T4.3's yield and T4.7's `Spill` all read it. A destroyed core changes its claim: today `CoreDestroyed` (PoiPlaces.Interact.cs:327-335) has no subscriber, so shooting out a faction core changes nothing (SF #19).
+- **Builds the claims** (ARCHITECTURE.md section 3): every lasting thing carries its claim as a field (a sleeper, the Sleepers faction, an NPC faction or none), kept apart from where it is held. The Sleepers faction record holds only what isn't physical: charts and standing. Its index of claimed things by ID comes in T3.1b, once IDs exist; it never holds the objects. Today ownership is an owner string compared by name: `Structure.Owner = Building.DefaultOwner` (Vessel.Hulk.cs:84, BuildTool.Whole.cs:320, BlueprintLibrary.cs:157, Spaceflight.Hands.cs:230), read by `Vessel.IsPlayers` (Vessel.cs:201), `SleeperTool.Ours` (SleeperTool.cs:683), `StructureArea.Linkable` (StructureArea.cs:52) and Visor.cs:417; bags carry `bag.Owner` (Lootables.cs:157). The claim field replaces the owner string and those compares, which are deleted in the same merge, so there is never a second way to check ownership. T2.5's command-chair check, T3.3b's "the faction's last base", T4.3's yield and T4.7's `Spill` all read it. A destroyed core changes its claim: today `CoreDestroyed` (PoiPlaces.Interact.cs:327-335) has no subscriber, so shooting out a faction core changes nothing (SF #19).
 - **XP on the visor reads the local sleeper's own progress** (today `Progress.Earned` isn't joined to the visor's XP line).
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4). Respawn is per sleeper, not hard-wired to the bunker (decided-vs-built.md 2.2). The other respawn choices there (home base, a cryopod built on a structure, tent) are F8, built on this.
 - **World things come out of the sleeper's models** (SA A-R3, S7, A-3.1 to 3.4). Today the suit's survival sim (`SurvivalSim`) holds the world's replicators, pods, bushes and food caches as bare positions and counters, `Death` keeps backpacks on one suit's clock, and charts and travel state sit in `Spaceflight` (`Charts.Mark` has no world). The survival sim keeps only vitals. Replicators, pods, caches and bags become world things, held by the world they're in, so they take frame shifts like anything else (A-3.3). Charts and standing go to the Sleepers faction record. There are no respawn devices yet: no respawn or healing block was ever built in the slice (the survival-vitals prototype has them only as fixed points, planet.json:62-63). Built cryopods come in F8, as world things the same way.
@@ -244,11 +244,11 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - **A world with an interest point is never freed.** Today `FreeAbroad` (Fold.cs:288, :303) frees every other star's system on every fold, so a second sleeper's fold would free the first sleeper's star.
   - Simulation size comes from game settings, not a client's display sliders.
   - **Wildlife population doesn't depend on the path walked** (A-2.8). The roll is keyed by the world and the patch's cell, not the patch origin the player happened to arrive at (`Rng.For(Fauna.Seed ^ (Origin.X*31 + Origin.Z), "population")`, WildlifePatch.cs:366). The refills (:453) are keyed by a running count, so they depend on the path too.
-  - **Making a world ready never costs one long frame.** Approaching the moon today gives one frame of 18 to 24 ms when its terrain streamer is set up (`TerrainStreamer.SetWorld`, playtest-list.md 838). Setting up a world's streaming is split across frames, within the budget T0.4 sets.
+  - **The multi-world budget T0.4 measured:** the per-world tick rate and budget, the thread plan, and each world's share of `FramePacer`, `UploadBudgetMs` and `GcPacer`.
+  - **Making a world ready never costs one long frame.** Approaching the moon today gives one frame of 18 to 24 ms when its terrain streamer is set up (`TerrainStreamer.SetWorld`, playtest-list.md, "Approaching the moon: one frame of 18-24 ms"). Setting up a world's streaming is split across frames, within the budget T0.4 sets.
 - **Replaces:**
   - the one `Focus` and one weather `Observer`;
   - creature contact bodies made only on `Game.Zone` (CreatureBodies.cs:80, 97, 255-271): each world's wildlife has its own;
-  - the static `SpawnReach` (SpawnReach.cs:26-27), set from a client's display settings: the spawn distance is read from the game settings (T1.3);
   - `Streamer.CollisionRadius` set from one sleeper (Game.cs:925);
   - what triggers parking and freeing: one player's place today, interest points after (the pause itself is T2.2's);
   - the one `Away` and one `Orbit`.
@@ -263,7 +263,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - OW#3, #18, #20; SA C-E2, C-E3 (C-E1, the bunker as the suit's only shelter, is T4.4);
   - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places;
   - bases already keep creatures clear (`WildlifePatch.SyncBases`, WildlifePatch.cs:524, read by `WildSim.InBaseZone`); that comes with each world's wildlife. decided-vs-built.md 1.7 was stale. If creatures still spawn beside a base in play, it is traced as its own bug;
-  - `SkyTraffic` (the lone trader or scout, playtest-list.md 739) is made once, on the starter, today. It is made with each world instead, and reads how much traffic that world has from the world itself; none is a valid answer. What the traffic is (busy, empty, hostile) is feature F6, not this task.
+  - `SkyTraffic` (the lone trader or scout, playtest-list.md, "A LONE TRADER OR SCOUT IN THE START WORLD'S SKY") is made once, on the starter, today. It is made with each world instead, and reads how much traffic that world has from the world itself; none is a valid answer. What the traffic is (busy, empty, hostile) is feature F6, not this task.
 - **Caves and undergrounds per world** (line numbers from test-build):
   - **The bunker is an ordinary structure with no owner** (SA Root E); its dug-out ground is a terrain stamp like any place's. Delete `Keep` and the bunker rules (`Game.Places.cs:66`; consumed at `PlaceFauna.cs:571, 639, 704`). Part of the cave bleed is already fixed: 4acacb45 makes `LoadedVoxels` read `PlanetTerrainSource.Dug` as rock. Rerun InsideTest `--unseen` first to see what still fails.
   - **`Underworld` serves every underground on a world,** not only the start town's (`Underworld.cs:68`, :102). `IncidentalTest.cs:206-211`, which counts only the start town's underworld, also counts a moon's.
@@ -287,7 +287,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - `Game.Surface` uses outside world management.
 - **Also:** the compass shows only on a world's surface, tuned to that world's poles.
 - **Closes:**
-  - OW#2, #4, #5, #11, #12, #13, #14, #17, #19, #25, and OW#9's hits reaching you (its observer is T2.4, its shelter T4.4);
+  - OW#2, #4, #5, #11, #16 (the bunker marker and "home" checks against `Game.Surface`, Visor.cs:414, Spaceflight.Moon.cs:37, in the view slice), #12, #13, #14, #17, #19, #25, and OW#9's hits reaching you (its observer is T2.4, its shelter T4.4);
   - **NO WEAPONS IN SPACE** (the rest), **BUILDING IN ORBIT**, **DOORS GLITCH OFF-WORLD**, **COMPASS ONLY ON A WORLD**;
   - the owner's to-do to block getting into command chairs on cores we don't own (a claim check).
 - **Force fields stay per vessel:** power draw (`v.Power.AddLoad(Draw(v))`) and `PoweredFor` read the vessel's own power and wreck state, never the world's. The door hook that feeds fields across open doors (`BlockDoors.OpenDoors`) keeps working.
@@ -303,11 +303,11 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - TestRows needs a row that can be placed in space.
 - **Note:** vacarms' MoonTest.Hands checks are reused here.
 
-**T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2, and T2.3 and T2.4, because cabins are made only for ships with a sleeper aboard)
+**T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2; T2.3 and T2.4, because cabins are made only for ships with a sleeper aboard; and T2.5 and T2.6, so its budget is measured with places and per-world arms live)
 - **Builds:**
   - Undrawn worlds run simulation only.
   - Engine-wide state (shader globals, environment, `AudioServer` buses) is written only by the drawn world's view.
-  - Cabins are made for occupied ships only.
+  - Cabins are made for occupied ships only. When a cabin is freed, everything loose in it (cargo, bags, creatures) is committed into the ship's record and comes back when the cabin is made again (ARCHITECTURE.md 2c).
   - Things aboard get `Outside = ship.World`, which T4.4's lookup uses as a cabin's parent.
   - A base isn't a cabin world: it never moves, so it stays a fixed body in its world (Vessel.cs:339-341). T4.4's lookup finds it by position.
   - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
@@ -323,7 +323,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - **PLANET TO SPACE**: the planet left behind showing a low-detail skin (with T3.4).
 
   Far trees and horizon voxels follow this rule when built.
-- **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins. After a return from another world, only the drawn world's suns cast shadows (PopRoute.Edges' shadow-casting sun count). The weather shader globals are the drawn world's, whichever zone was entered last.
+- **Proof:** T0.4's budget holds with 4 occupied worlds plus 2 cabins. After a return from another world, only the drawn world's suns cast shadows (PopRoute.Edges' shadow-casting sun count). The weather shader globals are the drawn world's, whichever zone was entered last. Drop a bag in a cabin, everyone leaves, come back: the bag is there and the counts match.
 
 **T3.1a `WorldKey` everywhere, IDs and the seed helper** (M, high effort; depends on T0.1a, T2.9)
 - **Replaces:**
@@ -346,14 +346,14 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - the `Move` order (commit, detach, attach, with roll-back);
   - a record is gone only when its holder reports it destroyed (death bags included);
   - the conservation audit (`Ledger.Audit`) refuses and rolls back a crossing or jump that loses or duplicates items, instead of only printing (Spaceflight.cs:677, Jump.cs:251). A structure whose restore fails (Spaceflight.Fold.cs:473) keeps its record and blocks the commit.
-- **Proof:** two sleepers cross between surface and orbit at the same moment, and every count matches afterwards for both. A forced loss in a crossing is refused and rolled back.
+- **Proof (at the ledger, since the climb is still one crossing at a time until T2.8c: `Pending _pending`, Spaceflight.cs:82-83):** two `Begin`s queued through the harness both commit, with every count matching; a crossing commits while another world parks and frees (ARCHITECTURE.md 9); a forced loss is refused and rolled back.
 
 **T2.8a Jumps per vessel** (M, high effort; depends on T3.3a, T2.3, T2.4, T2.9 (fold targets are star indices today, `FoldTo(int)`), and T2.5, T2.6 and T2.7, so both sleepers can play at their stars)
 - **Targets are star keys** (T0.1a's `WorldKey`, from T2.9's galaxy), not list indices.
 - **Moves:** each vessel's jump, target and fold destination onto the vessel, replacing `Spaceflight.Jumping`, `Target` and `FoldTo` (Jump 282, Warp 308 and Fold 506 lines; WarpTest has about 260 checks).
 - **Rules:** only the command-chair pilot cancels, with J, during the spool only. Everyone aboard gets the spool warning (owner, 25 Nov).
 - **Proof:** two sleepers jump their own ships to different stars at once, and both play there.
-- **Lines up with INTERSTELLAR TRAVEL** (playtest-list.md 704; rules in solar-systems.md section 8). Before T2.8a to c and T2.9 are briefed, that entry's open jobs are checked against them, so jumps are built once, on this design.
+- **Lines up with INTERSTELLAR TRAVEL** (playtest-list.md, "INTERSTELLAR TRAVEL"; rules in solar-systems.md section 8). Before T2.8a to c and T2.9 are briefed, that entry's open jobs are checked against them, so jumps are built once, on this design.
 
 **T2.8b The transit world** (M, high effort; depends on T2.8a, T2.7 (passengers read `Outside`, which becomes the transit world))
 - **Builds:**
@@ -371,7 +371,8 @@ In slices, each merged on its own, within the budgets T0.4 set.
 **T2.8c The climb and descent between surface and orbit** (M, high effort; depends on T2.8a, T2.7, T3.3a)
 - **What:** the seam (Spaceflight.Seam.cs, 621 lines) becomes a vessel `Move`, like warp and fold.
 - **Its view half goes under rule 12:** the sky fade, the environment swap, the wreck fade through `GeometryInstance.Transparency`, the sky's `eye_lift` and `HoldSurfaceBehind`.
-- **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's.
+- **Replaces:** the one pending crossing (`Pending _pending`, Spaceflight.cs:82-83) with one per vessel.
+- **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's, and every count matches afterwards for both (through T3.3a's queue).
 
 ---
 
@@ -382,17 +383,17 @@ Needed before star travel ships and before saves. T3.1a and T3.3a are listed in 
 - **Builds:** the Sleepers faction's index of claimed things (structures, vessels, bags) by ID.
 - **Replaces:** references to things in another world with IDs resolved through the world manager: AI targets, markers, `Opened` containers and the fold's `_ids` map keyed by object (Fold.cs:399, 466). A world out of play answers "not here", never a stale object.
 - **Closes:** architecture review finding 12.
-- **Proof:** a creature targeting a sleeper on a world that is then freed lets go. A marker for a thing on a freed world shows "not here".
+- **Proof:** a creature whose target crosses to another world lets go. A container left open on a world that is then freed shows "not here", and so does a marker for a thing on it.
 
 **T3.2 A change record per world, and the clock catch-up** (L, high effort, 4 slices: the record and its storage; terrain, plants and deposits; places, caves and survival points; the clock catch-up; depends on T3.1a, T2.4, T2.6 (caves and places made per world), and T1.5, because changes are stored against a world rebuilt from its seed)
 - **Builds:**
   - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down, plus the survival points and bags T2.3 moves out of the suit (replicators, pods, bushes, food caches, backpacks), and the air of places' closed rooms.
   - **Caves:** found caves and their deaths, by cell key. Today `Caves._caves` and `Underworld._spots` live only in nodes (`PlaceFauna.cs:584`, `Underworld.cs:37`), and which caves exist depends on the walk (:630-640). A freed world's caves would refill and its kills be undone, against the owner's "find things as you left them". The cave sims' time comes from the galaxy clock (`PlaceFauna.cs:640`, `Underworld.cs:113` copy the zone's).
-  - One galaxy clock; regrowth, decay, meteorites and the sky worked out from elapsed time on return, touching only unclaimed records.
+  - One galaxy clock, and a catch-up hook run on return with the elapsed time, touching only unclaimed records. It catches up what exists today: the sky's positions, running timers and rooms' air. Regrowth, decay and resource meteorites aren't built yet (DESIGN.md 706, 725); they are feature F9, on this hook.
 - **Closes:** OW#7, SA B-B10 (salvage resets), A-6.4.
-- **Proof:** leave a star, come back, and every change is as left, with regrowth by the time away.
+- **Proof:** leave a star, come back, and every change is as left, with the sky and timers moved on by the time away.
 
-**T3.3b Crash safety and the saved game** (L, high effort, 3 slices: crash points and reload; the game, faction and sleeper records with loading a game; the remaining structure records; depends on T3.3a, T3.1a, T3.1b (the faction's index of claimed things by ID), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
+**T3.3b Crash safety and the saved game** (L, high effort, 3 slices: crash points and reload; the game, faction and sleeper records with loading a game; the remaining structure records; depends on T3.2 (the galaxy clock and the per-world records), T3.3a, T3.1a, T3.1b (the faction's index of claimed things by ID), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
 - **Builds:**
   - the records ARCHITECTURE.md 4b lists that nothing writes today: `game` (seed, galaxy clock, mode and settings, the sleepers), `faction` (charts, standing, the index of claimed things by ID), `sleepers/<id>` (vitals, pack, progress and tech, world key and place, or cabin) and `manifest`. Today the ledger's sleeper record holds only the pack contents (Spaceflight.cs:687);
   - loading a game from disk;
@@ -401,14 +402,14 @@ Needed before star travel ships and before saves. T3.1a and T3.3a are listed in 
   - a record whose world won't load goes to the faction's last base;
   - devices restored;
   - records dirty-tracked and written in pieces off the main thread.
-- **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live. With T3.2 this is the save system: playtest "Saves" (playtest-list.md 915; the saves prototype isn't in the slice) is closed by these two, not built apart.
+- **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live. With T3.2 this is the save system: playtest "Saves" (playtest-list.md, "Saves"; the saves prototype isn't in the slice) is closed by these two, not built apart.
 - **Proof:**
   - crash at every step of a park, a free, two crossings at once and a jump mid-tunnel (it reloads where the jump began); every count matches on reload;
   - quit and load: the clock, mode, charts and standing, and each sleeper's vitals, level, tech, pack and world all match;
   - two sleepers are both saved and both come back.
 
 **T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3a, T3.3b, T3.1b (nothing may hold a freed world's objects), T2.4, and T2.5 and T2.6, which remove the roughly 20 starter holds)
-- **Builds:** freeing for every world: a frozen world stays loaded about 2 minutes, then is freed to its record.
+- **Builds:** freeing for every world: a frozen world stays loaded about 2 minutes, then is freed to its record, with a full collection spread over frames so its memory comes back (ARCHITECTURE.md 2b).
 - **Deletes:** `ParkHome`. The start system is frozen, kept about 2 minutes and freed like any star's.
 - **Closes:** rule 3, OW risk 7.
 - **Proof:** fold away, come back, and the start world is as you left it. A sleeper who dies at another star after the start world was freed wakes in their pod, with their locker intact. Freeing a world gives its memory back to T0.4's freed figure, with no frame over budget.
@@ -528,8 +529,8 @@ Each unifies a job and deletes the copies.
   - the four voice pools brought to one set of rules;
   - `SoundCues.Heard` (Game/SoundCues.cs:13-15) carries its world, so the visor shows only the viewer's world's cues (SA A-1.11);
   - every event has a subscriber or is deleted (SF #20 lists the unused ones);
-  - one `Markers(world, viewer)` source, keeping the owner's 17 Nov marker rule. The playtest marker entries (playtest-list.md 804 to 807, 817: markers on the thing, discovered POIs, scanner pings) are built on this source, not each on their own.
-- **Closes:** SA B-B21 to B-B24; OW#16 (the bunker marker and "home" checks against `Game.Surface`, Visor.cs:415, Spaceflight.Moon.cs:37).
+  - one `Markers(world, viewer)` source, keeping the owner's 17 Nov marker rule. The playtest marker entries (playtest-list.md's "Markers (places, deposits, the bunker, scanner pings)", "Compass marks discovered POIs", "POIs reveal in proximity", "Compass crowded by ore labels" and "SCANNER: PLACE MARKERS ALWAYS SHOWN": markers on the thing, discovered POIs, scanner pings) are built on this source, not each on their own.
+- **Closes:** SA B-B21 to B-B24.
 - **Proof:** a fuel drum is heard by creatures and towns and shows on the visor. One marker shows the same in all three views.
 
 **T4.7 Shared entry points** (S, low effort; after T2.3, which builds the claims `Spill` takes)
@@ -600,7 +601,7 @@ This is the start of real co-op. It depends on Tiers 2 and 3.
 **F6 Traffic that fits the world** (after T2.6; with the faction ships in ship-forms.md and NPC pilots)
 - How much traffic a world has, and what kind, varies a lot by world (owner, 25 Nov): some worlds are busy, some have none, and some have hostile ships.
 - It comes from the world: its place on the journey to the core, the factions present, its towns and starport, and its occupancy.
-- It builds on the lone trader's open phases (playtest-list.md 739: crews, reactions, rim pirates and small traders) and each faction's own ships.
+- It builds on the lone trader's open phases (playtest-list.md, "A LONE TRADER OR SCOUT IN THE START WORLD'S SKY": crews, reactions, rim pirates and small traders) and each faction's own ships.
 
 **F7 The full breadth of stars and worlds** (after T2.9)
 - **Stars:** subclasses (G2, M4), luminosity classes (V dwarf, III giant) and brightness varied about ×0.6 to ×1.6 within a class, on T2.9's star model. The spread of the stellar classification used for variety (owner, 25 Nov: "using the qualities of classifications to increase the breadth of star types"): every subclass within each class, giants and supergiants, white dwarfs, and rarer kinds placed by region or as a system's notable feature (solar-systems.md step 1 and its special stars, such as red giants with thawing former ice worlds).
@@ -619,3 +620,7 @@ This is the start of real co-op. It depends on Tiers 2 and 3.
   - the healing booth, restoring health;
   - the rest of DESIGN.md 614's choices: the nearest built cryopod, the sleeper's own start pod, a survival tent, or a fresh start.
 - **Proof:** die on a moon with a cryopod built on your base there, choose it, and wake in it, the lid opening as in the bunker. The bunker's pods are the same block. A healing booth restores full health.
+
+**F9 Regrowth, decay and resource meteorites** (after T3.2)
+- Designed (DESIGN.md 706, 725) but not built: no meteorite code exists, and nothing regrows but force fields.
+- Built on T3.2's catch-up hook, so a world you come back to has regrown and decayed by the time away, touching only unclaimed records.
