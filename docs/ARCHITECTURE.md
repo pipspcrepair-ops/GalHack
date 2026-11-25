@@ -373,7 +373,8 @@ Each step is a root fix, merged green with its checks, and gated on this doc's a
    - harm and the block world, which carry salvage and shelter;
    - then ground, gravity and vehicles;
    - then queries, events and markers;
-   - then facts, not names;
-   - then the placeholder decisions.
+   - then facts, not names.
+
+   The placeholder decisions and other new behaviour found in the reviews are features, listed apart in root-fix-tasks.md (F1 onward).
 
    `WorldQuery` comes in with step 2a, because rule 2 needs it.
