@@ -479,12 +479,14 @@ Each unifies a job and deletes the copies.
   - one `Ground` service per diggable body, with `ArmsHost.SolidHit` folded in;
   - **one gravity rule, read from where a thing is** (like air, T4.4):
     - a world gives its own gravity: a planet or moon its own, the orbit zone 0 (OrbitZone.cs:166);
-    - a cabin gives its core's fixed 1 g (slice.json `gravity`, Vessel.cs:322, 360) while it's powered and switched on, and the world's gravity when it isn't;
+    - **gravity follows cabin-world logic** (owner, 25 Nov): inside a functioning ship or base you're at its core's fixed 1 g (slice.json `gravity`, Vessel.cs:322, 360), whatever the world outside, so 1 g aboard on a high-g world. With the core off or unpowered, the world's gravity reaches in, turned into the ship's frame. Out on the hull, mag boots hold you to the face underfoot;
+    - characters already work this way (`PhysicsWorld.GravityAt`, PhysicsWorld.cs:215-222; power drops it, Vessel.Power.cs:38-41). Loose things in the cabin world don't: with the core off they get 0 g even on a planet (`CabinWorld.SetGravity`, StructureShapes.cs:167-173). One rule serves both;
     - everything reads gravity from where it is: bodies, creatures, loot, people's falls, flung trees, the bike and claimed wrecks. The gravity constants go;
   - the bike as a hover body in the shared physics;
   - one seated state.
 - **Closes:**
   - a wreck claimed in orbit gets the starter planet's surface gravity as its core gravity, not 1 g (`Claimed(Game.Surface.Physics.Zone.Strength)`, Spaceflight.Hands.cs:239);
+  - **a bug today:** loose cargo in a cabin floats with the core off, even parked on a planet (StructureShapes.cs:167-173);
   - **a bug today:** loot in orbit wrongly falls at 1 g, when in 0 g it should drift, because anything not on a planet surface falls at standard gravity (Lootables.cs:100); town falls default to 9.8 (Town.Falls.cs:39);
 - **Also closes:** SA B-B15 to B-B18, and B-B4's bike half (the bike rams nothing, through T4.1's one ram).
 - **One ground source for cave sims too.** Today they read three:
@@ -497,7 +499,7 @@ Each unifies a job and deletes the copies.
   - the shared spring (`HoverController.Cushion`: 1.2 Hz, damping 0.4, vertical only, push only);
   - `Follow` (tilt keeps heading, no self-turn);
   - hover lift only on a powered core.
-- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. A bag tossed in orbit drifts; tossed in a powered cabin it falls at 1 g, and with the core's gravity off it drifts. A wreck claimed in orbit has 1 g aboard on any start world. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
+- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. A bag tossed in orbit drifts; tossed in a powered cabin it falls at 1 g, and with the core's gravity off it drifts. A wreck claimed in orbit has 1 g aboard on any start world. Aboard a powered ship on a high-g world you and its loose cargo are at 1 g; switch its core gravity off and both take the world's. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
 
 **T4.6 Events, sound and markers** (M, medium effort; depends on T2.7, and T2.5, which moves markers onto the sleeper's world)
 - **Builds:**
