@@ -4,7 +4,7 @@
 
 **Priority (owner, 25 Nov): "FIX CORE ISSUES FIRST".** These root fixes outrank all other work, the playtest list included. Owner bugs that come from these causes (weapons, tool and building off-world, door glitches, the compass) are fixed here, not patched sooner.
 
-**Core first, clean-ups around it (owner, 25 Nov).** The point of this list is fixing the core issues: Tiers 1 to 4. Tier 0 exists only to prove them (T0.1a, T0.2, T0.3, T0.4, T0.5). Clean-ups (T0.1b, T0.6, T5.2, stale worktrees, the history clean) fit into the gaps around the core work and never hold it up.
+**Core first, clean-ups around it (owner, 25 Nov).** Only fixes to broken or structurally wrong code are core tasks (T-numbers). New features found during the reviews are listed apart at the end (F-numbers). The point of this list is fixing the core issues: Tiers 1 to 4. Tier 0 exists only to prove them (T0.1a, T0.2, T0.3, T0.4, T0.5). Clean-ups (T0.1b, T0.6, F5, stale worktrees, the history clean) fit into the gaps around the core work and never hold it up.
 
 **Revised 25 Nov after a second look:**
 - the prototype (now T0.4) runs in Tier 0;
@@ -200,7 +200,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds:** a `Sleeper` object owning body, suit, pack, progress, tools, shots' `Source`, death bag and the open container. `Game` holds the list and "the local sleeper".
 - **Replaces:** `Game.Survivor` in simulation code: wildlife's one `Player`, towns' one "you", shots' `owner == 0` and static `You`, the crossing's `Carrier()`, death and aftermath.
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4).
-- **One breather model** for sleepers and people (hold, tank, suffocation, from survival-vitals/data/vitals.json), not a rule owned by the sleeper's suit. Today a closed town room gives people air but not the sleeper: `Suit.InSealedRoom` (Suit.cs:43) is set only by RoomAir. proto/npcair (a0a0da94, shelved) has people reading the sleeper's rules through `Town.Breathe`, which is a starting point, not a merge.
+- **One breather model**, not a rule owned by the sleeper's suit (hold, tank, suffocation, from survival-vitals/data/vitals.json). Built for sleepers now, in a shape people can use later. Today a closed town room gives people air but not the sleeper: `Suit.InSealedRoom` (Suit.cs:43) is set only by RoomAir.
 - **Closes:** SA A-R1 (A-1.1 to 1.9), A-6.3; `Harness.AddSleeper` goes live.
 - **Proof:** two sleepers on one world are both targeted, hurt, credited and saved. Each wakes in their own pod.
 
@@ -217,7 +217,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - parking and freeing by one player's place;
   - the one `Away` and one `Orbit`.
 - **Closes:** SA A-R2 (A-2.1 to 2.9), A-3.5 (world manager split out of `Spaceflight`), OW#6, OW#10 (streaming and settings).
-- **A frozen or freed world drops its lights, not just its meshes.** The only shadow-casting `DirectionalLight3D`s in the tree are the drawn world's, one per star you can see (binary and trinary systems, owner design; see T2.10). They share the directional atlas by brightness, and a stale light must never take part of it. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges already prints the shadow-casting sun count after a landing; that becomes a check.
+- **A frozen or freed world drops its lights, not just its meshes.** The only shadow-casting `DirectionalLight3D`s in the tree are the drawn world's, one per star you can see (binary and trinary systems, owner design; see F1). They share the directional atlas by brightness, and a stale light must never take part of it. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges already prints the shadow-casting sun count after a landing; that becomes a check.
 - **Proof:** two sleepers far apart on one world both have ground and life. Two sleepers at two stars both play. A world nobody is on stops costing frame time.
 - **Note:** `ParkHome` stays until T3.4, and so does freeing.
 
@@ -255,12 +255,8 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - **The bunker becomes a stamp.** Delete `Keep` and the bunker rules (`Game.Places.cs:64-65`; consumed at `PlaceFauna.cs:571, 639, 704`). Part of the cave bleed is already fixed: 4acacb45 makes `LoadedVoxels` read `PlanetTerrainSource.Dug` as rock. Rerun InsideTest `--unseen` first to see what still fails.
   - **`Underworld` serves every underground on a world,** not only the start town's (`Underworld.cs:68`, :102). `IncidentalTest.cs:206-211`, which asserts the starter, is rewritten.
   - **Stamps are planned before a world's first chunk column is read.** Otherwise the `_columns` cache (`PlanetTerrainSource.cs:61`) bakes in no cave mouths, because `CaveMouths` returns null while `Stamps.Count == 0` (`CaveMouths.cs:45`, :54).
-  - **Caves follow the world's archetype.** `CaveStrength` (`PlanetTerrainSource.cs:766`) takes none, but DESIGN.md 213 gives cave networks to only some archetypes. With T1.3's rules from the spec.
-  - **Airless worlds:** caves and the underworld are empty there today (`Deep` is null, `Game.Places.cs:50`). Owner, 25 Nov: vacuum fauna come later. For now these caves stay empty, but the code must not assume an airless cave is empty: life comes from the world's roster, not from air.
-- **Towns fit their world's air** (DESIGN.md 362): sealed habitats on vacuum and unbreathable-air worlds, with suits worn outside. On an airless test world only 67 of 150 town spots stood in closed rooms. NPC air comes back as part of this (owner, 24 Nov), not before.
 - **Proof:**
   - a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile;
-  - a quiet town on a fresh vacuum world runs 15 minutes with no air deaths.
 
 **T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2)
 - **Builds:**
@@ -310,18 +306,6 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
 - **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`).
 - **Proof:** the start star's system matches what the galaxy gives that star.
-
-**T2.10 Many suns: binaries, trinaries and black holes** (M, high effort; depends on T2.7, T2.9)
-- **Today:** the galaxy knows a star's companions (`Star.Companions`, `CompanionKind` in shared/Galaxy/Core/Galaxy.cs:20; the map shows "double" or "triple"). A system's model has one `Star` (planet-surface/src/Sky/StarSystem.cs:203), so every sky, sun direction, light and shadow comes from one star. There is no light model for a black hole.
-- **Design:** DESIGN.md 181 and 196 ("double shadows and sunsets, shifting temperatures"); solar-systems.md 112 and 148 (close pairs circled by planets, wide pairs with planets round one star, combined brightness sets the zones) and 144 and 660 (black holes and neutron stars).
-- **Builds:**
-  - Every star is a body in the system model, orbiting the pair's centre of mass, drawn from the one source of truth (celestial bodies are real).
-  - One light per star you can see, from its direction, with its colour and its brightness by distance. It drops out below the horizon or behind an eclipsing body. A wide companion is a bright point with negligible light.
-  - The shadow budget is shared by brightness. The brightest sun gets most of the atlas, a second close sun casts a softer shadow of its own (double shadows), and a third lights without shadow unless the budget allows. Each preset sets how many suns cast shadows. At the lowest preset a second sun casts its shadow only if it fits the frame budget, measured in T0.4 (owner, 25 Nov).
-  - **Black holes:** the accretion disc is the light source (a large, soft, warm light from the disc, mostly ambient, weak shadows), plus the lensing look.
-  - **Neutron stars and pulsars:** dim point lights. A pulsar's sweep is a radiation event on its beat, not a light.
-  - Heat and climate come from the same suns: zones from the combined brightness for a close pair, and temperature shifting as each sun rises, sets or is eclipsed.
-- **Proof:** on a circumbinary world, two suns cross the sky on their own paths with two shadows. The same scene has one shadow at the lowest preset if T0.4 says so. A black-hole system is lit by its disc.
 
 ---
 
@@ -470,7 +454,7 @@ Each unifies a job and deletes the copies.
 
 ---
 
-## Tier 5: facts, not names, and placeholders
+## Tier 5: facts, not names
 
 **T5.1 Data fields instead of name checks** (M, medium effort)
 - **Adds fields for:**
@@ -481,22 +465,44 @@ Each unifies a job and deletes the copies.
 - **Closes:** SA C-D1 to C-D7, G2, G3, G4.
 - **Proof:** a new vehicle, food, site kind or alien weather works from data alone.
 
-**T5.2 Placeholder decisions** (owner; then S each)
+---
+
+# Built on the core: features, not fixes
+
+These came up during the reviews. They are **new behaviour or design work, not fixes to broken code**, so they are not part of the core work above. Each waits for the core tasks it names, then is briefed as its own feature, in whatever order the owner picks.
+
+**F1 Many suns: binaries, trinaries and black holes** (after T2.7, T2.9). Was T2.10.
+- **Today:** the galaxy knows a star's companions (`Star.Companions`, `CompanionKind` in shared/Galaxy/Core/Galaxy.cs:20; the map shows "double" or "triple"). A system's model has one `Star` (planet-surface/src/Sky/StarSystem.cs:203), so every sky, sun direction, light and shadow comes from one star. There is no light model for a black hole.
+- **Design:** DESIGN.md 181 and 196 ("double shadows and sunsets, shifting temperatures"); solar-systems.md 112 and 148 (close pairs circled by planets, wide pairs with planets round one star, combined brightness sets the zones) and 144 and 660 (black holes and neutron stars).
+- **Builds:**
+  - Every star is a body in the system model, orbiting the pair's centre of mass, drawn from the one source of truth (celestial bodies are real).
+  - One light per star you can see, from its direction, with its colour and its brightness by distance. It drops out below the horizon or behind an eclipsing body. A wide companion is a bright point with negligible light.
+  - The shadow budget is shared by brightness. The brightest sun gets most of the atlas, a second close sun casts a softer shadow of its own (double shadows), and a third lights without shadow unless the budget allows. Each preset sets how many suns cast shadows. At the lowest preset a second sun casts its shadow only if it fits the frame budget, measured in T0.4 (owner, 25 Nov).
+  - **Black holes:** the accretion disc is the light source (a large, soft, warm light from the disc, mostly ambient, weak shadows), plus the lensing look.
+  - **Neutron stars and pulsars:** dim point lights. A pulsar's sweep is a radiation event on its beat, not a light.
+  - Heat and climate come from the same suns: zones from the combined brightness for a close pair, and temperature shifting as each sun rises, sets or is eclipsed.
+- **Proof:** on a circumbinary world, two suns cross the sky on their own paths with two shadows. The same scene has one shadow at the lowest preset if T0.4 says so. A black-hole system is lit by its disc.
+
+**F2 Places that fit their world** (after T2.6, T1.4, T4.4)
+- **Towns fit their world's air** (DESIGN.md 362): sealed habitats on vacuum and unbreathable-air worlds, with suits worn outside. On an airless test world only 67 of 150 town spots stood in closed rooms. NPC air comes back as part of this (owner, 24 Nov), not before.
+- **Caves follow the world's archetype.** `CaveStrength` (`PlanetTerrainSource.cs:766`) takes none, but DESIGN.md 213 gives cave networks to only some archetypes. With T1.3's rules from the spec.
+- **Airless worlds:** caves and the underworld are empty there today (`Deep` is null, `Game.Places.cs:50`). Owner, 25 Nov: vacuum fauna come later. For now these caves stay empty, but the code must not assume an airless cave is empty: life comes from the world's roster, not from air.
+- **NPC air:** people breathe, suit up and suffocate through the shared breather model (T2.3), with proto/npcair (a0a0da94, shelved) as a starting point, not a merge.
+- **Proof:** a quiet town on a fresh vacuum world runs 15 minutes with no air deaths.
+
+**F3 Fire** (planned, not started).
+Fire (planned, not started) is briefed only once these are in: T1.4 (wind and rain on every world), T2.7 (fire effects in the view only), T4.1 (burn damage through Harm), T4.2 (blocks and plants as burnable material), T4.4 (rain, wet and shelter put fire out), and T4.6 (crackle, smoke, AI hearing). Fire hits are never telegraphed.
+
+**F4 Host and clients: real co-op** (after Tiers 2 and 3). Was T6.
+- Confirm ARCHITECTURE.md section 9b against `prototypes/coop`.
+- Every networked object carries its `WorldKey`, and is sent only to clients on that world.
+
+This is the start of real co-op. It depends on Tiers 2 and 3.
+
+**F5 Placeholder decisions** (owner; then S each). Was T5.2.
 - **Decides:**
   - warship turrets that never fire;
   - raw parts with no use;
   - the placeholder numbers in places.json;
   - orbit fauna and Husks in derelicts, once T1.4 gives orbit real wildlife.
 - **Closes:** SA C-H.
-
----
-
-## Fire waits for these
-Fire (planned, not started) is briefed only once these are in: T1.4 (wind and rain on every world), T2.7 (fire effects in the view only), T4.1 (burn damage through Harm), T4.2 (blocks and plants as burnable material), T4.4 (rain, wet and shelter put fire out), and T4.6 (crackle, smoke, AI hearing). Fire hits are never telegraphed.
-
-## After the root fixes
-**T6 Host and clients**
-- Confirm ARCHITECTURE.md section 9b against `prototypes/coop`.
-- Every networked object carries its `WorldKey`, and is sent only to clients on that world.
-
-This is the start of real co-op. It depends on Tiers 2 and 3.
