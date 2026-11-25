@@ -317,7 +317,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds:**
   - Every star is a body in the system model, orbiting the pair's centre of mass, drawn from the one source of truth (celestial bodies are real).
   - One light per star you can see, from its direction, with its colour and its brightness by distance. It drops out below the horizon or behind an eclipsing body. A wide companion is a bright point with negligible light.
-  - The shadow budget is shared by brightness. The brightest sun gets most of the atlas, a second close sun casts a softer shadow of its own (double shadows), and a third lights without shadow unless the budget allows. Each preset sets how many suns cast shadows, measured in T0.4 for the minimum spec.
+  - The shadow budget is shared by brightness. The brightest sun gets most of the atlas, a second close sun casts a softer shadow of its own (double shadows), and a third lights without shadow unless the budget allows. Each preset sets how many suns cast shadows. At the lowest preset a second sun casts its shadow only if it fits the frame budget, measured in T0.4 (owner, 25 Nov).
   - **Black holes:** the accretion disc is the light source (a large, soft, warm light from the disc, mostly ambient, weak shadows), plus the lensing look.
   - **Neutron stars and pulsars:** dim point lights. A pulsar's sweep is a radiation event on its beat, not a light.
   - Heat and climate come from the same suns: zones from the combined brightness for a close pair, and temperature shifting as each sun rises, sets or is eclipsed.
