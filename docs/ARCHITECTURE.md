@@ -128,7 +128,12 @@ Players warp and fold independently and may each be in any system (owner, 25 Nov
 3. **Everyone aboard is warned.** The spool shows on every aboard sleeper's visor and its sound is heard, seated or standing, on the hull or inside.
 4. **The tunnel is a real world.** At commit the ship moves into its own transit world, which exists only for that jump, with the tunnel as its sky. Everything always has a world (rule 1). Two ships' tunnels never meet.
 5. **What goes is decided at commit:**
-   - **Only the jumping ship enters the transit world** (owner, 25 Nov). Other ships are not affected, nearby or clamped to its outside included, unless they are inside its cabin world.
+   - **Only the jumping ship enters the transit world,** with the ships it carries (owner, 25 Nov):
+     - ships clamped to its outside;
+     - ships inside its cabin world.
+
+     Every other ship is unaffected, however near.
+   - Clamped ships keep their place on the hull and arrive clamped. Their own cabins and everyone in them ride along untouched.
    - Everything in the ship's cabin rides inside it: sleepers seated or standing, cargo, and ships inside the cabin world.
    - Sleepers on the outer hull go into the transit world with the ship.
    - Anything that stepped off before commit stays behind.
