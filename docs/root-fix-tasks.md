@@ -4,6 +4,8 @@
 
 **Priority (owner, 25 Nov): "FIX CORE ISSUES FIRST".** These root fixes outrank all other work, the playtest list included. Owner bugs that come from these causes (weapons, tool and building off-world, door glitches, the compass) are fixed here, not patched sooner.
 
+**Core first, clean-ups around it (owner, 25 Nov).** The point of this list is fixing the core issues: Tiers 1 to 4. Tier 0 exists only to prove them (T0.1a, T0.2, T0.3, T0.4, T0.5). Clean-ups (T0.1b, T0.6, T5.2, stale worktrees, the history clean) fit into the gaps around the core work and never hold it up.
+
 **Revised 25 Nov after a second look:**
 - the prototype (now T0.4) runs in Tier 0;
 - identity (T2.9, T3.1) starts beside the world model;
