@@ -1,0 +1,6 @@
+# Local-only folders the owner keeps out of git (owner, 25 Nov)
+/floorplan-refs/
+/font/
+/mockups/
+/music-samples/
+/research/*.pdf

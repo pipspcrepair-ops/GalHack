@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GalHack music audition</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; background:#0e1116; color:#d6dbe3; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; }
+  header { padding:18px 20px 6px; max-width:1100px; margin:0 auto; }
+  h1 { margin:0 0 6px; font-size:24px; color:#fff; }
+  h2 { margin:34px 0 4px; padding-top:8px; font-size:19px; color:#9fc4ff; border-top:1px solid #263041; }
+  main { max-width:1100px; margin:0 auto; padding:0 20px 80px; }
+  a { color:#7fb2ff; }
+  p.note, .small { color:#97a1b0; font-size:13.5px; }
+  #bar { position:sticky; top:0; z-index:10; background:#151b25; border-bottom:1px solid #2b3647; padding:8px 20px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  #bar b { color:#fff; }
+  button { background:#243247; color:#e8eef8; border:1px solid #3a4b66; border-radius:5px; padding:5px 11px; font:inherit; cursor:pointer; }
+  button:hover { background:#2e415c; }
+  button.on { background:#3c6a3c; border-color:#5f9a5f; }
+  #status { color:#9ad49a; font-size:13px; }
+  #fallback { display:none; width:100%; height:140px; background:#0a0d12; color:#d6dbe3; border:1px solid #3a4b66; }
+  .row { display:grid; grid-template-columns: 74px 1fr; gap:10px; padding:11px 0; border-bottom:1px solid #1d2532; }
+  .row.kept { background:#13201a; }
+  .keepcell { text-align:center; font-size:12px; color:#97a1b0; }
+  .keepcell input { width:22px; height:22px; accent-color:#5fc46f; cursor:pointer; }
+  .name { font-weight:600; color:#fff; font-size:16px; }
+  .by { color:#aab3c2; }
+  .meta { color:#97a1b0; font-size:13px; margin:2px 0; }
+  .lic { color:#e9c46a; }
+  .desc { margin:3px 0 6px; }
+  .players audio { width:100%; max-width:560px; height:34px; display:block; margin:3px 0; }
+  .players .lab { font-size:12.5px; color:#97a1b0; margin-top:4px; }
+  .listen { display:inline-block; margin:3px 0; padding:4px 10px; border:1px solid #3a4b66; border-radius:5px; text-decoration:none; background:#18222f; }
+  .warn { color:#e9a46a; font-size:13px; }
+  .missing { color:#e9a46a; font-size:13px; display:none; }
+  textarea.nt { width:100%; max-width:560px; box-sizing:border-box; background:#0a0d12; color:#d6dbe3; border:1px solid #2b3647; border-radius:4px; padding:4px 6px; font:13px system-ui; height:28px; resize:vertical; margin-top:4px; }
+  iframe.yt { width:100%; max-width:560px; height:200px; border:1px solid #2b3647; display:block; margin:4px 0; }
+  table.drop { border-collapse:collapse; width:100%; font-size:13.5px; }
+  table.drop td { border-bottom:1px solid #1d2532; padding:5px 8px 5px 0; vertical-align:top; }
+  .hide { display:none !important; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <span>Kept: <b id="count">0</b> of <b id="total">0</b></span>
+  <button id="onlykept" type="button">Show only kept</button>
+  <button id="copy" type="button">Copy my picks</button>
+  <button id="clear" type="button">Clear all ticks</button>
+  <span id="status"></span>
+  <textarea id="fallback" readonly></textarea>
+</div>
+
+<header>
+  <h1>GalHack music audition</h1>
+  <p class="note">Tick <b>keep</b> on anything you like and add a note. Ticks and notes are saved in this browser (localStorage), so they survive a reload. Only one track plays at a time. Press "Copy my picks" and paste the result into chat.</p>
+  <p><strong>Generated music is the only music.</strong> Every sample here comes from the game's own drone generator, no audio files. Each world rolls its own root, scale, pace, instruments and theme; each place, biome, climate, star, tech level and time of day changes the colour around that. Most run 90 seconds, the Hollow ones 3 minutes because it builds slowly, and one runs 12 minutes to show the long shape, quiet included. Your first ten are kept at the bottom. The recorded tracks are not used and are folded away below.</p>
+</header>
+
+<main id="main">
+  <h2>Generated music</h2>
+  <div id="gen"></div>
+
+  <details class="not-used">
+    <summary>Not used: recorded tracks from the earlier shortlist. The owner chose generated music only, so none of these are in the game.</summary>
+  <div id="sections"></div>
+
+  <h2>Dropped, with reasons</h2>
+  <p class="note">Favourites and near-misses that failed the licence or provenance test on their own page.</p>
+  <table class="drop" id="dropped"></table>
+
+  <h2>What I could not verify</h2>
+  <ul class="small">
+    <li>I cannot hear anything. Mood notes are the authors' words.</li>
+    <li>Lengths are not shown on most OpenGameArt pages. The bold player lengths come from the player's metadata during a short play test, and some are shorter previews of the real file.</li>
+    <li>Whether the OpenGameArt and incompetech players work when this file is opened from disk depends on those servers allowing hotlinking. The "Open page" link always works.</li>
+    <li>YouTube embeds (itch.io rows) can refuse to play inside a page opened from disk; the page link is the fallback.</li>
+    <li>OpenGameArt previews are sometimes shorter MP3 conversions of the real file; the real file is on the page.</li>
+    <li>The author field on OpenGameArt is the uploader's name. I checked descriptions for remix, sample, cover or "based on" wording and found none except where a row says so, but I did not trace every track's origin.</li>
+    <li>Akiwaya "Space Electronic Music" and the JDSherbert Ambiences pack from the earlier shortlist were not re-checked on this pass, so they are not listed.</li>
+  </ul>
+  </details>
+</main>
+
+<script>
+(function () {
+  var OGA = 'https://opengameart.org/sites/default/files/';
+  var INC = 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/';
+  function og(slug) { return 'https://opengameart.org/content/' + slug; }
+
+  var GEN = [
+    ['#', 'Worlds, several seeds'],
+    ['temperate-1', 'Temperate, seed 1'],
+    ['temperate-2', 'Temperate, seed 2'],
+    ['temperate-3', 'Temperate, low tech'],
+    ['arid-1', 'Arid, seed 1'],
+    ['arid-2', 'Arid, seed 2'],
+    ['ice-1', 'Ice, seed 1'],
+    ['ice-2', 'Ice, seed 2'],
+    ['lava-1', 'Lava, seed 1'],
+    ['lava-2', 'Lava, on fire ground'],
+    ['swamp-1', 'Swamp, seed 1'],
+    ['swamp-2', 'Swamp, hotter'],
+    ['ocean-1', 'Ocean, seed 1'],
+    ['airless-1', 'Airless, seed 1'],
+    ['airless-2', 'Airless, blue star'],
+    ['#', 'The same world type, other layers'],
+    ['temperate-high-tech', 'Temperate, high tech'],
+    ['temperate-forest-dusk', 'Temperate, forest at dusk'],
+    ['temperate-night', 'Temperate, night'],
+    ['temperate-never-settled', 'Temperate, never settled'],
+    ['temperate-red-dwarf', 'Temperate, red dwarf star'],
+    ['temperate-blue-star', 'Temperate, blue star'],
+    ['temperate-nuclear', 'Temperate, nuclear'],
+    ['temperate-exodus', 'Temperate, exodus'],
+    ['arid-canyon-dawn', 'Arid, canyon at dawn'],
+    ['ice-snow-night', 'Ice, snowfield at night'],
+    ['ocean-2', 'Ocean, shore at dusk'],
+    ['#', 'Places'],
+    ['place-bunker', 'The bunker start'],
+    ['place-cave', 'Cave'],
+    ['place-cave-ice', 'Ice cave'],
+    ['place-ruin-interior', 'Inside a ruin'],
+    ['place-town-low-tech', 'Town, low tech'],
+    ['place-town-high-tech', 'Town, high tech'],
+    ['ocean-underwater', 'Underwater'],
+    ['place-ship', 'Inside a ship'],
+    ['place-base', 'Inside a base'],
+    ['#', 'Space'],
+    ['space-high-orbit', 'High orbit'],
+    ['space-deep-1', 'Deep space, seed 1'],
+    ['space-deep-2', 'Deep space, seed 2'],
+    ['space-nebula', 'Nebula'],
+    ['space-galactic-core', 'Near the galactic core'],
+    ['#', 'The Hollow (3 minutes each: it builds)'],
+    ['hollow-1', 'Hollow, seed 1'],
+    ['hollow-2', 'Hollow, seed 2'],
+    ['hollow-ruin', 'Hollow, inside a ruin'],
+    ['hollow-patch', 'A Hollow patch on a temperate world'],
+    ['#', 'The long shape'],
+    ['long-arc-12-minutes', '12 minutes, temperate: it thins, fills and goes quiet'],
+    ['#', 'Your first ten'],
+    ['first-set/temperate-1', 'First set: temperate 1'],
+    ['first-set/temperate-2', 'First set: temperate 2'],
+    ['first-set/arid', 'First set: arid'],
+    ['first-set/ice', 'First set: ice'],
+    ['first-set/lava', 'First set: lava'],
+    ['first-set/swamp', 'First set: swamp'],
+    ['first-set/ocean', 'First set: ocean'],
+    ['first-set/airless', 'First set: airless'],
+    ['first-set/deep-space', 'First set: deep space'],
+    ['first-set/hollow', 'First set: Hollow']
+  ];
+
+  var MOODS = [
+    ['deep','Deep space'],
+    ['ruins','Temperate ruins'],
+    ['arid','Arid'],
+    ['ice','Ice'],
+    ['lava','Lava'],
+    ['swamp','Swamp'],
+    ['ocean','Ocean'],
+    ['barren','Airless or barren'],
+    ['hollow','Hollow wrongness']
+  ];
+
+  // id, mood, name, by, page, lic, tracks, desc, loop, players [[label, src]], yt, extra
+  var T = [
+    // ---------------- deep space
+    {id:'oga-dark-scifi-pack', m:'deep', n:'Dark Sci-Fi Audio Pack', by:'SRG774', pg:og('dark-sci-fi-audio-pack'), lic:'CC0 ("CC0 1.0 Universal / Public Domain", credit appreciated, not required)', len:'5 music tracks + title menu loop (the pack also has Hover and Victory UI sounds, skip those). Lengths not stated.', d:'"Cold, mysterious, and tense"; the author says it is gentle ambient background music. Sector: mysterious alien theme. Airy: weightless and eerie. Pulse: low alien heartbeat. Transmission: ominous ending theme. Urgent is a driving pulse, probably too busy.', loop:'Yes, the page says the music is designed to be loopable (suggests a small crossfade).',
+     pl:[['Sector',OGA+'audio_preview/sector_0.ogg.mp3'],['Airy',OGA+'audio_preview/airy_0.ogg.mp3'],['Pulse',OGA+'audio_preview/pulse_0.ogg.mp3'],['Transmission',OGA+'audio_preview/transmission_2.ogg.mp3'],['Title (menu loop)',OGA+'audio_preview/title_1.ogg.mp3'],['Urgent',OGA+'audio_preview/urgent_2.ogg.mp3']]},
+    {id:'oga-space-graveyard', m:'deep', n:'Space Graveyard Ambient Track', by:'TinyWorlds', pg:og('space-graveyard-ambient-track'), lic:'CC0', len:'1 track (mp3 3.8 MB). Length not stated.', d:'"An ambient sci-fi like track that can be used to build tension." The author says it makes you listen closely to other sounds.', loop:'Yes ("Loops seamlessly").', pl:[['Track',OGA+'space_graveyard.mp3']]},
+    {id:'oga-deep-space-array', m:'deep', n:'Deep Space Array', by:'Tozan', pg:og('deep-space-array'), lic:'CC0', len:'1 track (ogg 0.6 MB, small). Length not stated.', d:'"An errie piece... Very bizzare." An energy array near a seashore on a distant world.', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/Spacearray.ogg.mp3']]},
+    {id:'oga-station-drone-2', m:'deep', n:'Station Drone 2', by:'Tozan', pg:og('station-drone-2'), lic:'CC0', len:'1 track (ogg 1.5 MB). Length not stated.', d:'"Background Drone tune... strange sound effects."', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/dronestation2.ogg.mp3']]},
+    {id:'oga-bco-star-song', m:'deep', n:'BCO Star Song (Deep Space Tranquility)', by:'brylie', pg:og('bco-star-song-deep-space-tranquility'), lic:'CC-BY 4.0 (credit required)', len:'1 track (flac 16.6 MB). Length not stated.', d:'"A relaxing, atmospheric piece made with VCV Rack." Calmer than ominous.', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/bco-starsong-2021-02-17_0.ogg.mp3']]},
+    {id:'oga-space-ambient-osmic', m:'deep', n:'Space Ambient', by:'Osmic', pg:og('space-ambient'), lic:'CC-BY 3.0 (credit required)', len:'1 track, 10:00 as stated ("Length 10 minutes").', d:'"Space ambient tune @ 10 beat per minute." A very slow long bed.', loop:'Not stated.', pl:[['Track',OGA+'ville_seppanen-1_g.mp3']]},
+    {id:'oga-timebender', m:'deep', n:'Timebender (creepy ambient space)', by:'MouthlessGames', pg:og('timebender-creepy-ambient-space'), lic:'CC-BY 3.0 (credit required)', len:'1 track (ogg 10.5 MB). Length not stated.', d:'"A creepy, ambient space floating track" made by time-stretching a guitar composition; the author calls it creepy and dark.', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/Timebender_4.ogg.mp3']]},
+    {id:'itch-kerr-space', m:'deep', n:'Space Ambient Theme', by:'Theodore Kerr', pg:'https://theodore-kerr.itch.io/sci-fi-space-ambient-theme', lic:'Asset licence field: "Creative Commons Attribution v4.0 International"; page text: "CC BY 4.0"', len:'1 track, 2:22 as stated.', d:'"Ambient track to play for sci-fi or a space related background."', loop:'Not stated.', yt:'KmVNCFxbK0Q', ytnote:'The itch page embeds a YouTube video of the track; the audio file itself has no direct link, so this uses the page\'s own YouTube embed.'},
+
+    // ---------------- temperate ruins
+    {id:'oga-post-apoc-wastelands', m:'ruins', n:'Horror Atmosphere (Juhani Junkala, "Post Apocalyptic Wastelands")', by:'SubspaceAudio (music by Juhani Junkala)', pg:og('horror-atmosphere'), lic:'CC0', len:'1 track, 5:23 as stated. The player below is only a short preview clip; the full loop file is on the page.', d:'"Sparse atmospheric track" for horror and post-apocalyptic settings.', loop:'Yes ("loops seamlessly").', pl:[['Short preview clip',OGA+'audio_preview/Post%20Apocalyptic%20Atmosphere%20Preview%20Short%20Clip.ogg.mp3']]},
+    {id:'oga-ruined-city', m:'ruins', n:'Ruined City Theme', by:'CleytonKauffman', pg:og('ruined-city-theme'), lic:'CC0', len:'1 track, 1:52 as stated (zip with WAV, MP3, OGG, FLAC).', d:'"Theme for abandoned place, factory, chernobyl-esque, disaster."', loop:'Yes ("Loops seamlessly: Yes").', pl:[['Preview',OGA+'Ruined%20City%20Theme%20prev.mp3']]},
+    {id:'oga-dystopian-wasteland', m:'ruins', n:'Dystopian Wasteland', by:'Eric Matyas (soundimage.org)', pg:og('dystopian-wasteland'), lic:'CC-BY 4.0 (credit required)', len:'1 track (mp3 2.2 MB). Length not stated.', d:'"A soundscape intended to depict vast emptiness or ruin. It might also work in a horror game."', loop:'The page says a looping version is on soundimage.org; the files here are not stated to loop.', pl:[['Track',OGA+'Dystopian%20Wasteland.mp3']]},
+    {id:'oga-searching', m:'ruins', n:'Searching', by:'yd', pg:og('searching'), lic:'CC0', len:'1 track (ogg 2.1 MB). Length not stated.', d:'"A short piece can be used as a background." (Earlier notes call it a warm drone; unconfirmed.)', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/Searching_0.ogg.mp3']]},
+    {id:'oga-alien-ruins', m:'ruins', n:'Alien Ruins', by:'bart', pg:og('alien-ruins'), lic:'CC-BY 3.0 (credit required; the author asks for a link back to opengameart.org)', len:'1 track (ogg 1.2 MB). Length not stated.', d:'"A fitting background theme" for an alien ruins level, per the author.', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/alien_ruins2.ogg.mp3']]},
+    {id:'oga-abandoned-building', m:'ruins', n:'Abandoned Building Ambience', by:'tcarisland', pg:og('abandoned-building-ambience'), lic:'Offered as CC-BY 3.0, CC-BY 4.0, OGA-BY 3.0 and OGA-BY 4.0; use CC-BY 4.0 with credit', len:'2 files (one more monotonous, one that changes over time). Lengths not stated.', d:'Resampling and effects "played around with"; an indoor, empty-building ambience.', loop:'Not stated.', pl:[['Track (mp3)',OGA+'abandonedbuildingambience2.mp3']]},
+    {id:'itch-lonepeak-dark-ambient', m:'ruins', n:'No Copyright Dark Ambient Music Pack (6 tracks)', by:'LonePeakMusic', pg:'https://lonepeakmusic.itch.io/no-copyright-dark-ambient-music-pack-free-cc-by-40', lic:'"Free Music, Credit Required (CC BY 4.0)" in the author\'s description; page says "No generative AI was used"', len:'6 tracks, 3 hours total as stated: Ashes From The Previous World, Now Is All I\'ve Got, Memento Mori, Dust Over The Dead Horizon, Chamber Of Rust, Rituals Of The Void.', d:'"Deep, evolving and dark soundscapes" for mysterious open worlds and sci-fi. Titles suggest ruins and rust.', loop:'Not stated.', listenonly:true, note:'No audio player on the itch page itself (its embeds are other products). Use the page link; there is a YouTube video on the page that I could not confirm is a preview of this pack.'},
+
+    // ---------------- arid
+    {id:'oga-desert-theme', m:'arid', n:'Desert theme', by:'yd', pg:og('desert-theme'), lic:'CC0', len:'1 track (ogg 2 MB). Length not stated.', d:'"Minimalistic background music for a desert-like environment."', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/caravan.ogg_0.ogg.mp3']]},
+    {id:'oga-desert-wasteland', m:'arid', n:'Desert Wasteland', by:'tcarisland', pg:og('desert-wasteland'), lic:'CC-BY 4.0 (credit required)', len:'1 track (mp3 2.5 MB). Length not stated.', d:'"Exotic and mysterious ambient desert music with didgeridoo in the background." 100 bpm.', loop:'Not stated.', pl:[['Track',OGA+'desert_wasteland.mp3']]},
+    {id:'oga-iron-wasteland', m:'arid', n:'Iron wasteland', by:'Alexandr Zhelanov', pg:og('iron-wasteland'), lic:'CC-BY 4.0 (credit required)', len:'1 track (ogg 3.4 MB). Length not stated.', d:'"A small looped post apocalyptic suspense ambient theme."', loop:'Yes, described as looped.', pl:[['Track',OGA+'audio_preview/Iron%20wasteland.ogg.mp3']]},
+    {id:'oga-wastelands-tsorthan', m:'arid', n:'Wastelands', by:'Tsorthan Grove', pg:og('wastelands'), lic:'CC-BY 4.0 (credit required)', len:'1 track; flac and a loop flac provided. Length not stated.', d:'The page has no description. Title and author suggest dark ambient; judge by ear.', loop:'A "wastelands_loop" file is provided.', pl:[['Track (mp3 preview)',OGA+'wastelands.mp3']]},
+
+    // ---------------- ice
+    {id:'oga-ice-shine-bells', m:'ice', n:'Ice Shine Bells', by:'hc', pg:og('ice-shine-bells'), lic:'Offered as CC-BY 3.0 or CC0; use CC0', len:'1 track (ogg 1.6 MB). Length not stated.', d:'"Calm ambient music for a icy or crystal cave," recorded in one go on a MIDI keyboard; the tags include silent, alone, empty, sad. Pauses between segments can be cut.', loop:'Not stated (the author suggests cutting at the pauses).', pl:[['Track',OGA+'audio_preview/Ice-Shine-Bells.ogg.mp3']]},
+    {id:'oga-chill-arctic', m:'ice', n:'Chill Arctic Ambient Theme', by:'Wolfgang_', pg:og('chill-arctic-ambient-theme-0'), lic:'CC-BY 4.0 (credit required)', len:'1 track, 3:48 as stated.', d:'"3:48 length ambient soundtrack theme"; tagged arctic, chill, ice, snow, planet.', loop:'Not stated.', pl:[['Track',OGA+'arcticambienttheme_0.mp3']]},
+    {id:'oga-ice-cold', m:'ice', n:'Ice Cold', by:'tcarisland', pg:og('ice-cold'), lic:'CC-BY 4.0 (credit required)', len:'1 track (mp3 2.6 MB). Length not stated.', d:'"Some arctic ambience." Tagged synthesizer, cave.', loop:'Not stated.', pl:[['Track',OGA+'IceCold.mp3']]},
+    {id:'oga-cold-grounds', m:'ice', n:'Cold Grounds', by:'Anipatok', pg:og('cold-grounds'), lic:'CC-BY 4.0 (credit required)', len:'1 track (ogg 1.4 MB). Length not stated.', d:'"A short ambient track, suitable for a winter season or a cave maybe." Tagged slow.', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/1stadvent_cold_grounds.ogg.mp3']]},
+    {id:'oga-frozen-veil', m:'ice', n:'Beyond the Frozen Veil', by:'Synth-thetic', pg:og('beyond-the-frozen-veil'), lic:'CC0', len:'1 track, 2:40 as stated (2:33.6 if looping manually). Download is a 7z archive; the player is a short preview.', d:'"An enchanted ice kingdom," ethereal melodies with shimmering crystals; more enchanted than lonely.', loop:'Yes, a looping file is provided.', pl:[['Preview',OGA+'audio_preview/beyond_the_frozen_veil_preview.ogg.mp3']]},
+    {id:'oga-night-on-ice', m:'ice', n:'A Night on the Ice', by:'Umplix', pg:og('a-night-on-the-ice'), lic:'CC0', len:'1 track (wav 18 MB). Length not stated.', d:'"Ideal for frosty, snow-type games." Tagged cold, night, polar. The author notes its bass reuses a loop from another track.', loop:'Not stated.', pl:[['Track (preview)',OGA+'audio_preview/a_night_on_the_ice.wav.mp3']]},
+    {id:'oga-blue-ice', m:'ice', n:'Blue Ice', by:'Tsorthan Grove', pg:og('blue-ice'), lic:'CC-BY 4.0 (credit required)', len:'1 track (flac 26.9 MB). Length not stated.', d:'Tagged ambient, chill, guitar. The page text says only that it was an unfinished idea from last year.', loop:'Not stated.', pl:[['Track (preview)',OGA+'audio_preview/blue_ice.ogg.mp3']]},
+    {id:'oga-icy-realm', m:'ice', n:'Icy Realm (Seven and Eight)', by:'cynicmusic', pg:og('icy-realm-seven-and-eight'), lic:'CC0 (the author asks, but does not require, credit "The Cynic Project / cynicmusic.com")', len:'1 track (mp3 3.3 MB). Length not stated.', d:'"Ambient uplifting snow-themed music... ethereal and icy." More wonder than dread.', loop:'The author says "I am pretty sure you can loop it".', pl:[['Track',OGA+'019_seven_and_eight_7-8_combined.mp3']]},
+
+    // ---------------- lava
+    {id:'oga-lava-area', m:'lava', n:'Lava Area Theme (LavaLand)', by:'Wolfgang_', pg:og('lava-area-theme'), lic:'CC-BY 4.0 (credit required)', len:'1 track (ogg 2 MB, "One Loop"). Length not stated.', d:'"A theme for a lava area in a video game."', loop:'The file is named "One Loop".', pl:[['Track',OGA+'audio_preview/LavaLand%20-%20One%20Loop.ogg.mp3']]},
+    {id:'oga-dark-intro', m:'lava', n:'Dark Intro', by:'Nikke', pg:og('dark-intro'), lic:'CC0', len:'1 track (ogg 1.6 MB). Length not stated.', d:'Made for an intro, cutscene or boss battle in the author\'s game. No mood words on the page beyond the title.', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/Dark%20Intro.ogg.mp3']]},
+    {id:'oga-forging-flames', m:'lava', n:'Forging Flames (cinematic dark)', by:'Patrick Maney', pg:og('forging-flames-cinematic-dark'), lic:'CC-BY 3.0 (credit required)', len:'1 track (mp3 5.9 MB). Length not stated.', d:'"Music for deep and dark forges."', loop:'Not stated.', pl:[['Track',OGA+'forging_flames_0.mp3']]},
+    {id:'oga-kotchis-lair', m:'lava', n:'Kotchi\'s Lair (loop, "digital hell")', by:'beardalaxy', pg:og('kotchis-lair-loop-digital-hell'), lic:'CC0 ("Credit appreciated but not necessary")', len:'1 track (ogg 0.65 MB). Length not stated.', d:'"Digital hell theme from a game I didn\'t finish."', loop:'Yes, it is an in-game loop.', pl:[['Track',OGA+'audio_preview/kotchis_lair_in_game_0.ogg.mp3']]},
+    {id:'oga-smoldering-volcano', m:'lava', n:'Shrine to the Smoldering Volcano', by:'Mega Pixel Music Lab', pg:og('shrine-to-the-smoldering-volcano'), lic:'Offered as CC-BY 3.0, CC-BY-SA 3.0, GPL 3.0, GPL 2.0 or OGA-BY 3.0; use CC-BY 3.0 with credit', len:'1 track (mp3 3.8 MB). Length not stated.', d:'"Atmospheric piano music. It\'s a bit dark, but more mysterious than sinister"; an ancient temple with secret volcano worshippers.', loop:'Not stated.', pl:[['Track',OGA+'Shrine%20to%20the%20Smoldering%20Volcano.mp3']]},
+
+    // ---------------- swamp
+    {id:'oga-swamp-env-audio', m:'swamp', n:'Swamp Environment Audio', by:'LokiF', pg:og('swamp-environment-audio'), lic:'CC0', len:'1 file (ogg 1.3 MB). Length not stated.', d:'A sound bed: "plenty of bugs, some filler/atmosphere sound, some bubbling/gurgling." Tagged loop. Ambience rather than music.', loop:'Tagged "loop".', pl:[['Track',OGA+'audio_preview/swamp.ogg.mp3']]},
+    {id:'oga-swamp-theme-loop', m:'swamp', n:'Swamp Theme Loop', by:'beardalaxy', pg:og('swamp-theme-loop'), lic:'CC0 ("Credit appreciated but not necessary")', len:'1 file (ogg 0.3 MB, so short). Length not stated.', d:'"Swamp theme from a game I didn\'t finish over a decade ago."', loop:'Yes, an in-game loop.', pl:[['Track',OGA+'audio_preview/swamp_in_game_0.ogg.mp3']]},
+    {id:'oga-whispers-fog', m:'swamp', n:'Whispers in the Fog', by:'Ruhinre', pg:og('whispers-in-the-fog'), lic:'CC0', len:'1 file (ogg 0.2 MB, so very short). Length not stated.', d:'"Short, seamless dungeon crawler loop with a mysterious, ethereal mood," made in SunVox.', loop:'Yes ("seamless").', pl:[['Track',OGA+'audio_preview/whispers_in_the_fog.ogg.mp3']]},
+    {id:'oga-bog-of-doom', m:'swamp', n:'The Bog of Doom (looping)', by:'Eric Matyas (soundimage.org)', pg:og('the-bog-of-doom-looping'), lic:'CC-BY 3.0 (credit required)', len:'1 track, about 0:35 as stated (":35").', d:'"What lurks in the mist?"', loop:'Yes (title says looping).', pl:[['Track',OGA+'audio_preview/the_bog_of_doom.ogg.mp3']]},
+
+    // ---------------- ocean
+    {id:'oga-underwater-pad', m:'ocean', n:'Underwater Ambient Pad', by:'isaiah658', pg:og('underwater-ambient-pad'), lic:'CC0', len:'1 file (ogg 0.7 MB). Length not stated.', d:'"Ambient pad loop that is sort of like Spyro 2 homeworld music," fitting "an underwater world of some sort." Tagged dreamy, surreal.', loop:'Yes (pad loop).', pl:[['Track',OGA+'audio_preview/Underwater-Ambient-Pad-isaiah658.ogg.mp3']]},
+    {id:'oga-underwater-theme-spring', m:'ocean', n:'Underwater Theme (2nd variation)', by:'Spring Spring', pg:og('underwater-theme-1'), lic:'CC0', len:'1 file (ogg 2 MB). Length not stated.', d:'"Slow, minimalistic, ambient, reverby."', loop:'Not stated.', pl:[['Track',OGA+'audio_preview/underwater%20theme%202nd%20variation%20%28my%20preferred%29.ogg.mp3']]},
+    {id:'oga-underwater-theme-ii', m:'ocean', n:'Underwater Theme II', by:'CleytonKauffman', pg:og('underwater-theme-ii'), lic:'CC0', len:'1 track, 1:45 as stated (zip with WAV, MP3, OGG, FLAC).', d:'"Theme for underwater, diving, aquatic ambience." Tagged slow, atmospheric, bells.', loop:'Yes ("Loops seamlessly: Yes").', pl:[['Preview',OGA+'Underwater%20Theme%20II%20prev_1.mp3']]},
+    {id:'oga-ocean-planet', m:'ocean', n:'Ocean Planet', by:'onemansymphony', pg:og('ocean-planet'), lic:'CC-BY 4.0 (credit required)', len:'1 track (mp3 2.9 MB). Length not stated.', d:'"A simple loopable electronic background track" with choir, synth and pad; "might be suitable for sci-fi stuff."', loop:'Yes ("loopable").', pl:[['Track',OGA+'Ocean%20Planet.mp3']]},
+
+    // ---------------- airless or barren
+    {id:'oga-abandoned-planet', m:'barren', n:'Abandoned Planet', by:'Tsorthan Grove', pg:og('abandoned-planet'), lic:'CC-BY 4.0 (credit required)', len:'1 track (flac 9.3 MB) plus a loop file (7.6 MB). Length not stated.', d:'Made for "extra atmosphere... while exploring a dark a barren planet."', loop:'Yes, a loop flac is provided.', pl:[['Track (preview)',OGA+'audio_preview/abandoned_planet.ogg.mp3']]},
+    {id:'oga-endless-void', m:'barren', n:'Endless Void', by:'Tsorthan Grove', pg:og('endless-void'), lic:'CC-BY 4.0 (credit required)', len:'1 track (flac 54 MB) plus a loop flac. Length not stated.', d:'"A quick ambient track." Nothing more on the page.', loop:'Yes, a loop flac is provided.', pl:[['Track (mp3 preview)',OGA+'endless_void.mp3']]},
+    {id:'oga-derelict-spaceship', m:'barren', n:'Derelict Spaceship', by:'vitalezzz', pg:og('derelict-spaceship'), lic:'CC0', len:'1 track (mp3 9 MB). Length not stated.', d:'The page says only "Electronic music". Judge by ear.', loop:'Not stated.', pl:[['Track',OGA+'derelict_spaceship_7.mp3']]},
+    {id:'oga-scifi-drone-loop', m:'barren', n:'Sci-Fi Drone Loop', by:'jdagenet', pg:og('sci-fi-drone-loop'), lic:'CC-BY 3.0 (credit required)', len:'1 file (wav 1.4 MB). Length not stated.', d:'"A low, sci-fi drone... a basic sine wave mixed with various real-time effects." Meant for an alien ship texture or computer hum; a sound bed more than music.', loop:'Yes ("loops seamlessly").', pl:[['Track',OGA+'audio_preview/Sci-Fi%20Drone.ogg.mp3']]},
+    {id:'itch-colossalwreck', m:'barren', n:'Ambient Sound Track (15 tracks)', by:'ColossalWreck', pg:'https://colossalwreck.itch.io/ambient-sound-track', lic:'Asset licence field: "Creative Commons Zero v1.0 Universal"; description: "released under a CC0 license. No credit necessary."', len:'15 mp3 files, lengths not shown: Abyss, AntiChrist, Crash Landing, Dead, Drones, Dying Planet, Fairy, New Life, Nightmare, Peace Keeper, Pitch Black, Pleading, Purple, Rays, To Be.', d:'Tagged ambient, atmospheric, dark, sci-fi, space. Titles like Abyss, Dying Planet and Pitch Black suggest barren worlds; Fairy and Purple may not fit.', loop:'Not stated.', listenonly:true, note:'The page has no player, no embed and no per-track links, so the tracks can only be heard after downloading. I did not download them.'},
+
+    // ---------------- hollow wrongness
+    {id:'oga-paranoid-truth', m:'hollow', n:'Paranoid Truth', by:'Tsorthan Grove', pg:og('paranoid-truth'), lic:'CC0', len:'1 track (mp3 and flac in 7z archives). Length not stated.', d:'"Dark ambient horror track built on paranoid, unsettling drones and tension-filled atmosphere, like walking a lit hallway where something is always a step behind you."', loop:'Not stated.', pl:[['Track (preview)',OGA+'paranoid_truth.mp3']]},
+    {id:'oga-dark-ambient-drone', m:'hollow', n:'Dark Ambient Drone', by:'Tsorthan Grove', pg:og('dark-ambient-drone'), lic:'CC-BY 4.0 (credit required)', len:'1 track (flac 37 MB) plus loop flac. Length not stated.', d:'"Dark ambient as part of my exploration in moving textures and evolving soundscapes."', loop:'Yes, a loop flac is provided.', pl:[['Track (mp3 preview)',OGA+'dark_ambient_drone.mp3']]},
+    {id:'oga-dark-ambient-drone-2', m:'hollow', n:'Dark Ambient Drone 2', by:'Tsorthan Grove', pg:og('dark-ambient-drone-2'), lic:'CC-BY 4.0 (credit required)', len:'1 track (flac 57 MB) plus loop flac. Length not stated.', d:'"Another dark ambient track with strong blade runner vibes."', loop:'Yes, a loop flac is provided.', pl:[['Track (mp3 preview)',OGA+'dark_ambient_drone_2.mp3']]},
+    {id:'oga-ambience-pack-1', m:'hollow', n:'Ambience pack 1: sci fi horror', by:'Joth', pg:og('ambience-pack-1-sci-fi-horror'), lic:'CC0', len:'5 tracks, about 1:00 each as stated: The Surreal Truth, Infestation in the Control Room, and others. The player is a short clip of each.', d:'"5 dark sci fi ambience tracks."', loop:'Yes ("all fully loopable").', pl:[['Preview of all five',OGA+'AmbiencePack1Preview.mp3']]},
+    {id:'oga-ancient-caverns', m:'hollow', n:'Ancient Caverns (horror ambient loop)', by:'congusbongus', pg:og('ancient-caverns-horror-ambient-loop'), lic:'CC0', len:'1 file (ogg 3.3 MB). Length not stated.', d:'"Dark brassy pads, for a large forboding space."', loop:'Yes (loop in the title).', pl:[['Track',OGA+'audio_preview/caverns.ogg.mp3']]},
+    {id:'oga-abandoned-passages', m:'hollow', n:'Abandoned Passages (horror ambience loop)', by:'congusbongus', pg:og('abandoned-passages-horror-ambience-loop'), lic:'CC0', len:'1 file (ogg 0.4 MB, so short). Length not stated.', d:'"An unsettling ambience seamless loop, when you are in a dark and cramped passageway."', loop:'Yes ("seamless loop").', pl:[['Track',OGA+'audio_preview/freezer.ogg.mp3']]},
+    {id:'oga-menacing-otherworld', m:'hollow', n:'Menacing Otherworld', by:'Ruskerdax', pg:og('menacing-otherworld'), lic:'CC0', len:'1 track (mp3 7.8 MB). Length not stated.', d:'"Ambient industrial track" made for a sci-fi/horror setting: unknown and afraid, exploring a hostile dimension.', loop:'Not stated.', pl:[['Track',OGA+'ruskerdax_-_menacing_otherworld.mp3']]},
+    {id:'inc-ossuary-6', m:'hollow', n:'Ossuary 6 - Air', by:'Kevin MacLeod (incompetech)', pg:'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500048&Search=Search', lic:'"Licensed under Creative Commons: By Attribution 4.0 License"; credit line: "Ossuary 6 - Air" Kevin MacLeod (incompetech.com)', len:'1 track, 4:10 as stated.', d:'"Slow-moving drone of impending doom!" Feel: Dark, Eerie, Mysterious, Unnerving. Synths. 50 bpm.', loop:'Not stated.', pl:[['Track',INC+'Ossuary%206%20-%20Air.mp3']]},
+    {id:'inc-dark-fog', m:'hollow', n:'Dark Fog', by:'Kevin MacLeod (incompetech)', pg:'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1300031&Search=Search', lic:'"Licensed under Creative Commons: By Attribution 4.0 License"; credit line: "Dark Fog" Kevin MacLeod (incompetech.com)', len:'1 track, 3:59 as stated.', d:'"The title refers to a state of mind more than a physical thing." Feel: Dark, Grooving, Intense, Somber. Synths and percussion, 71 bpm, so it has a pulse.', loop:'Not stated.', pl:[['Track',INC+'Dark%20Fog.mp3']]},
+    {id:'inc-unseen-horrors', m:'hollow', n:'Unseen Horrors', by:'Kevin MacLeod (incompetech)', pg:'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1400043&Search=Search', lic:'"Licensed under Creative Commons: By Attribution 4.0 License"; credit line: "Unseen Horrors" Kevin MacLeod (incompetech.com)', len:'1 track, 4:11 as stated.', d:'Feel: Dark, Eerie, Unnerving. Strings, brass and percussion; the author says it was first written for theremin.', loop:'Not stated.', pl:[['Track',INC+'Unseen%20Horrors.mp3']]},
+    {id:'itch-slowdiger-extrimal', m:'hollow', n:'Extreme dark atmosphere soundtrack (4 tracks, includes a swamp piece)', by:'slowdiger (as "fugi")', pg:'https://slowdiger.itch.io/extrimal-dark-atmospheric-soundtrack', lic:'Author\'s description: "License: CC-BY" and "free to use... with attribution" (no version stated, so confirm with the author; the page title says "CC-BY"). Content note: "No generative AI was used"', len:'4 tracks: Moan of the earth (3:34), In the meadow under the rays of uranus (10:59), Crawling over the edge (8:05), Demenciotic swamps and their inhabitants (6:05).', d:'Dark ambient, drone and "weird" soundscapes; the author calls them experiments. Track 4 is the swamp candidate; the page tags it weird, soundscape.', loop:'Not stated.', yt:'HMA9qk0Ls2w', ytnote:'The itch page embeds a YouTube video; the mp3 files have no direct link, so this uses the page\'s own YouTube embed.'}
+  ];
+
+  // player lengths read from the audio metadata while testing (first player only on multi-player rows)
+  var DUR = {"oga-dark-scifi-pack": "0:57", "oga-space-graveyard": "5:13", "oga-deep-space-array": "1:44", "oga-station-drone-2": "3:11", "oga-bco-star-song": "3:40", "oga-space-ambient-osmic": "10:00", "oga-timebender": "12:34", "oga-post-apoc-wastelands": "1:22", "oga-ruined-city": "3:46", "oga-dystopian-wasteland": "1:32", "oga-searching": "1:45", "oga-alien-ruins": "0:55", "oga-abandoned-building": "1:09", "oga-desert-theme": "1:38", "oga-desert-wasteland": "1:46", "oga-iron-wasteland": "1:12", "oga-wastelands-tsorthan": "2:16", "oga-ice-shine-bells": "4:40", "oga-chill-arctic": "3:56", "oga-ice-cold": "1:05", "oga-cold-grounds": "1:40", "oga-frozen-veil": "2:40", "oga-night-on-ice": "1:08", "oga-blue-ice": "3:30", "oga-icy-realm": "1:22", "oga-lava-area": "1:46", "oga-dark-intro": "1:21", "oga-forging-flames": "3:04", "oga-kotchis-lair": "0:35", "oga-smoldering-volcano": "3:12", "oga-swamp-env-audio": "3:25", "oga-swamp-theme-loop": "0:15", "oga-whispers-fog": "0:15", "oga-bog-of-doom": "0:36", "oga-underwater-pad": "0:17", "oga-underwater-theme-spring": "1:22", "oga-underwater-theme-ii": "3:30", "oga-ocean-planet": "1:12", "oga-abandoned-planet": "2:11", "oga-endless-void": "5:29", "oga-derelict-spaceship": "4:41", "oga-scifi-drone-loop": "0:08", "oga-paranoid-truth": "2:50", "oga-dark-ambient-drone": "5:36", "oga-dark-ambient-drone-2": "5:37", "oga-ambience-pack-1": "1:08", "oga-ancient-caverns": "2:16", "oga-abandoned-passages": "0:31", "oga-menacing-otherworld": "4:03", "inc-ossuary-6": "4:10", "inc-dark-fog": "3:59", "inc-unseen-horrors": "4:11"};
+
+  var DROPPED = [
+    ['Post-Apocalyptic Soundscapes (Swarajthegreat, itch)', 'Page says CC0, but its AI Disclosure field reads "AI Assisted, Graphics, Sounds". Also no player on the page. This was the best tonal match in the earlier list; now excluded.'],
+    ['Erased Places dark ambient pack (drmseq, itch)', 'AI Disclosure field: "AI Assisted, Graphics". Also described only as free to use; no clear CC licence seen.'],
+    ['PRESSURE INDEX Drift Field (Cold Signal Collective, itch)', 'AI Disclosure "AI Assisted"; "Royalty-free" custom terms.'],
+    ['Hollow Hours Vol. 1 (phazzella, itch)', 'Listing says "20 AI-generated" tracks.'],
+    ['Through the Cupola and Darkeyes Ambient (Rob Cawley, itch)', 'Custom licence file: "You may not resell the audio files themselves"; not CC, and redistribution in a public repo is not allowed.'],
+    ['Abyss of Negative Existence (maxstack, itch)', 'No licence stated on the page.'],
+    ['Empty Thresholds Vol. 1 (Diego Montenegro, itch)', 'Described as "Royalty Free" asset pack; no CC licence seen.'],
+    ['The Universal One (vismovmusic, itch)', 'Only "please do use it in any work you wish"; no licence named.'],
+    ['Space Scapes Ambient Pack #4 (Frequency From The Void)', 'Paid (4.99 EUR), licence forbids redistribution; cannot sit in a public repo. (From the earlier shortlist.)'],
+    ['Dystopian Ambient Pack (Imperial Dawn)', 'Tagged CC0 but licence field says CC BY-ND 4.0; conflicting. (From the earlier shortlist.)'],
+    ['Makoto Hiramatsu "LOST", JDSherbert Ambiences Music Pack', 'Licence unclear / "royalty free" only. (From the earlier shortlist; not re-checked this pass.)'],
+    ['Dark Ambience Soundscapes (OGA)', 'CC-BY-SA 3.0, ShareAlike. (From the earlier shortlist.)'],
+    ['Snow May Never End; Swamp 01; Swamp 02; Snow 02; Twilight Ocean; Deep Space Flight; Haunted Woods drone; Is Anybody Home; Distant Screams pack; Dark Ambiance (Socapex); Radakan Underwater Ruins; 5 Magma Cave themes; A New Restart', 'All CC-BY-SA only on their pages (ShareAlike), which does not suit a source-available repo with its own terms.'],
+    ['Underwater Theme (WakianTech)', 'Creepy underwater piece, CC-BY 3.0, but the author says it is "based from Finding Nemo"; derivative of someone else\'s work.'],
+    ['Pacific Ocean (josepharaoh99)', 'Uploader states "I DID NOT MAKE THIS MUSIC"; the real composer has not licensed it here.'],
+    ['Shadow Protocol mix (glitchart)', 'A remix mix of other artists\' tracks (Tsorthan Grove, American Made Media); use the originals.'],
+    ['Tower of Lava (Mega Pixel Music)', 'Licence is fine (CC-BY 4.0 offered) but it is one 35 MB orchestral piece; not an ambient fit.']
+  ];
+
+  // ---------- state
+  var KEY = 'galhack-music-audition-v1';
+  var state = {};
+  function load() { try { var s = localStorage.getItem(KEY); if (s) state = JSON.parse(s) || {}; } catch (e) { state = {}; } }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage blocked: page still works */ } }
+  function get(id) { return state[id] || (state[id] = {keep:false, note:''}); }
+  load();
+
+  var all = []; // {id, name, by, url, lic, el, kind}
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function rowShell(id, name) {
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.dataset.id = id;
+    var kc = document.createElement('div');
+    kc.className = 'keepcell';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.id = 'k-' + id; cb.setAttribute('aria-label', 'keep ' + name);
+    cb.checked = !!(state[id] && state[id].keep);
+    cb.addEventListener('change', function () { get(id).keep = cb.checked; row.classList.toggle('kept', cb.checked); save(); refresh(); });
+    var lab = document.createElement('label'); lab.htmlFor = cb.id; lab.textContent = 'keep';
+    kc.appendChild(cb); kc.appendChild(document.createElement('br')); kc.appendChild(lab);
+    var body = document.createElement('div');
+    row.appendChild(kc); row.appendChild(body);
+    row.classList.toggle('kept', cb.checked);
+    return {row:row, body:body};
+  }
+
+  function noteBox(id, body) {
+    var ta = document.createElement('textarea');
+    ta.className = 'nt'; ta.placeholder = 'notes (optional)';
+    ta.value = (state[id] && state[id].note) || '';
+    ta.addEventListener('input', function () { get(id).note = ta.value; save(); });
+    body.appendChild(ta);
+  }
+
+  // ---------- generated drones
+  var gen = document.getElementById('gen');
+  GEN.forEach(function (g) {
+    if (g[0] === '#') { var h3 = document.createElement('h3'); h3.textContent = g[1]; gen.appendChild(h3); return; }
+    var id = 'gen-' + g[0];
+    var s = rowShell(id, g[1]);
+    var h = '<div class="name">' + esc(g[1]) + ' <span class="by">&middot; generated, <code>docs/music-samples/' + g[0] + '.*</code></span></div>' +
+      '<div class="meta">Generated by GalHack itself. It never repeats in play; this is one stretch of it.</div><div class="players">' +
+      '<audio controls preload="metadata"><source src="music-samples/' + g[0] + '.ogg" type="audio/ogg"><source src="music-samples/' + g[0] + '.wav" type="audio/wav"><source src="music-samples/' + g[0] + '.mp3" type="audio/mpeg"></audio></div>' +
+      '<div class="missing">not rendered yet (no file found in music-samples/)</div>';
+    s.body.innerHTML = h;
+    var au = s.body.querySelector('audio'), miss = s.body.querySelector('.missing');
+    var srcs = au.querySelectorAll('source'), last = srcs[srcs.length - 1];
+    last.addEventListener('error', function () { miss.style.display = 'block'; });
+    au.addEventListener('loadedmetadata', function () { miss.style.display = 'none'; });
+    noteBox(id, s.body);
+    gen.appendChild(s.row);
+    all.push({id:id, name:g[1], by:'GalHack generated', url:'docs/music-samples/' + g[0], lic:'ours', row:s.row});
+  });
+
+  // ---------- sections
+  var sec = document.getElementById('sections');
+  MOODS.forEach(function (mood) {
+    var items = T.filter(function (t) { return t.m === mood[0]; });
+    var h2 = document.createElement('h2');
+    h2.textContent = mood[1] + ' (' + items.length + ')';
+    sec.appendChild(h2);
+    items.forEach(function (t) {
+      var s = rowShell(t.id, t.n);
+      var h = '<div class="name">' + esc(t.n) + ' <span class="by">&middot; ' + esc(t.by) + '</span></div>';
+      h += '<div class="meta"><a href="' + esc(t.pg) + '" target="_blank" rel="noopener noreferrer">Open page</a> &middot; <span class="lic">' + esc(t.lic) + '</span></div>';
+      h += '<div class="meta">' + esc(t.len) + (DUR[t.id] ? ' <b>Player length ' + DUR[t.id] + (t.pl && t.pl.length > 1 ? ' (first player)' : '') + '</b>' : '') + ' &middot; Loops: ' + esc(t.loop) + '</div>';
+      h += '<div class="desc">' + esc(t.d) + '</div>';
+      s.body.innerHTML = h;
+      var pw = document.createElement('div'); pw.className = 'players';
+      if (t.pl) {
+        t.pl.forEach(function (p) {
+          if (t.pl.length > 1 || p[0] !== 'Track') { var l = document.createElement('div'); l.className = 'lab'; l.textContent = p[0]; pw.appendChild(l); }
+          var a = document.createElement('audio'); a.controls = true; a.preload = 'none'; a.src = p[1];
+          pw.appendChild(a);
+        });
+      } else if (t.yt) {
+        var ifr = document.createElement('iframe');
+        ifr.className = 'yt'; ifr.loading = 'lazy'; ifr.title = t.n;
+        ifr.src = 'https://www.youtube-nocookie.com/embed/' + t.yt;
+        ifr.setAttribute('allow', 'encrypted-media; picture-in-picture');
+        ifr.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+        pw.appendChild(ifr);
+        var wn = document.createElement('div'); wn.className = 'warn'; wn.textContent = t.ytnote + ' Can refuse to play when this file is opened from disk; the page link is the fallback.'; pw.appendChild(wn);
+      } else if (t.listenonly) {
+        var wn2 = document.createElement('div'); wn2.className = 'warn'; wn2.textContent = t.note; pw.appendChild(wn2);
+        var a2 = document.createElement('a'); a2.className = 'listen'; a2.href = t.pg; a2.target = '_blank'; a2.rel = 'noopener noreferrer'; a2.textContent = 'Listen on page (opens in a new tab)'; pw.appendChild(a2);
+      }
+      s.body.appendChild(pw);
+      noteBox(t.id, s.body);
+      sec.appendChild(s.row);
+      all.push({id:t.id, name:t.n, by:t.by, url:t.pg, lic:t.lic, row:s.row});
+    });
+  });
+
+  // dropped table
+  var dt = document.getElementById('dropped');
+  DROPPED.forEach(function (d) { var tr = document.createElement('tr'); tr.innerHTML = '<td><b>' + esc(d[0]) + '</b></td><td>' + esc(d[1]) + '</td>'; dt.appendChild(tr); });
+
+  // ---------- one at a time
+  document.addEventListener('play', function (e) {
+    var cur = e.target;
+    document.querySelectorAll('audio').forEach(function (a) { if (a !== cur) a.pause(); });
+  }, true);
+
+  // ---------- bar
+  var onlyKept = false;
+  var countEl = document.getElementById('count'), totalEl = document.getElementById('total'), status = document.getElementById('status');
+  totalEl.textContent = all.length;
+  function refresh() {
+    var n = 0;
+    all.forEach(function (x) {
+      var k = !!(state[x.id] && state[x.id].keep);
+      if (k) n++;
+      x.row.classList.toggle('hide', onlyKept && !k);
+    });
+    countEl.textContent = n;
+    document.getElementById('onlykept').classList.toggle('on', onlyKept);
+    document.getElementById('onlykept').textContent = onlyKept ? 'Showing only kept (click to show all)' : 'Show only kept';
+  }
+  document.getElementById('onlykept').addEventListener('click', function () { onlyKept = !onlyKept; refresh(); });
+  document.getElementById('clear').addEventListener('click', function () {
+    if (!window.confirm('Clear every tick and note?')) return;
+    state = {}; save();
+    all.forEach(function (x) { var cb = x.row.querySelector('input[type=checkbox]'); if (cb) cb.checked = false; var ta = x.row.querySelector('textarea'); if (ta) ta.value = ''; x.row.classList.remove('kept'); });
+    refresh();
+  });
+  function shortLic(l) {
+    var m = l.match(/use (CC[^ ;,(]*(?: [\d.]+)?)/) || l.match(/(CC0|CC-BY \d\.\d|CC BY \d\.\d)/) || l.match(/(By Attribution 4\.0|Creative Commons Zero|Creative Commons Attribution v4\.0)/);
+    if (!m) return l.replace(/\s+/g, ' ').slice(0, 40);
+    var s = m[1];
+    if (/By Attribution 4\.0|Attribution v4\.0/.test(s)) return 'CC-BY 4.0';
+    if (/Zero/.test(s)) return 'CC0';
+    return s.replace('CC BY', 'CC-BY');
+  }
+  function picksText() {
+    var lines = [];
+    all.forEach(function (x) {
+      var s = state[x.id];
+      if (s && s.keep) lines.push('- ' + x.name + ' (' + x.by + ') [' + shortLic(x.lic) + '] ' + x.url + (s.note ? ' -- note: ' + s.note.replace(/\s+/g, ' ') : ''));
+    });
+    return lines.length ? 'My kept music (' + lines.length + '):\n' + lines.join('\n') : 'No tracks kept yet.';
+  }
+  document.getElementById('copy').addEventListener('click', function () {
+    var text = picksText(), fb = document.getElementById('fallback');
+    function manual() {
+      fb.style.display = 'block'; fb.value = text; fb.focus(); fb.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      status.textContent = ok ? 'Copied.' : 'Select the text below and copy it by hand.';
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { fb.style.display = 'none'; status.textContent = 'Copied ' + (text.split('\n').length - 1) + ' picks.'; }, manual);
+      } else { manual(); }
+    } catch (e) { manual(); }
+  });
+  refresh();
+})();
+</script>
+</body>
+</html>
