@@ -24,7 +24,7 @@ These rules are the general case. No band-aids: a fix that patches one case brea
    - A system acting for a thing reads `thing.World` on each call and keeps no copy. No system stores a world, planet, weather, wildlife, places or sound reference in a field.
    - There is no game-wide "current world".
    - A worker job (world building, place building, sky baking) carries the world key plus that world's generation number. It drops its result if the world was freed or rebuilt meanwhile.
-     - Today's jobs with no such check: `Place.RebuildStale` (broken chunks meshed on a worker and put in a piece at a time), the `DepositFinder` recount, and `TerrainStreamer`'s voxel and height jobs. Step 1 sweeps them.
+     - Today's jobs with no such check: `Place.RebuildStale` (broken chunks meshed on a worker and put in a piece at a time), the `DepositFinder` recount, `TerrainStreamer`'s voxel and height jobs, `WildlifePatch.RollAhead`, and `MakeOrbit`'s wreck shapes built on a worker (`StructureShapes.Hold`/`Return`). Step 1 sweeps them.
 2. **Each world in play has its own Godot world** (DESIGN.md 1578): its own World3D, physics space, navigation and scene root.
    - Rays and shape queries go only through that world's `WorldQuery` (section 6), never through `GetWorld3D()` of whatever node is at hand.
    - Parking a world pauses its space. It never shelves bodies by clearing collision layers, as `Spaceflight.Park` does today.
@@ -65,6 +65,7 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
                  └─ things held in it: each with one World field (rule 1)
 ```
 - **The galaxy comes from the game seed.** The start star and start body are chosen inside it. The start world is generated like any other body: one path, no `SkySystem.For(spec)` beside `StarProfile.Of`. *(Structure A-6.1 and A-6.2.)*
+- **One star model.** Each star carries its class's temperature, radius, mass and brightness, and everything it lights comes from those: colour, light, its size in the sky, the zones and its worlds' temperatures. There is no second star class (today's `StarClass` and the 12-to-5 `SkyRig.ClassOf` go). The start star is picked first, and is always G or K (solar-systems.md).
 - **What keeps a world in play (interest points), and nothing else:**
   - a sleeper on it;
   - an occupied cabin on it;
@@ -76,9 +77,9 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
   - Today `Streamer.CollisionRadius` is set from one sleeper's vehicle (Game.cs:925), and rounds past it fall back to the height map.
   - Collision streaming is separate from drawing. An undrawn world streams collision only (rule 12).
 - **Frames:** the host simulates each world in one fixed frame centred on the zone (DESIGN.md 1580: pinned origin, the map wraps, about 2 mm precision). Simulation positions never shift. Only clients offset what they draw. An orbit zone's size is limited so precision holds. *(A-2.2, A-4.6.)*
-- **Cabins:** each occupied ship's cabin is its own world (DESIGN.md 1582), made when a sleeper boards and freed when the ship is empty and parked. It isn't made for every vessel; today every vessel, wrecks included, builds a `CabinWorld` (Vessel.cs:406-409).
-  - A thing aboard has `World = cabin` (where it moves). It reads the ship first: its sealed rooms' air and its core's fixed 1 g while the core works. Only then does it read `Outside = ship.World`, for weather, and for air and gravity where the ship gives none (owner, 25 Nov).
-  - A base never moves, so it isn't a cabin world: it is a frame on its world. Its rooms and core answer air and gravity the same way.
+- **Cabins:** each occupied ship's cabin is its own world (DESIGN.md 1582), made when a sleeper boards and freed when the ship is empty and parked. Freeing it commits everything loose in it (cargo, bags, creatures) into the ship's record, through the ledger, and they come back when the cabin is made again. It isn't made for every vessel; today every vessel, wrecks included, builds a `CabinWorld` (Vessel.cs:406-409).
+  - A thing aboard has `World = cabin` (where it moves). It reads the ship first: its sealed rooms' air and its core's fixed 1 g while the core works. Then it reads its parent: the structure the ship is docked or parked in (`ParkedOn`), else `Outside = ship.World`, for weather, and for air and gravity where the ship gives none (owner, 25 Nov). A ship with its core off inside a powered carrier gets the carrier's 1 g.
+  - A base never moves, so it isn't a cabin world: it is a fixed body on its world, found by position through the "what am I inside" lookup (T4.4). Its core's 1 g covers anyone inside its bounds, and stays when its roof is gone while the core runs; its sealed rooms answer air.
   - When a ship moves, only the ship goes through the ledger. Things aboard stay in the cabin and re-read `Outside`, in one call from the ship's `Move`.
 - **Diggable bodies:** a world's ground and each asteroid in a field are each a diggable body, with their own terrain, ore, change record and gravity. Digging acts on the body the ray hits, never on "the zone's planet".
 - **The world manager** (today mixed into `Spaceflight`) makes, parks, frees and restores worlds and runs the commit queue (section 4c). Travel (a vessel's climb, warp or fold) belongs to the vessel.
@@ -153,7 +154,7 @@ Owner decisions, 25 Nov.
 | Body, suit | that sleeper | the world they're in (the cabin when aboard) |
 | Vitals, pack contents, level, XP, unlock points, tech tree, destination, chosen star | that sleeper | the sleeper's record (not physical) |
 | Shots in flight, effects, debris, gibs, blood | none; `Source` = who made it | the world they're in |
-| Structures, vessels, bags of any sleeper | Sleepers faction | the world they're in; the game keeps only an index by ID |
+| Structures, vessels, bags of any sleeper | Sleepers faction | the world they're in; the Sleepers faction record keeps only an index of them by ID (T3.1b) |
 | Lockers in the four cryopods | Sleepers faction, labelled with the pod's sleeper | the start world |
 | Star charts (visited stars, marks, wrecks seen), standing | Sleepers faction | the faction record |
 | Towns, raiders, NPC ships, owned wrecks | that NPC faction | the world they're in |
@@ -174,7 +175,7 @@ Owner decisions, 25 Nov.
   - Terrain edits per chunk; for a rock field, one record keyed by rock ID, written only for rocks that were touched.
   - Felled plants, mined deposits, deaths, place memory (doors, damage, loot taken), salvage progress, standing changes, things set down.
   - It's what a save writes (DESIGN.md 747: edit lists on top of the seed).
-- **Time passing while frozen:** one game-owned galaxy clock. A frozen world doesn't tick (owner). When it's made again, anything that should have moved on is worked out from the elapsed time: regrowth, decay, resource meteorites below about 10% deposits (DESIGN.md 706), and the sun's and moons' places. This uses `Seed(worldKey, …, elapsed bucket)`, so a reload gives the same result. Regrowth, decay and meteorites only ever touch records with no claim (DESIGN.md 1592). The sky, running timers and rooms' air catch up on every record, claimed or not.
+- **Time passing while frozen:** one game-owned galaxy clock. A frozen world doesn't tick (owner). When it's made again, a catch-up hook works out what should have moved on from the elapsed time: the sun's and moons' places, running timers and rooms' air, on every record, claimed or not (root-fix-tasks.md T3.2). Regrowth, decay and resource meteorites below about 10% deposits (DESIGN.md 706) are feature F9 on that hook, and touch only records with no claim (DESIGN.md 1592). Rolls use `Seed(worldKey, …, elapsed bucket)`, so a reload gives the same result.
 
 ## 4b. Storage
 The foundation is designed and proven already. GalHack builds on it and does not invent a new one:
@@ -225,6 +226,8 @@ The rules:
   3. `Attach(to)`.
 
   If `Attach` fails, the thing is put back in `from` with a second commit, and the failure is reported loudly.
+- **Every sleeper is a holder, by ID.** Today `Holders()` yields one constant sleeper record (Spaceflight.cs:684-687).
+- **The conservation audit refuses.** A crossing or jump that loses or duplicates an item is refused and rolled back, never only printed (today `Ledger.Audit` prints, Spaceflight.cs:677, Jump.cs:251). A failed restore keeps its record and blocks the commit.
 - **A record whose world won't load** is moved to the faction's last base, never dropped (DESIGN.md 1583).
 - **The test:** crash at every step of a park, a free, and two crossings at once; reload; every count matches.
 
@@ -242,11 +245,11 @@ Move(from, to)           section 4c's order
 | Job | The one path (proposed) | It replaces |
 |---|---|---|
 | Queries | `WorldQuery` per world, on that world's own physics space (rule 2), with named masks (Sight, ShotStop, Cover, Use); the look, the cabin and the ignore list handled once | About 29 direct `GetWorld3D().DirectSpaceState` calls, ArmsHost's own `RayCast3D` node (ArmsHost.cs:50, 68), separate AI sight masks, along-the-look tests, the E-prompt order (B-R7) |
-| Harm | `Harm` event (amount, type, point, direction, radius, `Source`, tags) plus one spatial query; each target kind has an adapter with its own armour, resistance and HP; one falloff, one health unit | Three blast copies, two ram copies, two people sims' damage, two health units (B-R1); the per-target damage copies in `ArmsHost.World.cs`, `PoiPlaces.Damage.cs` and `SurfaceZone.Felling.cs` (`WearPlant`) |
+| Harm | `Harm` event (amount, type, point, direction, radius, `Source`, tags) plus one spatial query; each target kind has an adapter with its own armour, resistance and HP; one falloff, one health unit. Weather hits and exposure (suffocation, cold, heat, radiation) are Harm sources, replacing `Suit.Hit`'s own damage kind; the adapter carries a "doesn't breathe" flag | Three blast copies, two ram copies, two people sims' damage, two health units (B-R1); the per-target damage copies in `ArmsHost.World.cs`, `PoiPlaces.Damage.cs` and `SurfaceZone.Felling.cs` (`WearPlant`) |
 | Take-apart | Salvage is harm by the tool class on a thing with HP and a bill; one yield formula, with the claim check inside it | Seven yield formulas, `SleeperTool.CutPlant`, and orbit's hand salvage (B-R2, offworld #26) |
-| Built things | One block-world interface for `Structure` and `Place`: cells, HP, doors, rooms, collapse, damage look; doors, caches and collapse written once against it | Three forms of built thing, three door systems, two collapse rules (B-R3) |
-| Shelter and air | `Exposure(point)` on the world: sky open, roof, depth, and the innermost air volume at the point. Air volumes work like cabin worlds: each sealed room owns its air, held by its structure or place; volumes nest, each reading its parent and then the world; openings (doors, breaches) link a volume to its parent; life support tops it up | Nine shelter tests, the bunker special case (B-R4, C-E) |
-| Ground and gravity | A `Ground` service per diggable body (`Top`, `Natural`). Gravity follows cabin-world logic: the innermost working core gives a fixed 1 g, else its parent structure, else the world (its own: standard g × its scale; orbit 0 g) | Five ground lookups; `ArmsHost.SolidHit` (ArmsHost.cs around 559-638), whose height-map fallback is `Streamer.CollidesAt` plus `TerrainStore.Raycast`; gravity constants per system (B-R5) |
+| Built things | One block-world interface for `Structure` and `Place`: cells, HP, doors, rooms, collapse, damage look; doors, caches and collapse written once against it. It carries a read-only surface query that runs on a worker. Wear stays paint, apart from the HP damage look | Three forms of built thing, three door systems, two collapse rules (B-R3) |
+| Shelter and air | `Exposure(point)` on the world: sky open, roof, depth, and the innermost air volume at the point. Air volumes work like cabin worlds: each sealed room owns its air, held by its structure or place; volumes nest, each reading its parent and then the world; openings (doors, breaches) link a volume to its parent. Powered life support (the existing pod, on the power model) eases a sealed room to full oxygen and 20 °C; unpowered, the room holds a while, then drifts to its parent's air. Area sources such as the climate pod warm a radius and aren't volumes. One "what am I inside" lookup (innermost volume and structure, then the parent) serves air and gravity | Nine shelter tests, the bunker special case (B-R4, C-E) |
+| Ground and gravity | A `Ground` service per diggable body (`Top`, `Natural`). Gravity follows cabin-world logic: the innermost working core gives a fixed 1 g, else its parent structure, else the world (its own: standard g × its scale; orbit 0 g), read through the same "what am I inside" lookup | Five ground lookups; `ArmsHost.SolidHit` (ArmsHost.cs around 559-638), whose height-map fallback is `Streamer.CollidesAt` plus `TerrainStore.Raycast`; gravity constants per system (B-R5) |
 | Vehicles and seats | The bike is a small hover body in the shared physics; riding is one seated state | The bike's own integrator, the `Seated`/`OnBike` split (B-R6) |
 | Events | `WorldEvent` (kind, point, loudness, material, `Source`); audio, AI hearing, visor cues and effects subscribe | Four hand-made calls per event, four voice pools (B-R8); `WildlifePatch.Noise` and `Town.Gunfire` from the NPC reactions work, turret gunfire included |
 | Markers | `Markers(world, viewer)`; the visor and maps only filter and draw. It keeps the owner's 17 Nov rule: only the viewer's own map marks and scan results, plus always our bags, our structures, and the bunker on its own world | Three marker lists (B-R9), `Visor.Markers`' `Game.Bunker` and `Zone == Surface` checks (Visor.cs:415) |
@@ -338,7 +341,12 @@ Reject a change that:
 - makes world generation depend on run order, time or threads (the fingerprint check fails);
 - uses `?.` on a system;
 - removes a ledger record without its holder reporting it destroyed;
-- patches one case of a rule instead of fixing the rule.
+- patches one case of a rule instead of fixing the rule;
+- swallows an exception, or drops a record with only a log;
+- moves vertices from `CAMERA_POSITION_WORLD` in a shadow-casting shader;
+- lands a fix without its failing check, written first, off the starter;
+- sets simulation size (such as the spawn distance) from a client's display settings;
+- is frame-sensitive and hasn't passed the frame check both quiet and live.
 
 ## 11. Owner decisions, 25 Nov
 1. **Worlds with no one on them stay frozen.** Nothing ticks in the background. What should have moved on is worked out from the clock when the world is made again (section 4).
@@ -350,35 +358,28 @@ Reject a change that:
 
 6. **Air and gravity follow cabin-world logic.** Inside a functioning ship or base you breathe its rooms' air and stand at its core's 1 g, whatever the world outside. Gravity follows the structure, air follows its sealed rooms: blow a base's roof off and its air vents, but you stay at 1 g while the core runs. Life support regulates oxygen and temperature in every enclosed space. Sealed volumes nest and are linked by openings; a core that's off hands gravity to its parent. Orbit is 0 g, and loose things drift there.
 
+7. **Respawn points are cryopods we build on our structures:** one block, the start bunker's pod reused (1 × 3 × 1 cells), respawn only. The healing booth is its own block (root-fix-tasks.md F8).
+8. **Up to 4 occupied worlds on a player host;** ships' cabins and destinations being prepared run on top of those 4.
+
 **Still open:** the engine options in section 2b. These come after the step 2a prototype measures the cost.
 
 ## 12. Order of work
-The jobs, with what each closes, its proof and its size, are in [root-fix-tasks.md](root-fix-tasks.md).
+The jobs, in build order, with what each closes, its proof and its size, are in [root-fix-tasks.md](root-fix-tasks.md) (approved 26 Nov). That list is the order of record; this is its outline. Every task sits below everything it needs, so where this outline and the list differ, the list wins.
 
-Each step is a root fix, merged green with its checks, and gated on this doc's approval. A replacement merges only with the deletion of what it replaces. No step leaves the game broken.
-0. **The harness:**
-   - `WorldChoice` with a start `WorldKey`.
-   - `Harness` with `Arrive`, `AddSleeper` and `SaveAndReload`.
-   - The world probe, and one `Check`.
-   - The known-failure list in the merge gate, so it is green on today's code. Each later task writes its own findings' failing checks first.
-   - Into repo tools: the test queue, the quiet frame check (`quietpop.ps1`) and the owner's settings file (`owner-settings.cfg`). They live in the Director's scratchpad today.
+Each step is a root fix, merged green with its checks. A replacement merges only with the deletion of what it replaces. No step leaves the game broken.
+0. **The proof first (Tier 0):** repo tools (the test queue, the quiet frame check, the owner's settings file), then one scripted merge gate with its known-failure list and a frame check against the baseline, then the harness (`WorldChoice`, `Harness` with `Arrive`, `AddSleeper` and `SaveAndReload`, the world probe) beside the multi-world prototype (T0.4, the decision gate for step 2's world model). Each later task writes its own findings' failing checks first.
+1. **Small root fixes (Tier 1):** a per-world build context in place of the statics (S3); `Attach`/`Detach` with handles (S4); one settings object and rules per world (S5), with the core's 1 g a constant and a world's gravity from its own scale; every world has every system, with one oxygen figure; the same seed builds the same world; the Skiff's stalled climb.
+2. **The world model (Tier 2),** in slices:
+   - the galaxy from the game seed, with one star model;
+   - each world its own Godot world and `WorldQuery` (rule 2), after the prototype;
+   - the sleeper list, the four cryopods, claims as a field, and world things and room air out of the suit;
+   - the world manager, interest points, freezing, one galaxy clock and the multi-world budget;
+   - the places stack per world, then player systems reading `thing.World`;
+   - `WorldKey` everywhere and the ledger for many crossings (section 4c's commit queue), both listed here because the jumps' proofs cross two sleepers at once;
+   - simulation and view apart, and cabins (a freed cabin's things kept in the ship's record);
+   - jumps per vessel, the transit world, and the climb and descent between surface and orbit.
+3. **References, records and saves (Tier 3):** references across worlds as IDs, the change record per world with the clock catch-up, crash safety and the saved game (the game, faction and sleeper records, and loading). Only then does `ParkHome` go and the start system get freed like any other.
+4. **One path per job (Tier 4):** harm, then the block world and salvage, then shelter and air (air volumes and the one "what am I inside" lookup), then ground, gravity and vehicles (which reads that lookup), then events, sound and markers, then shared entry points.
+5. **Facts, not names (Tier 5).**
 
-   Every later step is proven against these.
-1. **Statics, attach and settings:**
-   - a per-world build context in place of the statics (structure S3), which fixes "every world is built as a start world" and the forced roll everywhere;
-   - `Attach`/`Detach` with handles (S4), which fixes the weather leak and the shots' frame shift;
-   - one settings object (S5);
-   - the same seed builds the same world (task T1.5).
-2. **The world model,** in slices:
-   - **2a.** Each world its own Godot world (rule 2). Its prototype runs earlier, in step 0 (root-fix-tasks.md T0.4), per DESIGN.md 1578: 2 to 4 worlds simulating, one drawn, measured on the minimum-spec stand-in. It sets section 2b's budget and thread plan, and the engine options go to the owner.
-   - **2b.** The sleeper list and the four cryopods, then interest points, then the places stack per world, then player-claimed systems reading `thing.World`: suit, tools, BuildTool, arms, doors, bikes, effects, compass. Each slice merges on its own, green on the harness off the starter.
-3. **Identity, the change record and the safe ledger:** `WorldKey`, IDs, the seed helper, the change record, the clock catch-up and section 4c's commit queue. Only then does `ParkHome` go and the start system get freed like any other.
-4. **One path per job,** in this order:
-   - harm and the block world, which carry salvage and shelter;
-   - then ground, gravity and vehicles;
-   - then queries, events and markers;
-   - then facts, not names.
-
-   The placeholder decisions and other new behaviour found in the reviews are features, listed apart in root-fix-tasks.md (F1 onward).
-
-   `WorldQuery` comes in with step 2a, because rule 2 needs it.
+New behaviour found in the reviews is listed apart in root-fix-tasks.md as features (F1 to F9), built on the core once the owner picks them.
