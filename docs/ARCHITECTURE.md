@@ -196,11 +196,15 @@ Reject a change that:
 - uses `?.` on a required system;
 - patches one case of a rule instead of fixing the rule.
 
-## 11. Open questions for the owner
-1. **Worlds with no one on them:** parked and frozen (as today), or a slow background tick for worlds with your bases (machines running, crops, raids)? This decides what the server simulates.
-2. **NPC travel between worlds** (traders, raiders, convoys): needed soon? It decides whether travel belongs to any vessel or only to sleepers' vessels.
-3. **Co-op far apart:** how far apart may two players be on one world before it costs too much? This sets the interest-point budget on the minimum-spec machine.
-4. **Start for joining players:** each sleeper has their own cryopod in the bunker, or later joiners wake elsewhere?
+## 11. Owner decisions on the open questions (25 Nov)
+1. **Worlds with no one on them stay frozen.** "There is literally no reason to have them active in memory." A world with no interest point is parked, then freed to its record. Nothing ticks in the background. What must look as if time passed (regrowth, a parked sun's place) is worked out from the galaxy clock when the world is made again.
+2. **NPC travel between worlds is light, and later.** "We don't need to track every trader and raider moving from world to world." Sleepers' vessels are the only travellers the world manager moves between worlds. NPC traffic is not simulated in transit: it is placed on a world, by rule, when that world is made (and later by events), so nothing is tracked between worlds.
+3. **Co-op players can be any distance apart, systems apart included,** and it must not matter. The world model has no shared frame, focus or system "you are in":
+   - each sleeper's world is in play on its own;
+   - the host runs every world that has a sleeper on it, up to one per player.
+
+   The host's cost is set by the number of occupied worlds (up to 4, rule 4), not by distance. That budget is checked on the minimum-spec machine.
+4. **Each sleeper has their own numbered cryopod and locker** in the start bunker. There are four, one per player, so co-op is up to four sleepers. Each pod is its sleeper's wake point and first respawn record. Each locker is a container owned by the Sleepers faction and labelled with its sleeper. Today only one pod is alive and only `Pods[0]` is a locker (structure audit A-6.3). The world model work makes all four work.
 
 ## 12. Order of work
 Each step is a root fix, gated on this doc's approval.
