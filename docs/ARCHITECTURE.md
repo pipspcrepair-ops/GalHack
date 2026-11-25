@@ -159,10 +159,29 @@ From the silent-failure audit, [silent-failure-audit.md](silent-failure-audit.md
 - **Every event has a subscriber or is deleted.** An event with no listener is dead code that looks like a feature (the XP line: `Progress.Earned` is never joined to `Visor.Xp`).
 
 ## 9. Tests
-To be finalised from the test audit.
-- The test harness starts on any body: the starter, a moon, a vacuum world, orbit, another star. It can also run two sleepers, move one between worlds, and save and reload.
-- Each rule above has a check that fails when it's broken, run on bodies other than the starter.
-- Seeds stay random every run (owner rule).
+From the test audit, [test-coverage-audit.md](test-coverage-audit.md).
+
+**What that audit found:** the tests prove travel, not that systems work after it.
+- Seven tests leave the starter. They check sky, light, sound, gravity and the suit's vacuum flag.
+- Of the 26 off-world findings, three are partly covered.
+- All travel tests calm the starter's weather and freeze its wildlife before leaving (MoonTest.cs:101-103), which hides two of the bugs.
+- Two tests *assert* bugs:
+  - SleeperToolTest.cs:286-297 checks that a coreless block comes back whole (structure B-B8).
+  - ClimateTest.cs:466 passes with the tornado-felling bypass (B-B25).
+- About 30 checks pass silently when nothing suitable rolls.
+- `Check` is copied into 81 files.
+- The gate never passes `--airless`.
+
+**The rule:**
+- **One shared harness, `Harness`, beside Driver.cs.** Tests never hack their own start.
+  - `WorldChoice` gets a start world key (star, body), so any test can start on the starter, a moon, a vacuum world, orbit or another star.
+  - The harness gives `Arrive(body)`, `AddSleeper()`, `SaveAndReload()` and a per-world probe that checks every required system (section 8) is present and attached.
+- **Each rule in section 1 has a check that fails when it's broken,** run on bodies other than the starter. Every audit finding gets one before its fix lands.
+- **Tests don't quiet the world to pass.** Calming weather or freezing wildlife is only for a check about something else, and never across a crossing.
+- **No silent pass.** A check that finds nothing suitable to test fails, or rolls again until it finds one. It never prints and passes.
+- **One `Check`, in the shared testing code.** The 81 copies go.
+- **Tests that assert a bug are rewritten** to assert the rule.
+- **Seeds stay random every run** (owner rule). At most 4 Godot runs machine-wide, through the queue scripts.
 
 ## 10. Merge review checklist
 Reject a change that:
