@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "last": {
+    "name": "last",
+    "saved": "2026-11-14 19:20:03",
+    "asset": "Components|tiers.generator",
+    "seed": 595193,
+    "options": {
+      "Person": "Standing beside",
+      "Orientation": "+y+z",
+      "Power": "On",
+      "Damage": "Intact"
+    },
+    "animation": "Person standing by",
+    "free_camera": false,
+    "target": [
+      -0.6999998,
+      1,
+      0
+    ],
+    "yaw": 0.6,
+    "pitch": -0.28,
+    "distance": 19.791172,
+    "position": [
+      10.039734,
+      6.4694023,
+      15.698225
+    ],
+    "fov": 70,
+    "spin": true,
+    "turntable": 0.19950387,
+    "light": 0.5,
+    "ground": true
+  },
+  "bookmarks": []
+}
