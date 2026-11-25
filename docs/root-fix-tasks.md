@@ -477,10 +477,16 @@ Each unifies a job and deletes the copies.
 **T4.5 Ground, gravity and vehicles** (L, high effort; depends on T2.2, T2.5 (the bike and digging moved per world) and T4.1 (`ArmsHost.SolidHit` rewritten))
 - **Builds:**
   - one `Ground` service per diggable body, with `ArmsHost.SolidHit` folded in;
-  - the gravity constants replaced by the body's own gravity;
+  - **one gravity rule, read from where a thing is** (like air, T4.4):
+    - a world gives its own gravity: a planet or moon its own, the orbit zone 0 (OrbitZone.cs:166);
+    - a cabin gives its core's fixed 1 g (slice.json `gravity`, Vessel.cs:322, 360) while it's powered and switched on, and the world's gravity when it isn't;
+    - everything reads gravity from where it is: bodies, creatures, loot, people's falls, flung trees, the bike and claimed wrecks. The gravity constants go;
   - the bike as a hover body in the shared physics;
   - one seated state.
-- **Closes:** SA B-B15 to B-B18, and B-B4's bike half (the bike rams nothing, through T4.1's one ram).
+- **Closes:**
+  - a wreck claimed in orbit gets the starter planet's surface gravity as its core gravity, not 1 g (`Claimed(Game.Surface.Physics.Zone.Strength)`, Spaceflight.Hands.cs:239);
+  - loot in orbit falls at 1 g, because anything not on a planet surface falls at standard gravity (Lootables.cs:100); town falls default to 9.8 (Town.Falls.cs:39);
+- **Also closes:** SA B-B15 to B-B18, and B-B4's bike half (the bike rams nothing, through T4.1's one ram).
 - **One ground source for cave sims too.** Today they read three:
   - the voxel store plus `Streamer.IsReady` (`PlaceFauna.cs:707`);
   - the analytic `planet.GroundHeight` (`PlaceFauna.cs:651`, `Underworld.cs:111`);
@@ -491,7 +497,7 @@ Each unifies a job and deletes the copies.
   - the shared spring (`HoverController.Cushion`: 1.2 Hz, damping 0.4, vertical only, push only);
   - `Follow` (tilt keeps heading, no self-turn);
   - hover lift only on a powered core.
-- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
+- **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. A bag tossed in orbit drifts; tossed in a powered cabin it falls at 1 g, and with the core's gravity off it drifts. A wreck claimed in orbit has 1 g aboard on any start world. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
 
 **T4.6 Events, sound and markers** (M, medium effort; depends on T2.7, and T2.5, which moves markers onto the sleeper's world)
 - **Builds:**
