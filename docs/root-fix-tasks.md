@@ -194,8 +194,10 @@ In slices, each merged on its own, within the budgets T0.4 set.
 **T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1a only, so it can start beside Tier 1; needed by T2.8a and T3.1)
 - **Builds:** the galaxy made from the game seed, with the start star and body chosen in it.
 - **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
+- **One star model.** Today there are two: the galaxy's `StarKind` (12 kinds, shared/Galaxy/Core/Galaxy.cs:8, with only a brightness) and the system's `StarClass` (5 values, planet-surface/src/Sky/SkySystem.cs:8), which is what lights a world. `SkyRig.ClassOf` (SkyRig.cs:826) folds 12 into 5, so blue giants, pulsars, magnetars and black holes all become blue-white, and red giants become orange. `StarClass` and both mappings are deleted. Each star carries the qualities of its stellar classification: class and subclass (G2, M4), luminosity class (V dwarf, III giant), temperature, radius, mass and brightness, rolled from solar-systems.md step 1 (its star table, and brightness varied about ×0.6 to ×1.6 within a class). Colour, light, its size in the sky, the zones and the worlds' temperatures all come from those numbers.
+- **The start is picked the right way round.** Today the planet is chosen first and the star rolled to suit it (`SkySystem.PickStar`, SkySystem.cs:172-176), which can give a start a red dwarf, white or blue-white star. solar-systems.md says start systems are always G or K.
 - **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`).
-- **Proof:** the start star's system matches what the galaxy gives that star.
+- **Proof:** the start star's system matches what the galaxy gives that star. A red giant, a white dwarf and a black hole each keep their own kind through to the sky (F1 then draws how a black hole lights).
 
 **T2.2 Each world its own World3D, and `WorldQuery`** (L, high effort; depends on T0.4 and Tier 1: worlds built from their own context (T1.1), things moved between worlds by handles (T1.2), and every world with every system (T1.4))
 - **Builds:** every world in play gets its own physics space and scene. Every ray and shape query goes through that world's `WorldQuery`, with named masks.
@@ -524,3 +526,7 @@ This is the start of real co-op. It depends on Tiers 2 and 3.
 - How much traffic a world has, and what kind, varies a lot by world (owner, 25 Nov): some worlds are busy, some have none, and some have hostile ships.
 - It comes from the world: its place on the journey to the core, the factions present, its towns and starport, and its occupancy.
 - It builds on the lone trader's open phases (playtest-list.md 739: crews, reactions, rim pirates and small traders) and each faction's own ships.
+
+**F7 The full breadth of stars and worlds** (after T2.9)
+- **Stars:** the spread of the stellar classification used for variety (owner, 25 Nov: "using the qualities of classifications to increase the breadth of star types"): every subclass within each class, giants and supergiants, white dwarfs, and rarer kinds placed by region or as a system's notable feature (solar-systems.md step 1 and its special stars, such as red giants with thawing former ice worlds).
+- **Worlds:** the 40 world types, each read from its zones (solar-systems.md, "Each of the 40 world types by position"). Today `StarSystem.TypeOf` gives six types by zone; the class comment (StarSystem.cs:108-111) lists the 40 types as not yet in.
