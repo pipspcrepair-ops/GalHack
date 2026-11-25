@@ -240,7 +240,7 @@ Move(from, to)           section 4c's order
 ## 6. One path per job
 | Job | The one path (proposed) | It replaces |
 |---|---|---|
-| Queries | `WorldQuery` per world, on that world's own physics space (rule 2), with named masks (Sight, ShotStop, Cover, Use); the look, the cabin and the ignore list handled once | About 15 direct `GetWorld3D().DirectSpaceState` calls, ArmsHost's own `RayCast3D` node (ArmsHost.cs:50, 68), separate AI sight masks, along-the-look tests, the E-prompt order (B-R7) |
+| Queries | `WorldQuery` per world, on that world's own physics space (rule 2), with named masks (Sight, ShotStop, Cover, Use); the look, the cabin and the ignore list handled once | About 29 direct `GetWorld3D().DirectSpaceState` calls, ArmsHost's own `RayCast3D` node (ArmsHost.cs:50, 68), separate AI sight masks, along-the-look tests, the E-prompt order (B-R7) |
 | Harm | `Harm` event (amount, type, point, direction, radius, `Source`, tags) plus one spatial query; each target kind has an adapter with its own armour, resistance and HP; one falloff, one health unit | Three blast copies, two ram copies, two people sims' damage, two health units (B-R1); the per-target damage copies in `ArmsHost.World.cs`, `PoiPlaces.Damage.cs` and `SurfaceZone.Felling.cs` (`WearPlant`) |
 | Take-apart | Salvage is harm by the tool class on a thing with HP and a bill; one yield formula, with the claim check inside it | Seven yield formulas, `SleeperTool.CutPlant`, and orbit's hand salvage (B-R2, offworld #26) |
 | Built things | One block-world interface for `Structure` and `Place`: cells, HP, doors, rooms, collapse, damage look; doors, caches and collapse written once against it | Three forms of built thing, three door systems, two collapse rules (B-R3) |
@@ -356,7 +356,7 @@ Each step is a root fix, merged green with its checks, and gated on this doc's a
    - `WorldChoice` with a start `WorldKey`.
    - `Harness` with `Arrive`, `AddSleeper` and `SaveAndReload`.
    - The world probe, and one `Check`.
-   - Each audit finding's failing check.
+   - The known-failure list in the merge gate, so it is green on today's code. Each later task writes its own findings' failing checks first.
    - Into repo tools: the test queue, the quiet frame check (`quietpop.ps1`) and the owner's settings file (`owner-settings.cfg`). They live in the Director's scratchpad today.
 
    Every later step is proven against these.
@@ -366,7 +366,7 @@ Each step is a root fix, merged green with its checks, and gated on this doc's a
    - one settings object (S5);
    - the same seed builds the same world (task T1.5).
 2. **The world model,** in slices:
-   - **2a.** Each world its own Godot world (rule 2). First a prototype per DESIGN.md 1578: 2 to 4 worlds simulating, one drawn, measured on the minimum-spec stand-in. It sets section 2b's budget and thread plan, and the engine options go to the owner.
+   - **2a.** Each world its own Godot world (rule 2). Its prototype runs earlier, in step 0 (root-fix-tasks.md T0.4), per DESIGN.md 1578: 2 to 4 worlds simulating, one drawn, measured on the minimum-spec stand-in. It sets section 2b's budget and thread plan, and the engine options go to the owner.
    - **2b.** The sleeper list and the four cryopods, then interest points, then the places stack per world, then player-claimed systems reading `thing.World`: suit, tools, BuildTool, arms, doors, bikes, effects, compass. Each slice merges on its own, green on the harness off the starter.
 3. **Identity, the change record and the safe ledger:** `WorldKey`, IDs, the seed helper, the change record, the clock catch-up and section 4c's commit queue. Only then does `ParkHome` go and the start system get freed like any other.
 4. **One path per job,** in this order:
