@@ -1,6 +1,6 @@
-> Read-only audit of proto/batch2 at f20ac912 (25 Nov 2026), by an audit agent. The director spot-checked the worst findings: ArmsHost.cs:110 (orbit has no `Planet`), Spaceflight.Fold.cs:473, and `Progress.Earned` with no subscriber. The rule it proposes is in [ARCHITECTURE.md](ARCHITECTURE.md) section 8. Companion to [offworld-audit.md](offworld-audit.md) and [structure-audit.md](structure-audit.md).
-
 # Silent-failure audit: where a missing or wrong system quietly does nothing
+
+> Read-only audit of proto/batch2 at f20ac912 (25 Nov 2026), by an audit agent. The director spot-checked the worst findings: ArmsHost.cs:110 (orbit has no `Planet`), Spaceflight.Fold.cs:473, and `Progress.Earned` with no subscriber. The rule it proposes is in [ARCHITECTURE.md](ARCHITECTURE.md) section 8. Companion to [offworld-audit.md](offworld-audit.md) and [structure-audit.md](structure-audit.md).
 
 - **Branch:** proto/batch2 at f20ac912, worktree G:\GalHack-wt\batch. Read only, no runs. Paths are under `prototypes/slice/src` unless marked.
 - **Companions:** docs/offworld-audit.md (OW #n) and docs/structure-audit.md (SA xx). Their findings are not repeated. They are cited where a silent failure hides one.
