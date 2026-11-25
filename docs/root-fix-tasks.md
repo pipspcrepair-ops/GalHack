@@ -256,7 +256,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - **`Underworld` serves every underground on a world,** not only the start town's (`Underworld.cs:68`, :102). `IncidentalTest.cs:206-211`, which asserts the starter, is rewritten.
   - **Stamps are planned before a world's first chunk column is read.** Otherwise the `_columns` cache (`PlanetTerrainSource.cs:61`) bakes in no cave mouths, because `CaveMouths` returns null while `Stamps.Count == 0` (`CaveMouths.cs:45`, :54).
   - **Caves follow the world's archetype.** `CaveStrength` (`PlanetTerrainSource.cs:766`) takes none, but DESIGN.md 213 gives cave networks to only some archetypes. With T1.3's rules from the spec.
-  - **Airless worlds:** caves and the underworld are empty there today (`Deep` is null, `Game.Places.cs:50`). *Open: empty by intent, or vacuum fauna later?*
+  - **Airless worlds:** caves and the underworld are empty there today (`Deep` is null, `Game.Places.cs:50`). Owner, 25 Nov: vacuum fauna come later. For now these caves stay empty, but the code must not assume an airless cave is empty: life comes from the world's roster, not from air.
 - **Towns fit their world's air** (DESIGN.md 362): sealed habitats on vacuum and unbreathable-air worlds, with suits worn outside. On an airless test world only 67 of 150 town spots stood in closed rooms. NPC air comes back as part of this (owner, 24 Nov), not before.
 - **Proof:**
   - a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile;
