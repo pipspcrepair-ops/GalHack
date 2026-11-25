@@ -162,6 +162,11 @@ Independent of each other once Tier 0 is in.
   - Join `Progress.Earned` to the visor's XP line.
   - Make the Fold.cs:473 restore failure keep its record and block the commit.
   - Orbit's empty weather still gives the `Strike` and `Events` API, with no hits. (`Hazard` and `Hazards` are already gone.)
+  - **Air is one fact per world, not a bool.** Today two oxygen sources disagree:
+    - Bestiary's `BadAir` (Vacuum or Oxygen < 15, shared/Bestiary/Core/Conditions.cs:72) uses archetype figures;
+    - the sky's `OxygenByAir` gives Ash 13% and Sulfurous 6%.
+
+    They become one oxygen figure per world, from its spec. `HasAir` is derived from it. T4.4 adds the query at a point.
 - **Closes:**
   - SF (about 105 hiding calls);
   - **NO WEAPONS IN SPACE** in part: shots and NPC weapons never step in orbit;
@@ -191,6 +196,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds:** a `Sleeper` object owning body, suit, pack, progress, tools, shots' `Source`, death bag and the open container. `Game` holds the list and "the local sleeper".
 - **Replaces:** `Game.Survivor` in simulation code: wildlife's one `Player`, towns' one "you", shots' `owner == 0` and static `You`, the crossing's `Carrier()`, death and aftermath.
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4).
+- **One breather model** for sleepers and people (hold, tank, suffocation, from survival-vitals/data/vitals.json), not a rule owned by the sleeper's suit. Today a closed town room gives people air but not the sleeper: `Suit.InSealedRoom` (Suit.cs:43) is set only by RoomAir. proto/npcair (a0a0da94, shelved) has people reading the sleeper's rules through `Town.Breathe`, which is a starting point, not a merge.
 - **Closes:** SA A-R1 (A-1.1 to 1.9), A-6.3; `Harness.AddSleeper` goes live.
 - **Proof:** two sleepers on one world are both targeted, hurt, credited and saved. Each wakes in their own pod.
 
@@ -239,7 +245,10 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Closes:**
   - OW#3, #18, #20; SA C-E1 to E3;
   - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places.
-- **Proof:** a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile.
+- **Towns fit their world's air** (DESIGN.md 362): sealed habitats on vacuum and unbreathable-air worlds, with suits worn outside. On an airless test world only 67 of 150 town spots stood in closed rooms. NPC air comes back as part of this (owner, 24 Nov), not before.
+- **Proof:**
+  - a moon and another star's world have their own towns, ruins, people and caves, rolled with their own profile;
+  - a quiet town on a fresh vacuum world runs 15 minutes with no air deaths.
 
 **T2.7 Simulation and view apart, and cabins** (M, high effort; depends on T2.2)
 - **Builds:**
@@ -341,6 +350,7 @@ Each unifies a job and deletes the copies.
   - Nothing weather-borne hits people or creatures.
 
   Weather hits stay untelegraphed (owner, 24 Nov), and Harm never adds a warning.
+- **Exposure is a Harm source too:** suffocation, cold, heat and radiation, for sleepers and people alike. Today npcair takes health off people directly, with a kinetic `Struck` for the killing blow (Town.Air.cs about 55-57), while the sleeper takes it through `Suit.Hit` with its own damage kind. The target adapter carries a "doesn't breathe" flag (`Species.Mechanical` today).
 - **Closes:** SA B-B1 to B-B6 (the fuel drum that spares townsfolk; fire and wind that never touch them; health in two units).
 - **Proof:** every source hurts every target kind by the same rule.
 
@@ -379,7 +389,8 @@ Each unifies a job and deletes the copies.
 - **Proof:** the same block gives the same yield on the ground and in orbit.
 
 **T4.4 Shelter** (M, medium effort; depends on T4.2)
-- **Builds:** one `Exposure(point)` query.
+- **Builds:** one `Exposure(point)` query, including oxygen % at the point. The air rule moves off the suit (`Suit.Outside`, Suit.cs about 142: no air below `SurfaceWeather.NoAir` density or above the 1,060 m ceiling) onto the world.
+- **Closed rooms on every world:** places, ships' cabins and sleepers' bases answer the same closed-room question. Today room air is only `Place.Closed` (Places/Place.Air.cs:28) plus RoomAir's bunker kinds (Player/RoomAir.cs:7).
 - **Replaces:** the nine shelter tests.
 - **Closes:** SA B-B14 (a 3 m hole counts as shelter).
 - **Proof:** one answer for wind, lightning, creatures, rain and the suit at the same spot.
