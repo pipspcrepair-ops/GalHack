@@ -124,7 +124,7 @@ Players warp and fold independently and may each be in any system (owner, 25 Nov
    - The sleeper in the pilot seat chooses the target and starts the spool.
    - Leaving the pilot seat during the spool calls it off.
    - Once committed at the end of the spool, the jump finishes without a pilot.
-   - **Calling it off:** only the sleeper piloting from the command chair can, by pressing J (owner, 25 Nov). Passengers can't. *(Whether J also works mid-tunnel, sending the ship back to where it started, is open.)*
+   - **Calling it off:** only the sleeper piloting from the command chair can, by pressing J during the spool (owner, 25 Nov). Passengers can't. Once the jump commits it can't be called off: J does nothing in the tunnel.
 3. **Everyone aboard is warned.** The spool shows on every aboard sleeper's visor and its sound is heard, seated or standing, on the hull or inside.
 4. **The tunnel is a real world.** At commit the ship moves into its own transit world, which exists only for that jump, with the tunnel as its sky. Everything always has a world (rule 1). Two ships' tunnels never meet.
 5. **What goes is decided at commit:**
