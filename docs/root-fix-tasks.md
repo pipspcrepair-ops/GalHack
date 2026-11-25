@@ -217,6 +217,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - parking and freeing by one player's place;
   - the one `Away` and one `Orbit`.
 - **Closes:** SA A-R2 (A-2.1 to 2.9), A-3.5 (world manager split out of `Spaceflight`), OW#6, OW#10 (streaming and settings).
+- **A frozen or freed world drops its lights, not just its meshes.** At most one shadow-casting `DirectionalLight3D` is in the tree at a time, because all of them share the directional atlas. The stale space sun once took half of it: SpaceSky.cs:208-209 creates it with shadows on, and :426 hides it only while share is 0. PopRoute.Edges already prints the shadow-casting sun count after a landing; that becomes a check.
 - **Proof:** two sleepers far apart on one world both have ground and life. Two sleepers at two stars both play. A world nobody is on stops costing frame time.
 - **Note:** `ParkHome` stays until T3.4, and so does freeing.
 
@@ -262,6 +263,12 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - Cabins are made for occupied ships only.
   - Things aboard read `Outside = ship.World`.
   - The three `LightningFx` copies (weather, planet-surface, slice) become one view.
+  - **Engine-wide render state has one owner, the drawn world's view.** Today it's written by many places:
+    - `SunShadows.Apply` sets the directional shadow atlas, the soft shadow filter qualities and the viewport's positional atlas (SunShadows.cs:63-66). It runs only from `ApplyScene` on a settings or zone change (Game.Settings.cs:112-139).
+    - `SkyRig` sets the sun's shadow opacity and enable, the night light's enable, and the shadow skew every frame (SkyRig.cs:94, 608-617), although SunShadows' doc says nothing else touches a light's shadow.
+    - Global shader values: `shade_fill` (SkyRig.cs:687), `sky_ground` and `sky_ground_rect` (SkyLight.cs:337-392), `sky_field`, `planet_size`, and `weather_*` from three places (SurfaceWeather.cs:960-963, WeatherRig.cs:239-242, Spaceflight.Fold.cs:353). SurfaceZone.cs:339-343 zeroes them on zone entry, so today they belong to whichever zone entered last, not the drawn one.
+  - **Every drawn world's sky gets the shadow settings.** `Suns()` (Game.Settings.cs:125-133) walks only the starter, the current orbit and the space sun.
+  - **Shaders:** nothing moves vertices from `CAMERA_POSITION_WORLD` in a shadow-casting shader, because in the shadow pass that is the light's eye. It's fixed in terrain.gdshader:946 and flora.gdshader:51-54. water.gdshader:72 (`round_sink`) has the same pattern: check whether water casts.
 - **Closes:**
   - architecture review findings 5 and 7;
   - **DARK DISC AFTER RETURNING FROM ANOTHER PLANET**: engine-wide shadow and environment state left by a world that isn't drawn;
