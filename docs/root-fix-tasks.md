@@ -261,7 +261,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - OW#3, #18, #20; SA C-E1 to E3;
   - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places;
   - **creatures spawn right beside your base** (decided-vs-built.md 1.7): the no-spawn radius round bases exists in the wildlife prototype (`prototypes/wildlife/src/Core/Structures.cs:42`, `WildSim.cs:157`), but the slice never registers its bases with the wildlife sim. Every base on a world registers with that world's wildlife, as towns do;
-  - the lone trader or scout (playtest-list.md 739) comes from `SkyTraffic`, which is made once on the starter today. Made with each world, every world gets its traffic by rule (ARCHITECTURE.md 2: NPC traffic is placed on a world when it is made).
+  - `SkyTraffic` (the lone trader or scout, playtest-list.md 739) is made once, on the starter, today. It is made with each world instead, and reads how much traffic that world has from the world itself; none is a valid answer. What the traffic is (busy, empty, hostile) is feature F6, not this task.
 - **Caves and undergrounds per world** (line numbers from test-build):
   - **The bunker becomes a stamp.** Delete `Keep` and the bunker rules (`Game.Places.cs:64-65`; consumed at `PlaceFauna.cs:571, 639, 704`). Part of the cave bleed is already fixed: 4acacb45 makes `LoadedVoxels` read `PlanetTerrainSource.Dug` as rock. Rerun InsideTest `--unseen` first to see what still fails.
   - **`Underworld` serves every underground on a world,** not only the start town's (`Underworld.cs:68`, :102). `IncidentalTest.cs:206-211`, which asserts the starter, is rewritten.
@@ -518,3 +518,8 @@ This is the start of real co-op. It depends on Tiers 2 and 3.
   - the placeholder numbers in places.json;
   - orbit fauna and Husks in derelicts, once T1.4 gives orbit real wildlife.
 - **Closes:** SA C-H.
+
+**F6 Traffic that fits the world** (after T2.6; with the faction ships in ship-forms.md and NPC pilots)
+- How much traffic a world has, and what kind, varies a lot by world (owner, 25 Nov): some worlds are busy, some have none, and some have hostile ships.
+- It comes from the world: its place on the journey to the core, the factions present, its towns and starport, and its occupancy.
+- It builds on the lone trader's open phases (playtest-list.md 739: crews, reactions, rim pirates and small traders) and each faction's own ships.
