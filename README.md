@@ -1,4 +1,4 @@
-![GalHack: Fallen Worlds of the Spiral Arm](docs/banner.png)
+![GalHack: Fallen Worlds of the Spiral Arm](readme/banner.png)
 
 # GalHack
 
@@ -39,11 +39,11 @@ Not in the slice yet: co-op (it works in its own prototype), saving and loading,
 Fresh shots from the latest test build, rendered by the game itself. The city skyline comes from the planet view, which runs the same world code. Click an image for full size.
 
 <table>
-<tr><td width="33%"><a href="docs/gallery/far-view.png"><img src="docs/gallery/far-view.png" alt="A far shore: city, cliffs and trees at distance"></a><br><sub>A far shore: city, cliffs and trees at distance</sub></td><td width="33%"><a href="docs/gallery/city-coast.png"><img src="docs/gallery/city-coast.png" alt="A coastal city beyond the pines"></a><br><sub>A coastal city beyond the pines</sub></td><td width="33%"><a href="docs/gallery/spaceport.png"><img src="docs/gallery/spaceport.png" alt="An abandoned spaceport and its rocket"></a><br><sub>An abandoned spaceport and its rocket</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/facade-panes.png"><img src="docs/gallery/facade-panes.png" alt="A flat's windows, lined up pane by pane"></a><br><sub>A flat's windows, lined up pane by pane</sub></td><td width="33%"><a href="docs/gallery/furnished-room.png"><img src="docs/gallery/furnished-room.png" alt="A furnished room with a person and an animal"></a><br><sub>A furnished room with a person and an animal</sub></td><td width="33%"><a href="docs/gallery/markers.png"><img src="docs/gallery/markers.png" alt="Markers on places across the savanna"></a><br><sub>Markers on places across the savanna</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/level-up.png"><img src="docs/gallery/level-up.png" alt="A level-up in the notices slot"></a><br><sub>A level-up in the notices slot</sub></td><td width="33%"><a href="docs/gallery/suit-terminal.png"><img src="docs/gallery/suit-terminal.png" alt="The Suit Terminal: bag and fabricator"></a><br><sub>The Suit Terminal: bag and fabricator</sub></td><td width="33%"><a href="docs/gallery/tech-tree.png"><img src="docs/gallery/tech-tree.png" alt="The tech tree: Large"></a><br><sub>The tech tree: Large</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/core-tab.png"><img src="docs/gallery/core-tab.png" alt="The CORE tab: a constructor, its orders and storage"></a><br><sub>The CORE tab: a constructor, its orders and storage</sub></td><td width="33%"><a href="docs/gallery/ruined-house.png"><img src="docs/gallery/ruined-house.png" alt="A ruined house among baobabs"></a><br><sub>A ruined house among baobabs</sub></td><td width="33%"><a href="docs/gallery/tornado-warning.png"><img src="docs/gallery/tornado-warning.png" alt="A tornado warning over a fungal forest"></a><br><sub>A tornado warning over a fungal forest</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/galaxy-map.png"><img src="docs/gallery/galaxy-map.png" alt="The galaxy map: the whole galaxy"></a><br><sub>The galaxy map: the whole galaxy</sub></td><td width="33%"><a href="docs/gallery/galaxy-lanes.png"><img src="docs/gallery/galaxy-lanes.png" alt="The galaxy map: stars and lanes"></a><br><sub>The galaxy map: stars and lanes</sub></td></tr>
+<tr><td width="33%"><a href="readme/gallery/far-view.png"><img src="readme/gallery/far-view.png" alt="A far shore: city, cliffs and trees at distance"></a><br><sub>A far shore: city, cliffs and trees at distance</sub></td><td width="33%"><a href="readme/gallery/city-coast.png"><img src="readme/gallery/city-coast.png" alt="A coastal city beyond the pines"></a><br><sub>A coastal city beyond the pines</sub></td><td width="33%"><a href="readme/gallery/spaceport.png"><img src="readme/gallery/spaceport.png" alt="An abandoned spaceport and its rocket"></a><br><sub>An abandoned spaceport and its rocket</sub></td></tr>
+<tr><td width="33%"><a href="readme/gallery/facade-panes.png"><img src="readme/gallery/facade-panes.png" alt="A flat's windows, lined up pane by pane"></a><br><sub>A flat's windows, lined up pane by pane</sub></td><td width="33%"><a href="readme/gallery/furnished-room.png"><img src="readme/gallery/furnished-room.png" alt="A furnished room with a person and an animal"></a><br><sub>A furnished room with a person and an animal</sub></td><td width="33%"><a href="readme/gallery/markers.png"><img src="readme/gallery/markers.png" alt="Markers on places across the savanna"></a><br><sub>Markers on places across the savanna</sub></td></tr>
+<tr><td width="33%"><a href="readme/gallery/level-up.png"><img src="readme/gallery/level-up.png" alt="A level-up in the notices slot"></a><br><sub>A level-up in the notices slot</sub></td><td width="33%"><a href="readme/gallery/suit-terminal.png"><img src="readme/gallery/suit-terminal.png" alt="The Suit Terminal: bag and fabricator"></a><br><sub>The Suit Terminal: bag and fabricator</sub></td><td width="33%"><a href="readme/gallery/tech-tree.png"><img src="readme/gallery/tech-tree.png" alt="The tech tree: Large"></a><br><sub>The tech tree: Large</sub></td></tr>
+<tr><td width="33%"><a href="readme/gallery/core-tab.png"><img src="readme/gallery/core-tab.png" alt="The CORE tab: a constructor, its orders and storage"></a><br><sub>The CORE tab: a constructor, its orders and storage</sub></td><td width="33%"><a href="readme/gallery/ruined-house.png"><img src="readme/gallery/ruined-house.png" alt="A ruined house among baobabs"></a><br><sub>A ruined house among baobabs</sub></td><td width="33%"><a href="readme/gallery/tornado-warning.png"><img src="readme/gallery/tornado-warning.png" alt="A tornado warning over a fungal forest"></a><br><sub>A tornado warning over a fungal forest</sub></td></tr>
+<tr><td width="33%"><a href="readme/gallery/galaxy-map.png"><img src="readme/gallery/galaxy-map.png" alt="The galaxy map: the whole galaxy"></a><br><sub>The galaxy map: the whole galaxy</sub></td><td width="33%"><a href="readme/gallery/galaxy-lanes.png"><img src="readme/gallery/galaxy-lanes.png" alt="The galaxy map: stars and lanes"></a><br><sub>The galaxy map: stars and lanes</sub></td></tr>
 </table>
 
 ## Licence
@@ -52,14 +52,14 @@ GalHack is free to do anything with except sell. Its own code and data are licen
 
 ## Design
 
-The full game design document is [docs/DESIGN.md](docs/DESIGN.md), a published copy of the living doc that's refreshed as it changes. Other design notes:
+Every doc lives on the [`docs` branch](https://github.com/pipspcrepair-ops/GalHack/tree/docs), one copy for every branch (checked out locally at `G:\GalHack-docs`). The full game design document is [DESIGN.md](https://github.com/pipspcrepair-ops/GalHack/blob/docs/DESIGN.md), a published copy of the living doc that's refreshed as it changes. Other design notes:
 
-- [docs/world-themes.md](docs/world-themes.md): the world themes the generator draws on
-- [docs/world-layers.md](docs/world-layers.md): the themes split into layers that combine
-- [docs/space-pois.md](docs/space-pois.md): places in space
-- [docs/alien-peoples.md](docs/alien-peoples.md): the alien peoples of the old civilisation
-- [docs/body-language-and-sound.md](docs/body-language-and-sound.md): how people talk without words
-- [docs/playtest-list.md](docs/playtest-list.md): the owner's playtest checklist, with what's done
+- [world-themes.md](https://github.com/pipspcrepair-ops/GalHack/blob/docs/world-themes.md): the world themes the generator draws on
+- [world-layers.md](https://github.com/pipspcrepair-ops/GalHack/blob/docs/world-layers.md): the themes split into layers that combine
+- [space-pois.md](https://github.com/pipspcrepair-ops/GalHack/blob/docs/space-pois.md): places in space
+- [alien-peoples.md](https://github.com/pipspcrepair-ops/GalHack/blob/docs/alien-peoples.md): the alien peoples of the old civilisation
+- [body-language-and-sound.md](https://github.com/pipspcrepair-ops/GalHack/blob/docs/body-language-and-sound.md): how people talk without words
+- [playtest-list.md](https://github.com/pipspcrepair-ops/GalHack/blob/docs/playtest-list.md): the owner's playtest checklist, with what's done
 
 Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or stores ever disappears.
 
