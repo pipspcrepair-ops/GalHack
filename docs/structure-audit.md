@@ -88,11 +88,17 @@ Each one names the detailed groups below (A-, B-, C- sections). Roots S1, S3, S4
 | S15 | **Zone-type tests and stand-in systems** | C-G | Ask about the place (air, ground or a diggable body, gravity, life). Orbit gets the same world-owned systems, made from what's in it. |
 | S16 | **Placeholders the game relies on** | C-H | Each one gets an owner decision: build it or remove it. |
 
-**Owner decisions the design pass needs:**
-- Are progress and tech per player or per faction?
-- Is ownership of structures and bags per player or per faction?
-- Are charts shared?
-- Is town standing per faction? It is today.
+**Owner decisions (25 Nov, also in DESIGN.md under Tech tree):**
+1. **Progress and tech: per player.** NPC factions have no tech tree.
+   - `Progress` moves onto the Sleeper object (S1).
+   - Each player's kills, discoveries and XP are credited to the sleeper who made them (A-1.3, A-1.4).
+2. **Structures and bags: owned by the Sleepers faction.** `Building.DefaultOwner` stands for that faction, which is right.
+   - Every sleeper's bag is "ours": shown on every teammate's compass and lootable by them.
+   - Still needed: the bag records which sleeper died, for its label.
+   - `Lootables.Spill` must take an owner, so a stranger's cargo is never "ours" (B-B26).
+3. **Charts: shared by the faction.** Visited stars, marks and wrecks seen go to the faction record.
+   - Each player keeps their own destination and chosen star (A-3.4).
+4. **Town standing: per faction**, as it is now (A-1.8 is not a bug). One player's crime sets it for everyone.
 
 **Suggested order** (all root work, after the design pass is brought to the owner):
 1. **S3, S4, S5:** small, fix live bugs, and the rest builds on them.
