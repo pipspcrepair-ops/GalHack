@@ -13,7 +13,7 @@
 - each task writes its own failing checks first.
 
 **How to read it:**
-- **Order:** work top to bottom. A task starts only when the tasks it depends on have merged. Tasks in the same tier with no dependency on each other can run side by side, about 3 agents at once.
+- **Order:** work top to bottom. The list is in build order: every task comes after everything it needs, so nothing waits on a task written below it. A task starts only when the tasks it depends on have merged. Tasks in the same tier with no dependency on each other can run side by side, about 3 agents at once.
 - **Each task gives:**
   - what it closes (audit finding numbers, and owner's playtest items in capitals);
   - what it depends on;
@@ -71,14 +71,6 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 - **Today:** `tools/test-all.ps1` and the queue scripts exist, but they're run by hand. The rebuild and quit-yourself rules live only in briefs and memory.
 - **Proof:** a branch with a stale DLL, a hanging test or a captured zone fails the gate on its own.
 
-**T0.6 Repo hygiene** (S, low effort; mostly done 25 Nov)
-- **Done (owner, 25 Nov: "that should get a clean"):**
-  - the 16 zero-byte stray `.cs` files in the main checkout (7 in the root, and 9 empty copies of files that have content on test-build) were removed;
-  - `asset-notes/` was committed;
-  - `.gitignore` now keeps out new screenshots (`prototypes/*/screenshots/`, `shots/`), `scratchpad/`, and the working folders the owner chose to keep local: `docs/font/`, `docs/mockups/`, `docs/music-samples/` and the research PDFs.
-- **Screenshots from now on:** a shot a README or the gallery needs is added on purpose with `git add -f`. The gallery's images live in `docs/gallery/`. Agents' proof shots go to their scratchpad, never into git.
-- **Left for later:** `.git` is about 930 MB, and 482 MB of that is 904 PNGs in history. The owner chose to stop the growth now and not rewrite history, since a rewrite means re-cutting every branch and the roughly 250 worktrees. Revisit once fewer branches are live. Pruning stale worktrees goes with it.
-
 **T0.1a Test harness and probe** (M, high effort; after T0.2)
 - **Builds:**
   - `WorldKey` as a typed value (game seed, star key, orbital path, layer). Only the type here: storage comes in T3.1.
@@ -90,18 +82,6 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 
 **T0.1b One shared `Check`** (S, low effort; after T0.2)
 - **Replaces:** the 81 copies of `Check` with one in the shared testing code. This is mechanical.
-
-**T0.3 Clean up the tests that hide bugs** (S, medium effort; after T0.1a and T0.1b)
-- **Rewrites:** the two tests that assert bugs: SleeperToolTest.cs:286-297 (coreless block back whole) and ClimateTest.cs:466 (tornado felling bypass).
-- **Removes:** about 30 silent passes. They retry up to N rolls, then fail with the seeds.
-- **Stops:** travel tests calming weather and freezing wildlife before they leave.
-- **Sorts the known flaky and old failures** into a list with causes, so they don't hide new ones:
-  - SleeperToolTest fails different checks each run (the door; 8 core-aim fails, likely a rebuild mid-run; tree felling);
-  - WeaponTest "the burnt one is frightened" fails 1 in 102;
-  - OrbitTest's two body-direction fails (0.46°) are older and unrelated;
-  - MoonTest fails "it crossed into orbit" on some worlds, on clean code too: the Skiff climbs at only about 5 m/s and stalls near 6.8 km (playtest-list.md 875). Its cause is traced in T2.8c, which owns the climb.
-- **Closes:** TC.
-- **Rule for every later task:** its first step writes failing checks for the findings it closes, off the starter. It merges when they pass. Checks aren't written for all findings up front, because some need harness features that come later (two sleepers in T2.3, save and reload in T3.3).
 
 **T0.4 Prototype: several real worlds at once** (M, high effort; after T0.2, beside T0.1a and T0.1b)
 - **On a throwaway branch that never merges.**
@@ -123,12 +103,32 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 - **Then:** two things go to the owner: the engine options (physics spaces on threads, a no-render World3D), and the largest orbit zone that still holds precision.
 - **This is a decision gate. Tier 2 doesn't start before it.**
 
+**T0.3 Clean up the tests that hide bugs** (S, medium effort; after T0.1a and T0.1b)
+- **Rewrites:** the two tests that assert bugs: SleeperToolTest.cs:286-297 (coreless block back whole) and ClimateTest.cs:466 (tornado felling bypass).
+- **Removes:** about 30 silent passes. They retry up to N rolls, then fail with the seeds.
+- **Stops:** travel tests calming weather and freezing wildlife before they leave.
+- **Sorts the known flaky and old failures** into a list with causes, so they don't hide new ones:
+  - SleeperToolTest fails different checks each run (the door; 8 core-aim fails, likely a rebuild mid-run; tree felling);
+  - WeaponTest "the burnt one is frightened" fails 1 in 102;
+  - OrbitTest's two body-direction fails (0.46°) are older and unrelated;
+  - MoonTest fails "it crossed into orbit" on some worlds, on clean code too: the Skiff climbs at only about 5 m/s and stalls near 6.8 km (playtest-list.md 875). Its cause is traced in T2.8c, which owns the climb.
+- **Closes:** TC.
+- **Rule for every later task:** its first step writes failing checks for the findings it closes, off the starter. It merges when they pass. Checks aren't written for all findings up front, because some need harness features that come later (two sleepers in T2.3, save and reload in T3.3).
+
+**T0.6 Repo hygiene** (S, low effort; mostly done 25 Nov)
+- **Done (owner, 25 Nov: "that should get a clean"):**
+  - the 16 zero-byte stray `.cs` files in the main checkout (7 in the root, and 9 empty copies of files that have content on test-build) were removed;
+  - `asset-notes/` was committed;
+  - `.gitignore` now keeps out new screenshots (`prototypes/*/screenshots/`, `shots/`), `scratchpad/`, and the working folders the owner chose to keep local: `docs/font/`, `docs/mockups/`, `docs/music-samples/` and the research PDFs.
+- **Screenshots from now on:** a shot a README or the gallery needs is added on purpose with `git add -f`. The gallery's images live in `docs/gallery/`. Agents' proof shots go to their scratchpad, never into git.
+- **Left for later:** `.git` is about 930 MB, and 482 MB of that is 904 PNGs in history. The owner chose to stop the growth now and not rewrite history, since a rewrite means re-cutting every branch and the roughly 250 worktrees. Revisit once fewer branches are live. Pruning stale worktrees goes with it.
+
 ---
 
 ## Tier 1: small root fixes for live bugs
-Independent of each other once Tier 0 is in. T1.5 is the exception: it needs only T0.5, so it can start as soon as the gate is in.
+Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.5 are independent of each other. T1.4 follows T1.3. T1.5 needs only T0.1a and T0.5, so it can start as soon as the gate is in.
 
-**T1.1 A per-world build context instead of statics** (M, high effort)
+**T1.1 A per-world build context instead of statics** (M, high effort; after T0.1a, which gives `WorldKey`)
 - **Replaces:**
   - `PoiSiting.StartWorld`, `WorldForce.Current` and `PoiSite.Loading` with a context passed into `PlanetWorld.Build`, made from the world key;
   - plus a generation check on every worker job: `Place.RebuildStale`, the `DepositFinder` recount, `TerrainStreamer` voxel and height jobs, world builds.
@@ -158,7 +158,7 @@ Independent of each other once Tier 0 is in. T1.5 is the exception: it needs onl
   - **MOONS: NO RINGS, SMALL ONES AIRLESS**, which becomes a world fact from the spec (`HasAir`).
 - **Proof:** switch to Creative while away, arrive at a world made earlier, and its machines charge nothing. A frozen moon isn't clamped to the starter's range.
 
-**T1.4 Every world has every system** (M, high effort; depends on T0.1a's probe)
+**T1.4 Every world has every system** (M, high effort; depends on T0.1a's probe and T1.3, because air and the other facts come from the world's own spec)
 - **Builds:** orbit and every other zone get the same systems as a surface, with empty data and named facts (`HasAir`, `HasLife`, `HasWater`, ground present). This replaces stand-ins and nulls.
 - **Deletes:**
   - every `Zone?.Planet == null` early return: ArmsHost.cs:110, BlockDoors:166, ForceFields:62, SkyLight:91, PoiPlaces:127/144, RuinLoot:36, Underworld:57, PlaceFauna:599, Hulks:61;
@@ -178,7 +178,7 @@ Independent of each other once Tier 0 is in. T1.5 is the exception: it needs onl
   - SA C-G1 (empty stand-in wildlife and weather).
 - **Proof:** the world probe passes on every body. Shots step in orbit. A missing system throws in tests.
 
-**T1.5 The same seed builds the same world** (M, high effort; after T0.5, so its check runs in the merge gate)
+**T1.5 The same seed builds the same world** (M, high effort; after T0.1a, to build the moon and another star's world, and T0.5, so its check runs in the merge gate)
 - **Today:** the world fingerprint test (`SurfaceTest --only=Dump`, 13 Nov) found city planning giving a different city, lots and grounds for the same seed on two runs: 2 of 12 worlds at 16 km and 1 of 4 at 64 km. Storage keeps only the seed and the changes (ARCHITECTURE.md 4b), so a world that rebuilds differently puts its saved changes on the wrong things. Co-op (F4) needs every machine to build the same world too.
 - **Finds and fixes the cause:** a step that depends on run order, time or threads (worker completion order, hash or dictionary order, a shared random stream drawn from more than one thread, the clock). Fixed at that step, not by retrying until two runs agree.
 - **Not this task:** seeds that change when the generator's order changes (SA 5.2: `SpawnSeed = rng.NextU64()` during placement). That is T3.1's seed helper. This task is the same code giving two answers.
@@ -191,7 +191,13 @@ Independent of each other once Tier 0 is in. T1.5 is the exception: it needs onl
 In slices, each merged on its own, within the budgets T0.4 set.
 
 
-**T2.2 Each world its own World3D, and `WorldQuery`** (L, high effort; depends on T0.4)
+**T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1a only, so it can start beside Tier 1; needed by T2.8a and T3.1)
+- **Builds:** the galaxy made from the game seed, with the start star and body chosen in it.
+- **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
+- **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`).
+- **Proof:** the start star's system matches what the galaxy gives that star.
+
+**T2.2 Each world its own World3D, and `WorldQuery`** (L, high effort; depends on T0.4 and Tier 1: worlds built from their own context (T1.1), things moved between worlds by handles (T1.2), and every world with every system (T1.4))
 - **Builds:** every world in play gets its own physics space and scene. Every ray and shape query goes through that world's `WorldQuery`, with named masks.
 - **Replaces:**
   - about 15 direct `GetWorld3D().DirectSpaceState` calls;
@@ -207,12 +213,13 @@ In slices, each merged on its own, within the budgets T0.4 set.
 **T2.3 Sleepers, the four cryopods and the local view** (L, high effort; depends on T1.2)
 - **Builds:** a `Sleeper` object owning body, suit, pack, progress, tools, shots' `Source`, death bag and the open container. `Game` holds the list and "the local sleeper".
 - **Replaces:** `Game.Survivor` in simulation code: wildlife's one `Player`, towns' one "you", shots' `owner == 0` and static `You`, the crossing's `Carrier()`, death and aftermath.
+- **Builds the claims** (ARCHITECTURE.md section 3): every lasting thing has a claim (a sleeper, the Sleepers faction, an NPC faction or none), kept apart from where it is held. The Sleepers faction record holds structures, vessels, bags, charts and standing. Today nothing records this: `Spaceflight.Claim` only takes a wreck. T2.5's command-chair check, T3.3's "the faction's last base", T4.3's yield and T4.7's `Spill` all read it.
 - **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4). Respawn is per sleeper, not hard-wired to the bunker (decided-vs-built.md 2.2). The other respawn choices there (home base, clone chamber, tent) are features built on this later.
 - **One breather model**, not a rule owned by the sleeper's suit (hold, tank, suffocation, from survival-vitals/data/vitals.json). Built for sleepers now, in a shape people can use later. Today a closed town room gives people air but not the sleeper: `Suit.InSealedRoom` (Suit.cs:43) is set only by RoomAir.
 - **Closes:** SA A-R1 (A-1.1 to 1.9), A-6.3; `Harness.AddSleeper` goes live.
 - **Proof:** two sleepers on one world are both targeted, hurt, credited and saved. Each wakes in their own pod.
 
-**T2.4 The world manager, interest points and freezing** (L, high effort, 3 slices: the world manager split out of `Spaceflight` (Spaceflight.cs 775 lines, Worlds 297, plus parking); streaming and collision per point; wildlife, weather and places per point; depends on T2.2, T2.3)
+**T2.4 The world manager, interest points and freezing** (L, high effort, 3 slices: the world manager split out of `Spaceflight` (Spaceflight.cs 775 lines, Worlds 297, plus parking); streaming and collision per point; wildlife, weather and places per point; depends on T2.2, T2.3, and T1.3 for simulation size from the game settings)
 - **Builds:**
   - Each world keeps its interest points: a sleeper, an occupied cabin, a destination being prepared.
   - Streaming, collision, wildlife, weather hazards and places run per point. Collision is streamed apart from drawing.
@@ -313,12 +320,6 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Its view half goes under rule 12:** the sky fade, the environment swap, the wreck fade through `GeometryInstance.Transparency`, the sky's `eye_lift` and `HoldSurfaceBehind`.
 - **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's. MoonTest's climb into orbit passes on fresh worlds (see T0.3).
 
-**T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1a only, so it runs beside Tiers 1 and 2; before T3.1)
-- **Builds:** the galaxy made from the game seed, with the start star and body chosen in it.
-- **Replaces:** the home system built by `SkySystem.For(spec)` beside `StarProfile.Of`; the start is generated like any other.
-- **Closes:** SA A-6.1, A-6.2, A-5.3 (two wreck-seed schemes, dead `SystemSeed`).
-- **Proof:** the start star's system matches what the galaxy gives that star.
-
 ---
 
 ## Tier 3: identity, records and the safe ledger
@@ -336,7 +337,7 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
   - SA A-R4 and A-R5, including A-5.1 (the same loot in every copy of a layout) and A-4.4 (creature drops rolled again).
 - **Proof:** a reordered generator list doesn't remap anything. Two copies of one layout roll different loot.
 
-**T3.2 A change record per world, and the clock catch-up** (L, high effort; depends on T3.1, T2.4)
+**T3.2 A change record per world, and the clock catch-up** (L, high effort; depends on T3.1, T2.4, T2.6 (caves and places made per world), and T1.5, because changes are stored against a world rebuilt from its seed)
 - **Builds:**
   - Records for terrain edits per chunk, felled plants, mined deposits, deaths, place memory, salvage progress, touched rocks and things set down.
   - **Caves:** found caves and their deaths, by cell key. Today `Caves._caves` and `Underworld._spots` live only in nodes (`PlaceFauna.cs:584`, `Underworld.cs:37`), and which caves exist depends on the walk (:630-640). A freed world's caves would refill and its kills be undone, against the owner's "find things as you left them". The cave sims' time comes from the galaxy clock (`PlaceFauna.cs:640`, `Underworld.cs:113` copy the zone's).
@@ -344,7 +345,7 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
 - **Closes:** OW#7, SA B-B10 (salvage resets), A-6.4.
 - **Proof:** leave a star, come back, and every change is as left, with regrowth by the time away.
 
-**T3.3 The safe ledger** (M, high effort; depends on T3.1)
+**T3.3 The safe ledger** (M, high effort; depends on T3.1, T1.2 (`Move` is commit, detach, attach), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
 - **Builds:**
   - force field state (powered, field HP) saved with its vessel, which nobody has checked yet;
   - one commit queue on a worker;
@@ -422,7 +423,7 @@ Each unifies a job and deletes the copies.
   - SA C-F (four definitions of a wreck).
 - **Proof:** the same block gives the same yield on the ground and in orbit.
 
-**T4.4 Shelter** (M, medium effort; depends on T4.2)
+**T4.4 Shelter** (M, medium effort; depends on T4.2, and T1.4 for the world's air)
 - **Builds:** one `Exposure(point)` query, including oxygen % at the point. The air rule moves off the suit (`Suit.Outside`, Suit.cs about 142: no air below `SurfaceWeather.NoAir` density or above the 1,060 m ceiling) onto the world.
 - **Closed rooms on every world:** places, ships' cabins and sleepers' bases answer the same closed-room question. Today room air is only `Place.Closed` (Places/Place.Air.cs:28) plus RoomAir's bunker kinds (Player/RoomAir.cs:7).
 - **Replaces:** the nine shelter tests.
@@ -448,7 +449,7 @@ Each unifies a job and deletes the copies.
   - hover lift only on a powered core.
 - **Proof:** on a low-gravity moon the bike and creatures fall by the moon's gravity. PhysicsTest's HoverCushion no-roll check and its AcrossWater checks still pass.
 
-**T4.6 Events, sound and markers** (M, medium effort; depends on T2.7)
+**T4.6 Events, sound and markers** (M, medium effort; depends on T2.7, and T2.5, which moves markers onto the sleeper's world)
 - **Builds:**
   - one `WorldEvent`, which audio, AI hearing (`Noise`, `Gunfire`), visor cues and effects all subscribe to;
   - the four voice pools brought to one set of rules;
@@ -456,7 +457,7 @@ Each unifies a job and deletes the copies.
 - **Closes:** SA B-B21 to B-B24.
 - **Proof:** a fuel drum is heard by creatures and towns and shows on the visor. One marker shows the same in all three views.
 
-**T4.7 Shared entry points** (S, low effort)
+**T4.7 Shared entry points** (S, low effort; after T2.3, which builds the claims `Spill` takes)
 - **Makes the shared paths the only way in:**
   - `Planet.Felled` private to `Fell`;
   - one inventory `Receive(bill, at, from)`;
@@ -505,7 +506,7 @@ These came up during the reviews. They are **new behaviour or design work, not f
 **F3 Fire** (planned, not started).
 Fire (planned, not started) is briefed only once these are in: T1.4 (wind and rain on every world), T2.7 (fire effects in the view only), T4.1 (burn damage through Harm), T4.2 (blocks and plants as burnable material), T4.4 (rain, wet and shelter put fire out), and T4.6 (crackle, smoke, AI hearing). Fire hits are never telegraphed.
 
-**F4 Host and clients: real co-op** (after Tiers 2 and 3). Was T6.
+**F4 Host and clients: real co-op** (after T1.5 and Tiers 2 and 3). Was T6.
 - Confirm ARCHITECTURE.md section 9b against `prototypes/coop`.
 - Every networked object carries its `WorldKey`, and is sent only to clients on that world.
 
