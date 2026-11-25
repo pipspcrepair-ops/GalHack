@@ -1576,7 +1576,7 @@ Crashes, collisions, wind and liftoff live in one self-contained module with a f
 **Zones under the hood**
 
 - **One isolated world per live zone:** the host runs each zone with a player in it as its own Godot world (its own physics, scene and navigation). Only the zone the host is standing in is drawn; the others keep simulating. A small prototype must confirm that physics runs in worlds that aren't drawn.
-- **Limits:** up to 4 live zones on a player-hosted game, more on an always-on server. An empty zone stays live for about 2 minutes, so hopping between surface and orbit doesn't reload it every time.
+- **Limits:** up to 4 live zones on a player-hosted game, more on an always-on server. An empty zone is frozen at once (nothing in it ticks) but stays loaded for about 2 minutes, so hopping between surface and orbit doesn't reload it every time; then it is freed to its record (owner, 25 Nov).
 - **Precision:** the host pins each zone's physics origin at its centre. With the map wrapping both ways, nothing is ever more than half a map away on either axis (32 km east-west and 16 km north-south on the largest surface, about 2 mm precision), so no custom engine build is needed.
 - **Clients** load only their own zone, plus the destination during a transition. Every networked object carries a zone ID, so each player only receives what's in their zone.
 - **Ship cabins:** each occupied ship gets its own small private world for its cabin, released when the ship is empty and parked. This replaces the prototype's single ghost slot: no slot limits, no ghosts colliding, and passengers ride through zone changes untouched.

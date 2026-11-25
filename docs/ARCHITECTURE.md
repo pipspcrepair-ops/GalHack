@@ -69,7 +69,7 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
   - an occupied cabin on it;
   - a destination being prepared for a crossing, for up to its tunnel's length.
 
-  Bases, turrets, machines and parked ships never hold a world. A world with no points is frozen at once (owner: "there is literally no reason to have them active in memory"). It may stay loaded but frozen for a short grace, so hopping between surface and orbit doesn't regenerate it (the grace length is an open question, section 11). After that it is freed to its record.
+  Bases, turrets, machines and parked ships never hold a world. A world with no points is frozen at once (owner: "there is literally no reason to have them active in memory"). It stays loaded but frozen for about 2 minutes (owner, 25 Nov), so hopping between surface and orbit doesn't regenerate it. Nothing in it ticks during that time. Then it is freed to its record.
 - **Several points on one world:** streaming, wildlife, weather hazards and places run around each point, not one `Focus`. *(A-R2.)*
 - **Frames:** the host simulates each world in one fixed frame centred on the zone (DESIGN.md 1580: pinned origin, the map wraps, about 2 mm precision). Simulation positions never shift. Only clients offset what they draw. An orbit zone's size is limited so precision holds. *(A-2.2, A-4.6.)*
 - **Cabins:** each occupied ship's cabin is its own world (DESIGN.md 1582), made when a sleeper boards and freed when the ship is empty and parked. It isn't made for every vessel; today every vessel, wrecks included, builds a `CabinWorld` (Vessel.cs:406-409).
@@ -284,9 +284,9 @@ Reject a change that:
 3. **Co-op players can be any distance apart,** systems apart included, and it must not matter. The world model has no shared frame, focus or "system you are in". The host's cost is set by how many worlds are occupied (section 2b), not by distance.
 4. **Each sleeper has their own numbered cryopod and locker,** four in all, so co-op is up to four sleepers. Each pod is its sleeper's wake point and first respawn record. Each locker is a Sleepers-faction container labelled with its sleeper. Today only one pod is alive and only `Pods[0]` is a locker (structure A-6.3).
 
-**Still open:**
-1. **The grace before a frozen world is freed.** DESIGN.md 1579 says an empty zone "stays live for about 2 minutes". Under decision 1 it would stay *loaded but frozen* for that time, so hopping between surface and orbit doesn't regenerate it, and DESIGN.md 1579 gets reworded to match. Keep a grace, and how long?
-2. **The engine options in section 2b.** These come after the step 2a prototype measures the cost.
+5. **A frozen world stays loaded for about 2 minutes before it is freed,** so hopping between surface and orbit doesn't regenerate it. It is frozen the whole time and nothing ticks. DESIGN.md "Zones under the hood" is reworded to match.
+
+**Still open:** the engine options in section 2b. These come after the step 2a prototype measures the cost.
 
 ## 12. Order of work
 Each step is a root fix, merged green with its checks, and gated on this doc's approval. A replacement merges only with the deletion of what it replaces. No step leaves the game broken.
