@@ -334,6 +334,21 @@ Each unifies a job and deletes the copies.
 - **Builds:** one interface for `Structure` and `Place`.
 - **Unifies:** the three door systems, the two collapse rules and the copied cache-making.
 - **Makes:** flavour ruins into Places.
+- **A surface query on the interface:** ray to the real wall, solid behind, open floor in front. Its consumers:
+  - creature cracks and lairs, which today are placed from room boxes and float (`WallCrack`, PoiFauna.cs:935; CaveFauna.cs:51; drawn by shared/Bestiary/View/DeepView.cs:205-233);
+  - the owner's planned real holes;
+  - the worm masses, which do this ad hoc today (PoiFauna.cs:957 `Root`, :980 `Faces`, through `ISolidSpace`/`SpaceMath`).
+
+  Creature cracks stay their own nodes, never part of the damage look.
+- **Wear drawn once.** Place cracks are baked into the place mesh at generation, not driven by HP:
+  - weak-wall strokes, poi-generator Gen/Mesher.cs:914;
+  - the crack round an unsafe floor, Gen/Arch/BuildingRooms.cs:400;
+  - age cracks, View/MeshBuild.cs:1249.
+
+  Structures draw damage from HP (building Structures/Damage.cs, Presentation/ChunkMesher.cs). Proposed: age wear becomes a starting damage state drawn by the one damage look, so nothing is drawn twice. *(Owner to confirm.)*
+- **Keep:** the hidden-room cracked panel, a secret wall with its own HP (PoiPlaces.Interact.cs:116, :180, :303; Place.Fixtures.cs:334, its draft dust). It survives the merge into one door, cache and collapse path.
+- **Keep for later, untouched:** the in-wall crack network (Brain.Deep.cs:160-200, travel within 60 m). The colony half (PoiFauna.cs:176-198) may be superseded by the 24 Nov "insects are decoration" rule.
+- **Part-work:** proto/nocracks acea648c, untested and not merged. Re-cut from test-build if it's used.
 - **Closes:**
   - SA B-B3, B-B11 to B-B13;
   - **A DOOR WON'T OPEN AGAIN** (the bunker door), **WINDOWS LET YOU THROUGH**, **CORE STRUCTURE DOOR ANIMATION** (17 Nov);
