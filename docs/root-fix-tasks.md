@@ -98,7 +98,8 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 - **Sorts the known flaky and old failures** into a list with causes, so they don't hide new ones:
   - SleeperToolTest fails different checks each run (the door; 8 core-aim fails, likely a rebuild mid-run; tree felling);
   - WeaponTest "the burnt one is frightened" fails 1 in 102;
-  - OrbitTest's two body-direction fails (0.46°) are older and unrelated.
+  - OrbitTest's two body-direction fails (0.46°) are older and unrelated;
+  - MoonTest fails "it crossed into orbit" on some worlds, on clean code too: the Skiff climbs at only about 5 m/s and stalls near 6.8 km (playtest-list.md 875). Its cause is traced in T2.8c, which owns the climb.
 - **Closes:** TC.
 - **Rule for every later task:** its first step writes failing checks for the findings it closes, off the starter. It merges when they pass. Checks aren't written for all findings up front, because some need harness features that come later (two sleepers in T2.3, save and reload in T3.3).
 
@@ -125,7 +126,7 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 ---
 
 ## Tier 1: small root fixes for live bugs
-Independent of each other once Tier 0 is in.
+Independent of each other once Tier 0 is in. T1.5 is the exception: it needs only T0.5, so it can start as soon as the gate is in.
 
 **T1.1 A per-world build context instead of statics** (M, high effort)
 - **Replaces:**
@@ -177,6 +178,13 @@ Independent of each other once Tier 0 is in.
   - SA C-G1 (empty stand-in wildlife and weather).
 - **Proof:** the world probe passes on every body. Shots step in orbit. A missing system throws in tests.
 
+**T1.5 The same seed builds the same world** (M, high effort; after T0.5, so its check runs in the merge gate)
+- **Today:** the world fingerprint test (`SurfaceTest --only=Dump`, 13 Nov) found city planning giving a different city, lots and grounds for the same seed on two runs: 2 of 12 worlds at 16 km and 1 of 4 at 64 km. Storage keeps only the seed and the changes (ARCHITECTURE.md 4b), so a world that rebuilds differently puts its saved changes on the wrong things. Co-op (F4) needs every machine to build the same world too.
+- **Finds and fixes the cause:** a step that depends on run order, time or threads (worker completion order, hash or dictionary order, a shared random stream drawn from more than one thread, the clock). Fixed at that step, not by retrying until two runs agree.
+- **Not this task:** seeds that change when the generator's order changes (SA 5.2: `SpawnSeed = rng.NextU64()` during placement). That is T3.1's seed helper. This task is the same code giving two answers.
+- **Closes:** playtest "Worlds are not deterministic" (playtest-list.md 585).
+- **Proof:** every fresh seed is built twice and fingerprinted, on the start world, a moon and another star's world, at 16 and 64 km, with random seeds each run. The check joins the merge gate (T0.5), so no later task can bring the drift back.
+
 ---
 
 ## Tier 2: the world model
@@ -199,7 +207,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 **T2.3 Sleepers, the four cryopods and the local view** (L, high effort; depends on T1.2)
 - **Builds:** a `Sleeper` object owning body, suit, pack, progress, tools, shots' `Source`, death bag and the open container. `Game` holds the list and "the local sleeper".
 - **Replaces:** `Game.Survivor` in simulation code: wildlife's one `Player`, towns' one "you", shots' `owner == 0` and static `You`, the crossing's `Carrier()`, death and aftermath.
-- **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4).
+- **Also:** all four cryopods are live, each the wake point and first respawn of its own sleeper, with its own locker (owner decision 4). Respawn is per sleeper, not hard-wired to the bunker (decided-vs-built.md 2.2). The other respawn choices there (home base, clone chamber, tent) are features built on this later.
 - **One breather model**, not a rule owned by the sleeper's suit (hold, tank, suffocation, from survival-vitals/data/vitals.json). Built for sleepers now, in a shape people can use later. Today a closed town room gives people air but not the sleeper: `Suit.InSealedRoom` (Suit.cs:43) is set only by RoomAir.
 - **Closes:** SA A-R1 (A-1.1 to 1.9), A-6.3; `Harness.AddSleeper` goes live.
 - **Proof:** two sleepers on one world are both targeted, hurt, credited and saved. Each wakes in their own pod.
@@ -211,6 +219,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - A world with no points freezes at once (owner). It stays loaded and frozen until T3.4. Freeing comes only once the change record (T3.2) and the safe ledger (T3.3) can bring it back as it was.
   - **A world with an interest point is never freed.** Today `FreeAbroad` (Fold.cs:288, :303) frees every other star's system on every fold, so a second sleeper's fold would free the first sleeper's star.
   - Simulation size comes from game settings, not a client's display sliders.
+  - **Making a world ready never costs one long frame.** Approaching the moon today gives one frame of 18 to 24 ms when its terrain streamer is set up (`TerrainStreamer.SetWorld`, playtest-list.md 838). Setting up a world's streaming is split across frames, within the budget T0.4 sets.
 - **Replaces:**
   - the one `Focus` and one weather `Observer`;
   - `Streamer.CollisionRadius` set from one sleeper (Game.cs:925);
@@ -250,7 +259,9 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Builds:** `PoiPlaces`, `RuinLoot`, `Hulks`, `SkyTraffic`, `Caves` and `Underworld` made with each world, not once on the starter. The starter's bunker gets no special rules.
 - **Closes:**
   - OW#3, #18, #20; SA C-E1 to E3;
-  - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places.
+  - InsideTest `--unseen` "nothing of a cave's sim in a place's dug rooms", which fails on plain batch2 (18 Nov): caves and the underworld bleed into places;
+  - **creatures spawn right beside your base** (decided-vs-built.md 1.7): the no-spawn radius round bases exists in the wildlife prototype (`prototypes/wildlife/src/Core/Structures.cs:42`, `WildSim.cs:157`), but the slice never registers its bases with the wildlife sim. Every base on a world registers with that world's wildlife, as towns do;
+  - the lone trader or scout (playtest-list.md 739) comes from `SkyTraffic`, which is made once on the starter today. Made with each world, every world gets its traffic by rule (ARCHITECTURE.md 2: NPC traffic is placed on a world when it is made).
 - **Caves and undergrounds per world** (line numbers from test-build):
   - **The bunker becomes a stamp.** Delete `Keep` and the bunker rules (`Game.Places.cs:64-65`; consumed at `PlaceFauna.cs:571, 639, 704`). Part of the cave bleed is already fixed: 4acacb45 makes `LoadedVoxels` read `PlanetTerrainSource.Dug` as rock. Rerun InsideTest `--unseen` first to see what still fails.
   - **`Underworld` serves every underground on a world,** not only the start town's (`Underworld.cs:68`, :102). `IncidentalTest.cs:206-211`, which asserts the starter, is rewritten.
@@ -283,6 +294,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 - **Moves:** each vessel's jump, target and fold destination onto the vessel, replacing `Spaceflight.Jumping`, `Target` and `FoldTo` (Jump 282, Warp 308 and Fold 506 lines; WarpTest has about 260 checks).
 - **Rules:** only the command-chair pilot cancels, with J, during the spool only. Everyone aboard gets the spool warning (owner, 25 Nov).
 - **Proof:** two sleepers jump their own ships to different stars at once.
+- **Lines up with INTERSTELLAR TRAVEL** (playtest-list.md 704; rules in solar-systems.md section 8). Before T2.8a to c and T2.9 are briefed, that entry's open jobs are checked against them, so jumps are built once, on this design.
 
 **T2.8b The transit world** (M, high effort; depends on T2.8a, T2.7 (passengers read `Outside`, which becomes the transit world))
 - **Builds:**
@@ -299,7 +311,7 @@ In slices, each merged on its own, within the budgets T0.4 set.
 **T2.8c The climb and descent between surface and orbit** (M, high effort; depends on T2.8a, T2.7)
 - **What:** the seam (Spaceflight.Seam.cs, 621 lines) becomes a vessel `Move`, like warp and fold.
 - **Its view half goes under rule 12:** the sky fade, the environment swap, the wreck fade through `GeometryInstance.Transparency`, the sky's `eye_lift` and `HoldSurfaceBehind`.
-- **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's.
+- **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's. MoonTest's climb into orbit passes on fresh worlds (see T0.3).
 
 **T2.9 The galaxy from the game seed** (M, medium effort; depends on T0.1a only, so it runs beside Tiers 1 and 2; before T3.1)
 - **Builds:** the galaxy made from the game seed, with the start star and body chosen in it.
@@ -341,7 +353,7 @@ Needed before star travel ships and before saves. T3.1 starts as soon as T2.9 is
   - a record whose world won't load goes to the faction's last base;
   - devices restored;
   - records dirty-tracked and written in pieces off the main thread.
-- **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live.
+- **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live. With T3.2 this is the save system: playtest "Saves" (playtest-list.md 915; the saves prototype isn't in the slice) is closed by these two, not built apart.
 - **Proof:** crash at every step of a park, a free, two crossings at once and a jump mid-tunnel (it reloads where the jump began). Every count matches on reload.
 
 **T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3, T2.4, and T2.5 and T2.6, which remove the roughly 20 starter holds)
@@ -440,7 +452,7 @@ Each unifies a job and deletes the copies.
 - **Builds:**
   - one `WorldEvent`, which audio, AI hearing (`Noise`, `Gunfire`), visor cues and effects all subscribe to;
   - the four voice pools brought to one set of rules;
-  - one `Markers(world, viewer)` source, keeping the owner's 17 Nov marker rule.
+  - one `Markers(world, viewer)` source, keeping the owner's 17 Nov marker rule. The playtest marker entries (playtest-list.md 804 to 807, 817: markers on the thing, discovered POIs, scanner pings) are built on this source, not each on their own.
 - **Closes:** SA B-B21 to B-B24.
 - **Proof:** a fuel drum is heard by creatures and towns and shows on the visor. One marker shows the same in all three views.
 

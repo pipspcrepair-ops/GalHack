@@ -168,6 +168,7 @@ Owner decisions, 25 Nov.
 - **`WorldKey`** is a typed value: game seed, star key (from the star's seed), body's orbital path, and layer (surface, orbit, cabin, rock). Code reads its fields. It is never parsed from a string. Today's `StartsWith` checks on zone names go (ZoneLedger.cs:284, Fold.cs:440), as do the `"b"+index`, `moon<index>` and `star<n>` names. It is stable across generator changes that don't move the body.
 - **The ID of anything that lasts** = `WorldKey` + a generation key (site seed, cell, species and spawn slot) or a counter kept in the world record. This covers places, caches, creatures worth remembering, structures, containers, devices, marks and discoveries. Maps that persist are keyed by ID. Runtime caches keyed by reference are rebuilt from IDs.
 - **One seed helper:** `Seed(worldKey, siteId, purpose, …)`. Every persistent roll goes through it. *(Fixes structure A-5.1, the same loot in every copy of a layout.)*
+- **The same seed always builds the same world,** on every run and every machine. Storage keeps only the seed and the changes, so a world that rebuilds differently puts its changes on the wrong things. No generation step may depend on run order, time or threads. The fingerprint check (build twice, compare) runs in every merge gate. *(Today city planning differs between runs on some seeds: root-fix task T1.5.)*
 - **Change record per world:**
   - Terrain edits per chunk; for a rock field, one record keyed by rock ID, written only for rocks that were touched.
   - Felled plants, mined deposits, deaths, place memory (doors, damage, loot taken), salvage progress, standing changes, things set down.
@@ -332,6 +333,7 @@ Reject a change that:
 - writes a second implementation of a job in section 6, or merges a replacement without deleting the old;
 - compares an ID or name string to decide behaviour, or parses a world key or ID from a string;
 - makes an ID, seed or stored position without the `WorldKey`;
+- makes world generation depend on run order, time or threads (the fingerprint check fails);
 - uses `?.` on a system;
 - removes a ledger record without its holder reporting it destroyed;
 - patches one case of a rule instead of fixing the rule.
@@ -361,7 +363,8 @@ Each step is a root fix, merged green with its checks, and gated on this doc's a
 1. **Statics, attach and settings:**
    - a per-world build context in place of the statics (structure S3), which fixes "every world is built as a start world" and the forced roll everywhere;
    - `Attach`/`Detach` with handles (S4), which fixes the weather leak and the shots' frame shift;
-   - one settings object (S5).
+   - one settings object (S5);
+   - the same seed builds the same world (task T1.5).
 2. **The world model,** in slices:
    - **2a.** Each world its own Godot world (rule 2). First a prototype per DESIGN.md 1578: 2 to 4 worlds simulating, one drawn, measured on the minimum-spec stand-in. It sets section 2b's budget and thread plan, and the engine options go to the owner.
    - **2b.** The sleeper list and the four cryopods, then interest points, then the places stack per world, then player-claimed systems reading `thing.World`: suit, tools, BuildTool, arms, doors, bikes, effects, compass. Each slice merges on its own, green on the harness off the starter.
