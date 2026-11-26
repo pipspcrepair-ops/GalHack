@@ -49,6 +49,11 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     readonly List<Emitter> _emitters = new();
     Emitter _rain, _snow, _dust, _motes;
     GpuParticles3D _splash;
+    ShaderMaterial _drops, _dropDraw, _haze;
+    MeshInstance3D _hazeNode;
+    readonly Vector2[] _windSamples = new Vector2[WindSamples];
+    const int WindSamples = 16;
+    const float WindStep = 10f, DropFall = 9f;
     GpuParticlesCollisionHeightField3D _stops;
     float _windTravel, _stopsTimer;
     double _lastStep = -1;
@@ -198,7 +203,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     }
 
     /// <summary>What falls stops on whatever is there (ground, roofs, ships, water): there is no other cover check.</summary>
-    public bool FallStopsOnContact => _rain?.Process.CollisionMode == ParticleProcessMaterial.CollisionModeEnum.HideOnContact && _stops != null;
+    public bool FallStopsOnContact => _rain?.Node.ProcessMaterial == _drops && _snow?.Process.CollisionMode == ParticleProcessMaterial.CollisionModeEnum.HideOnContact && _stops != null;
 
     /// <summary>How far over the eye the drops start, metres: above any ordinary roof, and half their life up.</summary>
     const float RainSheet = 16f;
@@ -241,18 +246,34 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         };
         AddChild(_stops);
         _splash = AddSplash();
-        // Fine soft streaks, of many lengths and brightnesses, that only come in a few metres from the eye.
-        // Each starts on one sheet well overhead: a drop born under a roof would die, and splash, in mid-air.
-        _rain = AddEmitter("Rain", 3400, 2.2f, new Vector3(18, 0.5f, 18), new Vector3(0, RainSheet, 0),
-            new QuadMesh { Size = new Vector2(0.03f, 0.8f) }, new Color(0.82f, 0.88f, 0.94f, 0.5f), billboard: false, Streak());
-        _rain.Process.ScaleMin = 0.5f;
-        _rain.Process.ScaleMax = 1.35f;
-        _rain.Process.ColorInitialRamp = new GradientTexture1D { Gradient = new Gradient { Colors = new[] { new Color(1, 1, 1, 0.22f), new Color(1, 1, 1, 0.6f), new Color(1, 1, 1, 1f) }, Offsets = new[] { 0f, 0.6f, 1f } } };
-        _rain.Draw.DistanceFadeMinDistance = 1.2f;
-        _rain.Draw.DistanceFadeMaxDistance = 5f;
+        // Many faint thin streaks close to the eye (raindrops.gdshader moves each by its fall and the wind where
+        // it is); past them the haze shells take over. Each starts on one sheet well overhead: a drop born
+        // under a roof would die, and splash, in mid-air.
+        _drops = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/raindrops.gdshader") };
+        _drops.SetShaderParameter("box", new Vector3(14f, 0.5f, 14f));
+        _drops.SetShaderParameter("fall", DropFall);
+        _dropDraw = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/raindrop_draw.gdshader") };
+        _dropDraw.SetShaderParameter("streak", Streak());
+        var drops = new GpuParticles3D
+        {
+            Name = "Rain", Amount = 4200, Lifetime = 2.3f, Preprocess = 2.3f, ProcessMaterial = _drops, DrawPass1 = new QuadMesh { Size = new Vector2(0.012f, 0.38f) },
+            MaterialOverride = _dropDraw, LocalCoords = false, AmountRatio = 0f, Visible = false, CollisionBaseSize = 0.05f,
+            VisibilityAabb = new Aabb(new Vector3(-60, -40, -60), new Vector3(120, 80, 120)),
+            TransformAlign = GpuParticles3D.TransformAlignEnum.ZBillboardYToVelocity, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(drops);
+        _rain = new Emitter { Node = drops, Offset = new Vector3(0, RainSheet, 0) };
+        _emitters.Add(_rain);
         _rain.Node.SubEmitter = _rain.Node.GetPathTo(_splash);
-        _rain.Process.SubEmitterMode = ParticleProcessMaterial.SubEmitterModeEnum.AtCollision;
-        _rain.Process.SubEmitterAmountAtCollision = 1;
+        _haze = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/rainhaze.gdshader") };
+        _haze.SetShaderParameter("fall", DropFall);
+        _hazeNode = new MeshInstance3D
+        {
+            Name = "RainHaze", Mesh = new BoxMesh { Size = Vector3.One * 2f }, MaterialOverride = _haze, Visible = false,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
+            CustomAabb = new Aabb(Vector3.One * -1e5f, Vector3.One * 2e5f),
+        };
+        AddChild(_hazeNode);
         _snow = AddEmitter("Snow", 3200, 2.5f, new Vector3(16, 7, 16), new Vector3(0, 6, 0),
             new QuadMesh { Size = new Vector2(0.06f, 0.14f) }, new Color(1.3f, 1.35f, 1.45f, 1f), billboard: false);
         // Blowing dust: a low haze of big soft banks, drifting and slowly turning, and a few motes in it.
@@ -535,7 +556,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         // Nothing of the sky reaches under the water or a sealed room. Everywhere else it falls until it hits something.
         float open = SkyAtEye;
         Vector3 wind = Sim.WindAt(camera);
-        Drive(_rain, RainHere * open, wind + Vector3.Down * 14f, camera);
+        DriveRain(RainHere * open, camera);
         Drive(_snow, MathF.Max(c.Snow, c.Embers * 0.5f) * open, wind * 0.9f + Vector3.Down * 2.2f, camera);
         Drive(_dust, c.Dust * open, wind * 0.8f, camera);
         Drive(_motes, c.Dust * open, wind + Vector3.Up * 0.25f, camera);
@@ -615,6 +636,46 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         var emitter = new Emitter { Node = node, Process = process, Draw = draw, Offset = offset };
         _emitters.Add(emitter);
         return emitter;
+    }
+
+    /// <summary>
+    /// The rain's share and its wind: the sim's own wind sampled along the mean wind's way through the
+    /// camera, which the drops and the haze both read, so a gust front crossing the ground sweeps the
+    /// rain with it. The drops are born upwind by half a lifetime of drift.
+    /// </summary>
+    void DriveRain(float amount, Vector3 camera)
+    {
+        bool on = amount > 0.005f;
+        _rain.Node.AmountRatio = Mathf.Clamp(amount, 0f, 1f);
+        _rain.Node.Visible = on;
+        _hazeNode.Visible = on;
+        if (!on) return;
+        Vector2 mean = Sim.Current.Wind;
+        Vector2 axis = mean.Length() > 0.01f ? mean.Normalized() : Vector2.Right;
+        var flat = new Vector2(camera.X, camera.Z);
+        float origin = flat.Dot(axis) - WindStep * (WindSamples - 1) * 0.5f;
+        Vector2 across = flat - axis * flat.Dot(axis);
+        for (int i = 0; i < WindSamples; i++)
+        {
+            Vector2 at = across + axis * (origin + i * WindStep);
+            Vector3 w = Sim.WindAt(new Vector3(at.X, camera.Y, at.Y));
+            _windSamples[i] = new Vector2(w.X, w.Z);
+        }
+        Color haze = Zone.Sky.Environment.FogLightColor;
+        Color sky = haze.Lerp(Colors.White, 0.15f) * (0.35f + 0.65f * Zone.Sky.Daylight);
+        foreach (ShaderMaterial m in new[] { _drops, _haze })
+        {
+            m.SetShaderParameter("wind_axis", axis);
+            m.SetShaderParameter("wind_origin", origin);
+            m.SetShaderParameter("wind_step", WindStep);
+            m.SetShaderParameter("wind_samples", _windSamples);
+        }
+        _dropDraw.SetShaderParameter("sky_light", sky);
+        _haze.SetShaderParameter("sky_light", sky);
+        _haze.SetShaderParameter("amount", Mathf.Clamp(amount, 0f, 1f));
+        _hazeNode.GlobalPosition = camera;
+        Vector2 drift = mean.Length() > DropFall ? axis * DropFall : mean;
+        _rain.Node.GlobalPosition = camera + _rain.Offset - new Vector3(drift.X, 0f, drift.Y) * ((float)_rain.Node.Lifetime * 0.5f);
     }
 
     /// <summary>An emitter's share, velocity and box: upwind of the camera by half a lifetime of drift.</summary>
