@@ -1170,10 +1170,11 @@ Hostile fire is deadly when it lands: a capital-class turret will vaporise a pla
 | Capital T1 / T2 | 18,000 / 36,000 | Capital vessels |
 | Base T1 / T2 | 25,000 / 50,000 | Bases |
 
-- **Shield fields are ovaloid and local** (owner, 26 Nov). Each shield generator projects an ovaloid field around itself; parts of a ship outside every field are unprotected, and hits there land on blocks and devices directly. Big ships carry several shield generators to cover their length. If two fields overlap, every shield projector involved breaks at once, so generators must be spaced to fit together without touching.
-- Shields take about 15 s to come up, don't recharge while under fire (a short delay after each hit), and burn fold crystal while recharging.
+- **Shield bubbles** (owner, 12 Nov; one-metre-grid.md, Shields). A shield generator puts an ovaloid bubble around itself, and the bubble takes hits before the plating. Switched on, it builds up rapidly on power; a hit subtracts and it keeps rebuilding. Reaching 0 or below **fries the generator**, which must be repaired before it works again. It stops lasers, rockets and similar fast projectiles, but not shots fired inside the bubble or collisions with ships and structures.
+- **Several shields per ship, as long as their bubbles don't touch** (owner, 12 Nov). Big ships carry several to cover their length; parts outside every bubble are unprotected, and one fried generator exposes only its own area. **Bubbles that touch fry every shield generator involved**, wherever they meet: two on your own ship, or yours and another ship's.
+- Recharging burns fold crystal (shared/Items/data/power.json). The 15 s cooldown after a shield breaks, and no recharge under fire, are replaced by the 12 Nov rule above: a shield keeps rebuilding under fire, and at 0 its generator is fried until repaired.
 - Every weapon has a shield-damage multiplier: plasma strips shields, rockets punish hull and devices.
-- At zero shield HP, hits land on blocks and devices. Shield extenders and charged armor raise capacity.
+- With the generator fried, hits in its area land on blocks and devices. Shield extenders and charged armor raise capacity.
 - Shields must be down to warp, and the player can't add blocks while a shield is up, so retreating and repairing are both commitments.
 
 **Disabling instead of destroying**
