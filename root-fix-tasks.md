@@ -12,6 +12,12 @@
 - worlds only freeze in T2.4 and are freed in T3.4;
 - each task writes its own failing checks first.
 
+**Reordered 26 Nov (owner): core before saving.**
+- World memory (T3.1b, T3.2, T3.4) and the transit world (T2.8a, T2.8b) are core and stay in place.
+- The climb and descent (T2.8c) and the saved game (T3.3b) move after Tier 5, under "After the core", because nothing in the core needs them.
+- T3.4 and T4.4 no longer wait on T3.3b. T4.4's save proof moves to T3.3b.
+- Tier 4 can now run beside Tier 3, since it needs only Tier 2.
+
 **How to read it:**
 - **Order:** work top to bottom. The list is in build order: every task comes after everything it needs, so nothing waits on a task written below it. A task starts only when the tasks it depends on have merged. Tasks in the same tier with no dependency on each other can run side by side, about 3 agents at once.
 - **Each task gives:**
@@ -375,16 +381,11 @@ In slices, each merged on its own, within the budgets T0.4 set.
   - **nothing arrives Frozen.** The tunnel's `Hold` (Jump.cs:169) once left ships arriving "landed". ae0d775b's wake-on-turn covered it, but the root (`CheckLanding` settling after the hold) was never traced.
 - **Note:** "a crash mid-tunnel reloads at the start" is proven in T3.3b.
 
-**T2.8c The climb and descent between surface and orbit** (M, high effort; depends on T2.8a, T2.7, T3.3a)
-- **What:** the seam (Spaceflight.Seam.cs, 621 lines) becomes a vessel `Move`, like warp and fold.
-- **Its view half goes under rule 12:** the sky fade, the environment swap, the wreck fade through `GeometryInstance.Transparency`, the sky's `eye_lift` and `HoldSurfaceBehind`.
-- **Replaces:** the one pending crossing (`Pending _pending`, Spaceflight.cs:82-83) with one per vessel.
-- **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's, and every count matches afterwards for both (through T3.3a's queue).
 
 ---
 
 ## Tier 3: identity, records and the safe ledger
-Needed before star travel ships and before saves. T3.1a and T3.3a are listed in Tier 2, before the jumps: T3.1a can start as soon as T2.9 is in, and T3.3a needs it, because the jumps' proofs cross two sleepers at once. T3.1b follows T2.4. T3.2 onward follow T2.4.
+World memory: worlds freed to their records, the start system included (owner, 26 Nov: core). T3.1a and T3.3a are listed in Tier 2, before the jumps: T3.1a can start as soon as T2.9 is in, and T3.3a needs it, because the jumps' proofs cross two sleepers at once. T3.1b follows T2.4. T3.2 onward follow T2.4. Freed worlds live in memory as records until T3.3b saves them, which comes after the core.
 
 **T3.1b References across worlds as IDs** (M, high effort; depends on T3.1a, T2.3 and T2.4, because references are resolved through the world manager)
 - **Builds:** the Sleepers faction's index of claimed things (structures, vessels, bags) by ID.
@@ -400,32 +401,17 @@ Needed before star travel ships and before saves. T3.1a and T3.3a are listed in 
 - **Closes:** OW#7, SA B-B10 (salvage resets), A-6.4.
 - **Proof:** leave a star, come back, and every change is as left, with the sky and timers moved on by the time away.
 
-**T3.3b Crash safety and the saved game** (L, high effort, 3 slices: crash points and reload; the game, faction and sleeper records with loading a game; the remaining structure records; depends on T3.2 (the per-world records), T2.4 (the galaxy clock), T3.3a, T3.1a, T3.1b (the faction's index of claimed things by ID), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
-- **Builds:**
-  - the records ARCHITECTURE.md 4b lists that nothing writes today: `game` (seed, galaxy clock, mode and settings, the sleepers), `faction` (charts, standing, the index of claimed things by ID), `sleepers/<id>` (vitals, pack, progress and tech, world key and place, or cabin) and `manifest`. Today the ledger's sleeper record holds only the pack contents (Spaceflight.cs:687);
-  - loading a game from disk;
-  - force field state (powered, field HP) saved with its vessel, which nobody has checked yet;
-  - each room's air (oxygen, temperature, time unpowered; T4.4 adds pressure) saved with its structure;
-  - a record whose world won't load goes to the faction's last base;
-  - devices restored;
-  - records dirty-tracked and written in pieces off the main thread.
-- **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live. With T3.2 this is the save system: playtest "Saves" (playtest-list.md, "Saves"; the saves prototype isn't in the slice) is closed by these two, not built apart.
-- **Proof:**
-  - crash at every step of a park, a free, two crossings at once and a jump mid-tunnel (it reloads where the jump began); every count matches on reload;
-  - quit and load: the clock, mode, charts and standing, and each sleeper's vitals, level, tech, pack and world all match;
-  - two sleepers are both saved and both come back;
-  - **ships nested three deep** (a shuttle in a frigate in a carrier, with loose cargo in each) come back nested with every count matching, after a save and reload and after their cabins are freed and made again.
-
-**T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3a, T3.3b, T3.1b (nothing may hold a freed world's objects), T2.4, and T2.5 and T2.6, which remove the roughly 20 starter holds)
+**T3.4 The start system like any other** (M, medium effort; depends on T3.2, T3.3a, T3.1b (nothing may hold a freed world's objects), T2.4, and T2.5 and T2.6, which remove the roughly 20 starter holds)
 - **Builds:** freeing for every world: a frozen world stays loaded about 2 minutes, then is freed to its record, with a full collection spread over frames so its memory comes back (ARCHITECTURE.md 2b).
 - **Deletes:** `ParkHome`. The start system is frozen, kept about 2 minutes and freed like any star's.
+- **No longer waits on T3.3b** (owner, 26 Nov). A world is freed to its in-memory record (T3.2) and rebuilt from it. Crash points for park and free come with T3.3b, whose proof already crashes at every step of a park and a free. The agent checks, when briefed, that freeing needs nothing else from T3.3b.
 - **Closes:** rule 3, OW risk 7.
 - **Proof:** fold away, come back, and the start world is as you left it. A sleeper who dies at another star after the start world was freed wakes in their pod, with their locker intact. Freeing a world gives its memory back to T0.4's freed figure, with no frame over budget.
 
 ---
 
 ## Tier 4: one path per job
-Each unifies a job and deletes the copies.
+Each unifies a job and deletes the copies. Tier 4 needs only Tier 2, so it runs beside Tier 3 (26 Nov).
 
 **T4.1 Harm** (L, high effort, 2 slices; depends on T2.2 and T2.5, because both rewrite ArmsHost. Its arms part may fold into T2.5's arms slice instead.)
 - **Builds:** one `Harm` event and an adapter per target kind, with one falloff and one health unit.
@@ -483,7 +469,7 @@ Each unifies a job and deletes the copies.
   - SA C-F (four definitions of a wreck).
 - **Proof:** the same block gives the same yield on the ground and in orbit.
 
-**T4.4 Shelter and air: air volumes like cabin worlds** (L, medium effort, 4 slices: volumes and the `Exposure` query; nesting and openings; life support on the power model; the bunker and the shelter tests; depends on T4.2, T1.4 for the world's air, T2.7 for ships' cabins, and T3.3b, which saves the rooms' air)
+**T4.4 Shelter and air: air volumes like cabin worlds** (L, medium effort, 4 slices: volumes and the `Exposure` query; nesting and openings; life support on the power model; the bunker and the shelter tests; depends on T4.2, T1.4 for the world's air, and T2.7 for ships' cabins; saving the rooms' air, pressure included, is proven in T3.3b)
 - **The model (owner, 25 Nov: air follows the cabin worlds' logic).** A ship owns its cabin world and anything aboard reads the cabin, then `Outside`. Air works the same way:
   - **every sealed volume owns its air:** a ship's or base's room, a closed room in a place, the bunker. It holds oxygen, temperature and pressure, and is kept with its structure or place;
   - **volumes nest:** each has a parent, another volume or the world's own air. A ship parked inside a sealed base room reads that room, which reads the planet;
@@ -501,7 +487,7 @@ Each unifies a job and deletes the copies.
   - a ship parked inside a sealed base room on an airless moon reads the room's air;
   - **three deep:** a sleeper in a shuttle with no air of its own, inside a frigate with its life support off, inside a powered carrier, reads the carrier's air. Opening the carrier's bay in orbit drains all three in turn;
   - with life support powered, a sealed room on an ice world or a lava world eases to full oxygen and 20 °C; with it off, the room holds, then drifts to the outside's;
-  - a room's air is the same after a save and reload. T4.4 adds pressure to the room record T3.3b saves.
+  - T4.4 adds pressure to the room record. That a room's air is the same after a save and reload is proven in T3.3b.
 
 **T4.5 Ground, gravity and vehicles** (L, high effort, 3 slices: the gravity rule; the `Ground` service and the cave sims' one ground source; the bike and the seated state; depends on T2.2, T2.5 (the bike and digging moved per world), T2.7 (when cabins exist), T4.1 (`ArmsHost.SolidHit` rewritten) and T4.4, whose "what am I inside" lookup it reads)
 - **Builds:**
@@ -566,6 +552,34 @@ Each unifies a job and deletes the copies.
 
 ---
 
+## After the core: climb and descent, and saving
+These come after Tiers 1 to 5 (owner, 26 Nov): nothing in the core needs them, and no reported bug waits on them. Until T3.3b, a crash or a quit loses the session, as today.
+
+**T2.8c The climb and descent between surface and orbit** (M, high effort; depends on T2.8a, T2.7, T3.3a)
+- **What:** the seam (Spaceflight.Seam.cs, 621 lines) becomes a vessel `Move`, like warp and fold.
+- **Its view half goes under rule 12:** the sky fade, the environment swap, the wreck fade through `GeometryInstance.Transparency`, the sky's `eye_lift` and `HoldSurfaceBehind`.
+- **Replaces:** the one pending crossing (`Pending _pending`, Spaceflight.cs:82-83) with one per vessel.
+- **Proof:** two sleepers climb and descend at once on one world without either's view affecting the other's, and every count matches afterwards for both (through T3.3a's queue).
+
+**T3.3b Crash safety and the saved game** (L, high effort, 3 slices: crash points and reload; the game, faction and sleeper records with loading a game; the remaining structure records; depends on T3.2 (the per-world records), T2.4 (the galaxy clock), T3.3a, T3.1a, T3.1b (the faction's index of claimed things by ID), T2.4 (parking and freeing) and T2.8b (its proof crashes mid-tunnel))
+- **Builds:**
+  - the records ARCHITECTURE.md 4b lists that nothing writes today: `game` (seed, galaxy clock, mode and settings, the sleepers), `faction` (charts, standing, the index of claimed things by ID), `sleepers/<id>` (vitals, pack, progress and tech, world key and place, or cabin) and `manifest`. Today the ledger's sleeper record holds only the pack contents (Spaceflight.cs:687);
+  - loading a game from disk;
+  - force field state (powered, field HP) saved with its vessel, which nobody has checked yet;
+  - each room's air (oxygen, temperature, time unpowered; T4.4 adds pressure) saved with its structure;
+  - a record whose world won't load goes to the faction's last base;
+  - devices restored;
+  - records dirty-tracked and written in pieces off the main thread.
+- **Closes:** OW#8, architecture review finding 3; `Harness.SaveAndReload` goes live. With T3.2 this is the save system: playtest "Saves" (playtest-list.md, "Saves"; the saves prototype isn't in the slice) is closed by these two, not built apart.
+- **Proof:**
+  - crash at every step of a park, a free, two crossings at once and a jump mid-tunnel (it reloads where the jump began); every count matches on reload;
+  - quit and load: the clock, mode, charts and standing, and each sleeper's vitals, level, tech, pack and world all match;
+  - two sleepers are both saved and both come back;
+  - a room's air, pressure included, is the same after a save and reload (moved from T4.4, 26 Nov);
+  - **ships nested three deep** (a shuttle in a frigate in a carrier, with loose cargo in each) come back nested with every count matching, after a save and reload and after their cabins are freed and made again.
+
+---
+
 # Built on the core: features, not fixes
 
 These came up during the reviews. They are **new behaviour or design work, not fixes to broken code**, so they are not part of the core work above. Each waits for the core tasks it names, then is briefed as its own feature, in whatever order the owner picks.
@@ -592,12 +606,12 @@ These came up during the reviews. They are **new behaviour or design work, not f
 **F3 Fire** (planned, not started).
 Fire (planned, not started) uses up a volume's oxygen through T4.4's air volumes. It is briefed only once these are in: T1.4 (wind and rain on every world), T2.7 (fire effects in the view only), T4.1 (burn damage through Harm), T4.2 (blocks and plants as burnable material), T4.4 (rain, wet and shelter put fire out), and T4.6 (crackle, smoke, AI hearing). Fire hits are never telegraphed.
 
-**F4 Host and clients: real co-op** (after T1.5 and Tiers 2 and 3). Was T6.
+**F4 Host and clients: real co-op** (after T1.5, Tiers 2 and 3, T2.8c and T3.3b). Was T6.
 - Confirm ARCHITECTURE.md section 9b against `prototypes/coop`.
 - Every networked object carries its `WorldKey`, and is sent only to clients on that world.
 - The one-per-game UI statics (`Selection` and `GridView`'s drag and click state, Ui/GridView.cs:20-106) become per client.
 
-This is the start of real co-op. It depends on Tiers 2 and 3.
+This is the start of real co-op. It depends on Tiers 2 and 3, T2.8c and T3.3b.
 
 **F5 Placeholder decisions** (owner; then S each). Was T5.2.
 - **Decides:**

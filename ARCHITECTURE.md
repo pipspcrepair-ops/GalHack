@@ -382,9 +382,10 @@ Each step is a root fix, merged green with its checks. A replacement merges only
    - the places stack per world, then player systems reading `thing.World`;
    - `WorldKey` everywhere and the ledger for many crossings (section 4c's commit queue), both listed here because the jumps' proofs cross two sleepers at once;
    - simulation and view apart, and cabins (a freed cabin's things kept in the ship's record);
-   - jumps per vessel, the transit world, and the climb and descent between surface and orbit.
-3. **References, records and saves (Tier 3):** references across worlds as IDs, the change record per world with the clock catch-up, crash safety and the saved game (the game, faction and sleeper records, and loading). Only then does `ParkHome` go and the start system get freed like any other.
-4. **One path per job (Tier 4):** harm, then the block world and salvage, then shelter and air (air volumes and the one "what am I inside" lookup), then ground, gravity and vehicles (which reads that lookup), then events, sound and markers, then shared entry points.
+   - jumps per vessel and the transit world.
+3. **References and records (Tier 3):** references across worlds as IDs and the change record per world with the clock catch-up. Then `ParkHome` goes and the start system is freed like any other, to its record in memory.
+4. **One path per job (Tier 4, beside Tier 3):** harm, then the block world and salvage, then shelter and air (air volumes and the one "what am I inside" lookup), then ground, gravity and vehicles (which reads that lookup), then events, sound and markers, then shared entry points.
 5. **Facts, not names (Tier 5).**
+6. **After the core (owner, 26 Nov):** the climb and descent between surface and orbit, then crash safety and the saved game (the game, faction and sleeper records, and loading).
 
 New behaviour found in the reviews is listed apart in root-fix-tasks.md as features (F1 to F9), built on the core once the owner picks them.
