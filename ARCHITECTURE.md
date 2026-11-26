@@ -388,4 +388,4 @@ Each step is a root fix, merged green with its checks. A replacement merges only
 5. **Facts, not names (Tier 5).**
 6. **After the core (owner, 26 Nov):** the climb and descent between surface and orbit, then crash safety and the saved game (the game, faction and sleeper records, and loading).
 
-New behaviour found in the reviews is listed apart in root-fix-tasks.md as features (F1 to F9), built on the core once the owner picks them.
+New behaviour found in the reviews is listed apart in root-fix-tasks.md as features (F1 to F13), built on the core once the owner picks them.

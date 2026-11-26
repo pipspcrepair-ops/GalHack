@@ -647,3 +647,31 @@ This is the start of real co-op. It depends on Tiers 2 and 3, T2.8c and T3.3b.
 **F9 Regrowth, decay and resource meteorites** (after T3.2)
 - Designed (DESIGN.md 706, 725) but not built: no meteorite code exists, and nothing regrows but force fields.
 - Built on T3.2's catch-up hook, so a world you come back to has regrown and decayed by the time away, touching only unclaimed records.
+
+**F10 POI variety push** (owner, 26 Nov; after T2.6, with F2)
+- A large round of new place kinds and more variety within each, once places stand up on every world (T2.6) and fit their world's air (F2).
+- **Starting lists:** the 15 heaviest missing references in layer-coverage.md section 5 (an observatory, school campus, ration depot, ministry hall and the rest, plus wall cities, hilltop keeps and toll gates), the everyday commerce kinds (playtest-list.md, "NEW PLACE KINDS"), "PLACE VARIETY AND OLD PARTS" and NPC gathering points (playtest-list.md), and the faction places by body plan (ship-forms.md, stations).
+- Each new kind is built by rule from parts that exist (families, kits, room recipes), not by hand, and switches its world-layer values back on (layer-coverage.md: 280 values are off because what they name isn't built).
+- **Proof:** a contact sheet of the new kinds from fresh seeds on three world types; no two of a kind alike; LayersTest's "values not built yet" check shrinks by the values the round turns on.
+
+**F11 Landscape mixing** (owner, 26 Nov; world generation, needs no core task)
+- **The idea:** the shape of the land and the look of the world are separate choices, so any landform can stand on any world type: canyons and mesas on an ice world, rolling temperate hills on a fungal one.
+- **Today:** the 24 landforms already exist apart from world types (planet-generator/src/Gen/Landform.cs), and each world mixes two to five of them by region (`LandformMix`, Landforms.cs). What ties them to the type: each archetype has its own landform odds (`Odds(...)` in Archetypes.cs), and `Landforms.Recipe` scales every landform with the archetype's own numbers (billow, canyon depth, shelf, terrace step, plateau height).
+- **Builds:**
+  - one shared landform pool that any world type rolls from; the archetype gives the look (palette, ground materials, flora, sky), and its odds become a lean, not a limit;
+  - the archetype's reshaping kept as an option, so a world can have plain canyons or canyons in its own style;
+  - dry forms of the water landforms (deltas, wetlands, fjords, rivers) for worlds with no liquid: dry beds, salt flats, frozen deltas;
+  - wildlife still follows the landform (LandformFauna), so mixed land brings its matching creatures.
+- **Proof:** a sheet of the same seed's landform mix on six world types; every landform appears on at least three types across 50 fresh rolls; no water landform holds liquid on a world without it.
+
+**F12 Fauna variety push** (owner, 26 Nov; after T2.6 and T4.1)
+- A large round of new creatures and more variety within each world's roster, once the roster is read per world (T2.6) and creatures take damage through one path (T4.1).
+- **Starting lists:** flocks and space creatures (decided-vs-built 2.22 and 3.13: schools and flyers are in, flocks and space life are not), vacuum fauna (F2), the aggressive enemies varied across body plans (playtest-list.md: "Same bugs everywhere"), and each landform's own creatures (DESIGN.md 312) as F11 mixes the land.
+- **Proof:** three fresh worlds of one type share no more than a set share of their rosters (the owner sets the figure); every landform region has a creature fitted to it.
+
+**F13 Faction ship and station forms** (owner, 26 Nov; after T2.6's hulks per world, with F6)
+- **The spec:** ship-forms.md. Each faction has its own body plans, several per size, shape first, livery last: Freeholder truss spines, Meridian hammerheads, Ledger pod rings, Reaver rams, Kessari lattices, Vharn segments, and Husk-hijacked hulls. Stations follow the same plans, scaled up. Crashes roll pose, breakup and age.
+- **Today:** only the start sky's trader and scout have body plans (nine each, proto/skyship2, merged; owner: happy with them). Capital hulks, derelicts and stations come from one hull builder (`HullVessel`, proto/derelicts) whose faction shows only in livery (playtest-list.md, "FACTION STYLES IN THE SHIP AND STRUCTURE GENERATORS").
+- **Samples:** the owner remembers samples made for each ship type per faction. None are in the pushed history (searched 26 Nov: no faction body-plan code for big ships, no forms sheet). They are most likely on the G: machine with the other unpushed branches; find and push them before this is briefed, so it starts from them.
+- **Gates:** ship-forms.md's three: the forms sheet (six faction forms plus a Husk, five rolls each, greyed), the crash sheet (12 sites), and the silhouette check alongside the sheets.
+
