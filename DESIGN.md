@@ -540,7 +540,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 
 | Stage | Player goal | Key builds and unlocks | Main threats |
 | --- | --- | --- | --- |
-| 1. Wake | Stay alive | Sleeper tool (attack/gather and repair modes), suit constructor, survival replicator, O2 bottles, medkits | Exposure, hunger, wildlife |
+| 1. Wake | Stay alive | Sleeper tool (attack/gather and repair modes), suit fabricator, hoverbike, survival replicator, O2 bottles, medkits | Exposure, hunger, wildlife |
 | 2. Foothold | A safe, powered shelter | Base core, generator, capacitor, small constructor, galley replicator | Night predators, first Vharn scouts |
 | 3. Wheels | Cover the whole planet | Hover vessel, hand drill, detector, portable constructor | Vharn patrols, guarded POIs |
 | 4. Wings | Reach orbit, moons and asteroids | Small vessel, landing gear, large constructor | Space pirates, hostile fighters |
@@ -630,7 +630,7 @@ The player's kit is small and role-based: a few tools that change the world, wea
 | Hand drill T1/T2 | Faster mining; digs terrain (remove only) | Biofuel (T1), drill charges (T2) | T2 has longer reach and collects ore automatically |
 | Chainsaw | Fells trees for wood | Biofuel | Early building material |
 | Multi-tool T1/T2 | Removes, repairs, upgrades and rotates blocks; salvages wrecks and pulls intact components out whole from structures whose core is destroyed | Small energy cells (T1), multi-charges (T2) | Salvage return about 33% (T1), about 65% (T2); vessel-mounted salvagers up to 80% |
-| Detector | Shows ore deposits, POIs and buried caches | Battery | Handheld range about 1,250 m; vehicle detector about 10 km |
+| Detector | Shows ore deposits, POIs and buried caches | Battery | Handheld range about 1 km; vehicle detector 2.5–10 km |
 | Hand scanner | Shows, through walls, where the cores nearby are (100 m to start), with distances; the core scanner is part of it | Battery | Researched in the Tools tab; finds a core hidden in a base |
 | Hijack Tool T1–T3 | Takes over enemy cores | Charges | Section 16 |
 | Survival kit items | Survival tent, survival replicator, survival climate pod (set down anywhere, independent of cores and capacitors, keeps the climate safe in a small radius, burning a little generator fuel; owner, 23 Nov), emergency O2 and water generator, work light | Fuel or battery (the climate pod: a little generator fuel of its own; a structure's life support stays on the structure's power) | Early-game lifelines |
@@ -702,7 +702,7 @@ Rarity has one colour each in every inventory, map and loot pop-up: common grey,
 **Where resources sit**
 
 - Placement is driven by star and planet type: rare materials cluster around young, dying, giant and irradiated stars, so the galaxy map itself hints where to look.
-- Surface deposits sit within about 10 m of the ground. Deposits within about 500 m reveal themselves; a detector shows them out to about 2.5 km.
+- Surface deposits sit within about 10 m of the ground. Deposits within about 500 m reveal themselves; a handheld detector shows them out to about 1 km, a vehicle detector out to 2.5–10 km.
 - Rich deposits are often guarded by Vharn outposts or sit in faction territory, where mining costs standing.
 - Asteroid fields, forests and plants regrow on a timer when no player is near. When a planet's deposits fall below about 10%, resource meteorites start to fall, a visible event players can race to.
 - Server options set ore richness (rich, normal, poor) and deposit count (plenty, normal, few).
@@ -1424,7 +1424,7 @@ GalHack plays the same alone, or in co-op over Steam, and every player belongs t
 **PDA tutorials**
 
 - The PDA watches the player's actions and shows a hint the first time they do something (first ore, first base, first vessel), with no fixed order.
-- Short tutorial chapters cover each milestone: climb out of the cryo bunker, build a base, build a hover vessel (offered at level 3), reach orbit, first warp. Each chapter gives a small reward.
+- Short tutorial chapters cover each milestone: climb out of the cryo bunker, build a base, build a hover vessel (offered at level 1), reach orbit, first warp. Each chapter gives a small reward.
 - Tutorials can be skipped; skipping grants the chapter's key reward (for example a portable constructor, a hoverbike or a detector) so experienced players lose nothing.
 - Starts on harsher planet types skip the gentle chapters by default.
 
