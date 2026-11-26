@@ -104,6 +104,36 @@ public static class GunModel
         }
     }
 
+    static readonly List<Built> _kicking = new();
+
+    /// <summary>
+    /// Someone else's gun goes off in their hands: it jumps back and its muzzle flips up by the
+    /// row's recoil (more for a heavy gun), then settles over a few frames, so you see the shot
+    /// leave it. (The player's own gun kicks in the hands: Hands.Recoil.)
+    /// </summary>
+    public static void Kick(Built b, WeaponDef d)
+    {
+        if (b == null || !GodotObject.IsInstanceValid(b.Root)) return;
+        b.Kick = 1f;
+        b.KickDegrees = 6f + 4f * d.Recoil;
+        if (!_kicking.Contains(b)) _kicking.Add(b);
+    }
+
+    /// <summary>Every frame: kicked guns settle back (about a tenth of a second).</summary>
+    public static void Settle(float dt)
+    {
+        for (int i = _kicking.Count - 1; i >= 0; i--)
+        {
+            Built b = _kicking[i];
+            if (!GodotObject.IsInstanceValid(b.Root)) { _kicking.RemoveAt(i); continue; }
+            b.Kick = MathF.Max(0f, b.Kick - dt * 9f);
+            float k = b.Kick * b.Kick;
+            b.Root.Position = new Vector3(0f, 0f, 0.07f * k);
+            b.Root.RotationDegrees = new Vector3(b.KickDegrees * k, 0f, 0f);
+            if (b.Kick <= 0f) _kicking.RemoveAt(i);
+        }
+    }
+
     /// <summary>The built model: its root, the muzzle node (flashes and shots start there), and its emitters by role.</summary>
     public sealed class Built
     {
@@ -112,6 +142,8 @@ public static class GunModel
         /// <summary>The weapon row's id, and how far a reload has dipped it (0..1).</summary>
         public string Id;
         public float Dip;
+        /// <summary>How much of a shot's kick is left (1 just fired, 0 settled), and the full kick's muzzle flip.</summary>
+        public float Kick, KickDegrees;
         /// <summary>How much of a shot's kick is left (1 just fired, 0 settled), and the full kick: metres back, degrees of muzzle rise.</summary>
         public float Kick, KickBack, KickDegrees;
         public GunModelSpec Spec;
