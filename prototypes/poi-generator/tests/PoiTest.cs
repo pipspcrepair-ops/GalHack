@@ -48,6 +48,7 @@ public partial class PoiTest : Node
         try
         {
             _lib = GameData.Load();
+            if (only == "MeshTimes") { MeshTimes(); Finish(); return; }
             foreach (var (name, run) in checks)
                 if (only == null || only.Split(',').Contains(name))
                 {
