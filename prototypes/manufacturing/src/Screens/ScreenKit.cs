@@ -23,7 +23,8 @@ public static class Kit
 
     public const int SizeTitle = 40, SizeHeading = 30, SizeLabel = 26, SizeSmall = 20, SizeTiny = 16;
 
-    public static Font Display => UiTheme.Display;
+    public static Font Display => UiTheme.Heading;
+    public static Font Title => UiTheme.Title;
     public static Font Label => UiTheme.Label;
     public static Font Mono => UiTheme.Mono;
 

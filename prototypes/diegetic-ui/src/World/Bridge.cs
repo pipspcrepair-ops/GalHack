@@ -243,7 +243,7 @@ public partial class Bridge : Node3D
         AddChild(new Label3D
         {
             Text = text,
-            Font = Theme.UiTheme.Display3D,
+            Font = Theme.UiTheme.Title3D,
             FontSize = size,
             PixelSize = 0.0022f,
             Modulate = colour,

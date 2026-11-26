@@ -135,7 +135,7 @@ public partial class WristPage : Control, IScreenPage
             this.TextIn(UiTheme.Mono, 18, new Rect2(316, 0, Width - 330, 58),
                 $"{s.Item.Name}  {s.Item.MassKg:0.#}KG {s.Item.VolumeL:0.#}L", C.Accent2, HorizontalAlignment.Right);
         }
-        else this.TextIn(UiTheme.Display, 22, new Rect2(316, 0, Width - 330, 58), "VESTA", C.Accent, HorizontalAlignment.Right);
+        else this.TextIn(UiTheme.Title, 22, new Rect2(316, 0, Width - 330, 58), "VESTA", C.Accent, HorizontalAlignment.Right);
 
         for (int i = 0; i < Cols * Rows; i++)
         {
@@ -216,7 +216,7 @@ public partial class WristPage : Control, IScreenPage
         this.DrawArc(eye, 46, -0.4f, Mathf.Pi + 0.4f, 32, C.Holo.Darkened(0.4f), 8, true);
         this.DrawCircle(eye, 24, C.Holo);
         this.DrawCircle(eye, 10, C.Glass);
-        this.TextIn(UiTheme.Display, 26, new Rect2(0, 250, 200, 40), "VESTA", C.Text, HorizontalAlignment.Center);
+        this.TextIn(UiTheme.Title, 26, new Rect2(0, 250, 200, 40), "VESTA", C.Text, HorizontalAlignment.Center);
         this.TextIn(UiTheme.Label, 16, new Rect2(0, 286, 200, 24), "SUIT ASSISTANT", C.Dim, HorizontalAlignment.Center);
         bool speaking = _typed < CodexText.Length;
         for (int i = 0; i < 7; i++)
@@ -227,7 +227,7 @@ public partial class WristPage : Control, IScreenPage
 
         float x = 216;
         this.Block(new Rect2(x - 12, 70, 3, 372), C.Rule);
-        this.Text(UiTheme.Display, 28, new Vector2(x, 76), CodexTitle, C.Accent2);
+        this.Text(UiTheme.Title, 28, new Vector2(x, 76), CodexTitle, C.Accent2);
         this.Text(UiTheme.Label, 16, new Vector2(x, 116), "SHIP SYSTEMS  -  READ BY VESTA", C.Dim);
         string shown = CodexText[..(int)_typed];
         this.DrawMultilineString(UiTheme.Body, new Vector2(x, 160 + UiTheme.Body.GetAscent(22)), shown,

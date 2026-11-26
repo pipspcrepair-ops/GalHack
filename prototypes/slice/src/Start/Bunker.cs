@@ -728,7 +728,7 @@ public partial class CryoPod : Node3D
         // Its number, stencilled on the glass and standing just off it.
         _lid.AddChild(new Label3D
         {
-            Name = "Number", Text = (Slot + 1).ToString(), Font = DiegeticUi.Theme.UiTheme.Display, FontSize = 96, OutlineSize = 0, PixelSize = 0.0022f,
+            Name = "Number", Text = (Slot + 1).ToString(), Font = DiegeticUi.Theme.UiTheme.Title, FontSize = 96, OutlineSize = 0, PixelSize = 0.0022f,
             Position = new Vector3(0.45f, 1.72f, -0.024f), RotationDegrees = new Vector3(0f, 180f, 0f),
             Modulate = Alive ? new Color("cfefff") : new Color(0.25f, 0.28f, 0.32f), Shaded = false, DoubleSided = false,
         });
@@ -831,7 +831,7 @@ public partial class BunkerLocker : Node3D
         // Its number, stencilled on the door, standing just off it.
         _hinge.AddChild(new Label3D
         {
-            Name = "Number", Text = Number.ToString(), Font = DiegeticUi.Theme.UiTheme.Display, FontSize = 96, OutlineSize = 0, PixelSize = 0.002f,
+            Name = "Number", Text = Number.ToString(), Font = DiegeticUi.Theme.UiTheme.Title, FontSize = 96, OutlineSize = 0, PixelSize = 0.002f,
             Position = new Vector3(doorW / 2f, Height * 0.72f, -doorT - 0.006f), RotationDegrees = new Vector3(0f, 180f, 0f),
             Modulate = new Color(0.9f, 0.88f, 0.8f), Shaded = true, DoubleSided = false,
         });

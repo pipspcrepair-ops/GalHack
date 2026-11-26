@@ -146,7 +146,7 @@ public partial class MenuRoot : MenuPanel
         var header = new Rect2(area.Position, new Vector2(area.Size.X, 74));
         g.Fill(header, C.Accent);
         if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);
-        g.Text("SUIT TERMINAL", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
+        g.Text("SUIT TERMINAL", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Title);
 
         string[] names = { "YOU", "TECH", "STATS", "CORE", "MAP" };
         for (int i = 0; i < names.Length; i++)
@@ -156,7 +156,7 @@ public partial class MenuRoot : MenuPanel
         }
         Progress p = Game.Progress;
         var (into, span) = p.ToNext;
-        g.Text($"LEVEL {p.Level}", header.Position + new Vector2(1180, 8), C.Glass, 20, UiTheme.Display);
+        g.Text($"LEVEL {p.Level}", header.Position + new Vector2(1180, 8), C.Glass, 20, UiTheme.Heading);
         g.Text($"{p.Points} PTS", header.Position + new Vector2(1180, 40), C.Glass, 18, UiTheme.Mono);
         g.Bar(new Rect2(header.Position + new Vector2(1270, 46), new Vector2(150, 14)), into, span, C.Glass, 10);
         g.Text(Game.Mode == GalHack.Items.GameMode.Creative ? "CREATIVE" : "SURVIVAL", header.Position + new Vector2(1440, 26), C.Glass, 16, UiTheme.Label);

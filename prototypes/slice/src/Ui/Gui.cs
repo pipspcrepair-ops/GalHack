@@ -142,7 +142,7 @@ public sealed class Gui
     /// <summary>A section caption with a rule under it.</summary>
     public void Caption(string text, Vector2 at, float width, Color? colour = null)
     {
-        Text(text, at, colour ?? C.Accent, 16, UiTheme.Display);
+        Text(text, at, colour ?? C.Accent, 16, UiTheme.Heading);
         Fill(new Rect2(at.X, at.Y + 24, width, 2), new Color(C.Rule, 0.8f));
     }
 
@@ -327,7 +327,7 @@ public sealed class Gui
         for (int i = 0; i < Tip.Count; i++)
         {
             int size = i == 0 ? TipTitle : TipLine;
-            Canvas.Text(i == 0 ? UiTheme.Display : UiTheme.Label, size, new Vector2(box.Position.X + 10, y), Tip[i].Text, Tip[i].Colour);
+            Canvas.Text(i == 0 ? UiTheme.Heading : UiTheme.Label, size, new Vector2(box.Position.X + 10, y), Tip[i].Text, Tip[i].Colour);
             y += size + 7;
         }
     }
@@ -341,7 +341,7 @@ public sealed class Gui
         for (int i = 0; i < lines.Count; i++)
         {
             int size = i == 0 ? TipTitle : TipLine;
-            w = MathF.Max(w, Paint.TextWidth(i == 0 ? UiTheme.Display : UiTheme.Label, size, lines[i].Text));
+            w = MathF.Max(w, Paint.TextWidth(i == 0 ? UiTheme.Heading : UiTheme.Label, size, lines[i].Text));
             h += size + 7;
         }
         w = MathF.Min(w + 22, bounds.Size.X);

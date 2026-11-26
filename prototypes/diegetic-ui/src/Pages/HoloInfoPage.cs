@@ -33,7 +33,7 @@ public partial class HoloInfoPage : Control, IScreenPage
     {
         this.Block(new Rect2(Vector2.Zero, Size), C.Glass);
         this.Block(new Rect2(0, 0, Width, 64), C.Good);
-        this.TextIn(UiTheme.Display, 30, new Rect2(0, 0, Width, 64), "STAR MAP", C.Glass, padX: 24);
+        this.TextIn(UiTheme.Title, 30, new Rect2(0, 0, Width, 64), "STAR MAP", C.Glass, padX: 24);
         this.TextIn(UiTheme.Label, 22, new Rect2(0, 0, Width, 64), _map.SystemName, C.Glass, HorizontalAlignment.Right, 24);
 
         Body body = _map.Selected;

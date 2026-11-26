@@ -191,7 +191,7 @@ public partial class Visor : CanvasLayer
             string label = deg switch { 0 => "N", 90 => "E", 180 => "S", 270 => "W", _ => deg % 30 == 0 ? (deg / 10).ToString("00") : null };
             if (label == null) continue;
             bool cardinal = deg % 90 == 0;
-            Font font = cardinal ? UiTheme.Display : UiTheme.Label;
+            Font font = cardinal ? UiTheme.Heading : UiTheme.Label;
             int fs = (int)((cardinal ? 22 : 16) * s);
             Vector2 at = Arc(rel, -22 * s);
             _hud.DrawSetTransform(at, rel * k);
@@ -284,7 +284,7 @@ public partial class Visor : CanvasLayer
         _hud.DrawColoredPolygon(new[] { you + f * 9 * s, you - f * 6 * s + side * 6 * s, you - f * 3 * s, you - f * 6 * s - side * 6 * s }, A(C.Accent2, alpha));
 
         _hud.DrawArc(centre, radius, 0, Mathf.Tau, 64, A(C.Text, alpha * 0.5f), 2 * s, true);
-        _hud.Text(UiTheme.Display, (int)(15 * s), centre + new Vector2(-20 * s, -radius - 22 * s), "N", A(C.Accent2, alpha), HorizontalAlignment.Center, 40 * s);
+        _hud.Text(UiTheme.Heading, (int)(15 * s), centre + new Vector2(-20 * s, -radius - 22 * s), "N", A(C.Accent2, alpha), HorizontalAlignment.Center, 40 * s);
     }
 
     void DrawVitals(Vector2 size, float s)
@@ -368,7 +368,7 @@ public partial class Visor : CanvasLayer
             _hud.DrawRect(r, blink ? C.Text : C.Danger);
             _hud.Stripes(new Rect2(r.Position, new Vector2(56 * s, r.Size.Y)), C.Glass, C.Danger, 12 * s);
             _hud.Stripes(new Rect2(r.End.X - 56 * s, r.Position.Y, 56 * s, r.Size.Y), C.Glass, C.Danger, 12 * s);
-            _hud.Text(UiTheme.Display, (int)(26 * s), r.Position + new Vector2(0, 14 * s), _banner.Title, C.Glass, HorizontalAlignment.Center, r.Size.X);
+            _hud.Text(UiTheme.Title, (int)(26 * s), r.Position + new Vector2(0, 14 * s), _banner.Title, C.Glass, HorizontalAlignment.Center, r.Size.X);
             string big = _banner.Minutes switch { 0 => "CONTACT", 1 => "1 MINUTE", _ => $"{_banner.Minutes} MINUTES" };
             _hud.Text(UiTheme.Mono, (int)(52 * s), r.Position + new Vector2(0, 46 * s), big, C.Glass, HorizontalAlignment.Center, r.Size.X);
         }
@@ -412,12 +412,12 @@ public partial class Visor : CanvasLayer
     void Chip(Vector2 centre, string key, string text, float s, float alpha = 1)
     {
         int fs = (int)(19 * s);
-        float kw = Paint.TextWidth(UiTheme.Display, fs, key) + 18 * s;
+        float kw = Paint.TextWidth(UiTheme.Heading, fs, key) + 18 * s;
         float tw = Paint.TextWidth(UiTheme.Label, fs, text) + 24 * s;
         float h = 34 * s, x = centre.X - (kw + tw) / 2, y = centre.Y - h / 2;
         _hud.DrawRect(new Rect2(x, y, kw + tw, h), new Color(0.03f, 0.05f, 0.09f, 0.65f * alpha));
         _hud.DrawRect(new Rect2(x, y, kw, h), new Color(C.Accent2, alpha));
-        _hud.TextIn(UiTheme.Display, fs, new Rect2(x, y, kw, h), key, C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Heading, fs, new Rect2(x, y, kw, h), key, C.Glass, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, fs, new Rect2(x + kw, y, tw, h), text, new Color(C.Text, alpha), HorizontalAlignment.Center);
     }
 

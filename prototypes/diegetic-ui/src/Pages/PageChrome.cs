@@ -22,7 +22,7 @@ public static class PageChrome
         {
             ci.Stripes(new Rect2(0, StripTop, 70, StripHeight), C.Glass, C.Danger, 14);
             ci.Block(new Rect2(70, StripTop, width - 70, StripHeight), C.Danger);
-            ci.TextIn(UiTheme.Display, 26, new Rect2(96, StripTop, width - 300, StripHeight), threat.Title, C.Glass);
+            ci.TextIn(UiTheme.Title, 26, new Rect2(96, StripTop, width - 300, StripHeight), threat.Title, C.Glass);
             ci.TextIn(UiTheme.Mono, 34, new Rect2(0, StripTop, width - 32, StripHeight), "T-" + Paint.Clock(warnings.Remaining(threat)),
                 C.Glass, HorizontalAlignment.Right);
             return;

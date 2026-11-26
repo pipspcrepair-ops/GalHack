@@ -194,7 +194,7 @@ public partial class Visor : CanvasLayer
         var band = new Rect2(0, size.Y * 0.4f, size.X, 110 * s);
         _hud.Block(band, new Color(C.Glass, 0.8f));
         _hud.Block(new Rect2(0, band.Position.Y, 18 * s, band.Size.Y), colour);
-        _hud.TextIn(UiTheme.Display, (int)(40 * s), new Rect2(0, band.Position.Y + 8 * s, size.X, 56 * s), title, colour, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Title, (int)(40 * s), new Rect2(0, band.Position.Y + 8 * s, size.X, 56 * s), title, colour, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, (int)(24 * s), new Rect2(0, band.Position.Y + 64 * s, size.X, 36 * s), detail, C.Text, HorizontalAlignment.Center);
     }
 
@@ -239,12 +239,12 @@ public partial class Visor : CanvasLayer
             _hud.Segments(new Rect2(at + new Vector2(80 * s, 30 * s), new Vector2(w - 90 * s, 12 * s)), Math.Clamp(share, 0, 1), 1, new Color(tone, a), count: 8, gap: 2 * s, alpha: a);
         }
         if ((warn & Alert.Fall) != 0 && Mathf.PosMod((float)_time * 4f, 1f) < 0.6f)
-            _hud.TextIn(UiTheme.Display, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Title, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
         if (ThreatShowing && Mathf.PosMod((float)_time * 3f, 1f) < 0.6f)
         {
             Vector3 local = Game.Camera.GlobalBasis.Inverse() * (_threatFrom - Game.Camera.GlobalPosition);
             string side = MathF.Abs(local.X) < MathF.Abs(local.Z) * 0.6f ? (local.Z < 0 ? "AHEAD" : "BEHIND") : local.X < 0 ? "LEFT" : "RIGHT";
-            _hud.TextIn(UiTheme.Display, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Title, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
         }
     }
 
@@ -292,7 +292,7 @@ public partial class Visor : CanvasLayer
             bool major = d % 90 == 0;
             _hud.Block(new Rect2(x - s, y + (major ? 8 : 14) * s, 2 * s, (major ? 14 : 8) * s), new Color(C.Text, 0.7f));
             if (major)
-                _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
+                _hud.TextIn(UiTheme.Heading, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
         }
         _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), $"{heading:000}", C.Text);
 
@@ -378,7 +378,7 @@ public partial class Visor : CanvasLayer
         {
             var band = new Rect2(size.X / 2 - 320 * s, 150 * s, 640 * s, 48 * s);
             _hud.Block(band, new Color(C.Accent, 0.85f));
-            _hud.TextIn(UiTheme.Display, (int)(26 * s), band, _level, C.Glass, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Title, (int)(26 * s), band, _level, C.Glass, HorizontalAlignment.Center);
         }
     }
 
@@ -519,7 +519,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? "REMOTE [Y]" : "YOURS [Y]", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Heading, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? "REMOTE [Y]" : "YOURS [Y]", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
@@ -556,7 +556,7 @@ public partial class Visor : CanvasLayer
         string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
         _hud.Block(chip, new Color(C.Holo, 0.85f));
         _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME [G]", C.Glass, HorizontalAlignment.Center);
-        _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Heading, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Heading, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
         if (cur == null)
         {
             _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "no deco piece unlocked: the tech tree's DECO tab", C.Dim, HorizontalAlignment.Center);

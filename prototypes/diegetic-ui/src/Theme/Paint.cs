@@ -43,12 +43,12 @@ public static class Paint
     {
         Color main = colour ?? C.Accent;
         ci.Block(new Rect2(0, 0, width, height), main);
-        ci.TextIn(UiTheme.Display, UiTheme.SizeTitle, new Rect2(0, 0, width, height), title, C.Glass, padX: 30);
+        ci.TextIn(UiTheme.Title, UiTheme.SizeTitle, new Rect2(0, 0, width, height), title, C.Glass, padX: 30);
 
-        float tagWidth = Mathf.Max(170, TextWidth(UiTheme.Display, 30, tag) + 48);
+        float tagWidth = Mathf.Max(170, TextWidth(UiTheme.Heading, 30, tag) + 48);
         float x = width - tagWidth;
         ci.Block(new Rect2(x, 0, tagWidth, height), C.Text);
-        ci.TextIn(UiTheme.Display, 30, new Rect2(x, 0, tagWidth, height), tag, C.Glass, HorizontalAlignment.Center);
+        ci.TextIn(UiTheme.Heading, 30, new Rect2(x, 0, tagWidth, height), tag, C.Glass, HorizontalAlignment.Center);
 
         Color[] stripes = { C.Accent2, C.Danger, C.Good };
         for (int i = 0; i < stripes.Length; i++)

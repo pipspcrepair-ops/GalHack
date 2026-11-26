@@ -297,7 +297,7 @@ public sealed class YouSection : IMenuSection
         g.Text($"ARMOUR {mods.Armor:F0}   COLD {mods.ColdProtection:F0}   HEAT {mods.HeatProtection:F0}   RAD {mods.RadiationShielding:F0}", new Vector2(r.Position.X, yy), C.Text, 14, UiTheme.Mono);
         Progress p = _game.Progress;
         var (into, span) = p.ToNext;
-        g.Text($"LEVEL {p.Level} Â· {p.Xp} XP Â· {p.Points} POINTS", new Vector2(r.Position.X, yy + 30), C.Accent2, 17, UiTheme.Display);
+        g.Text($"LEVEL {p.Level} Â· {p.Xp} XP Â· {p.Points} POINTS", new Vector2(r.Position.X, yy + 30), C.Accent2, 17, UiTheme.Heading);
         g.Bar(new Rect2(r.Position.X, yy + 58, 410, 12), into, span, C.Accent2, 20);
         g.Text(p.Level >= p.Rules.Cap ? $"past the cap: a point every {p.Rules.PastCap} XP" : $"{span - into} XP to level {p.Level + 1}", new Vector2(r.Position.X, yy + 76), C.Dim, 14);
     }

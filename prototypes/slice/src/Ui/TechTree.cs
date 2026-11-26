@@ -196,7 +196,7 @@ public sealed class TechSection : IMenuSection
             string t = Progress.Tabs[i];
             if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * (tabW + 8), 0), new Vector2(tabW, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
         }
-        g.Text($"LEVEL {p.Level}   {p.Points} UNLOCK POINTS   {p.Xp} XP{(p.Creative ? "   (CREATIVE: everything unlocked)" : "")}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
+        g.Text($"LEVEL {p.Level}   {p.Points} UNLOCK POINTS   {p.Xp} XP{(p.Creative ? "   (CREATIVE: everything unlocked)" : "")}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Heading);
         var onTab = p.Nodes.Where(n => n.Tab == Tab).ToList();
         if (onTab.Count == 0) return;
         // Tabs with groups (deco): a row of sets, then one set's pieces. Up to 12 sets a row, two rows.
@@ -335,7 +335,7 @@ public sealed class TechSection : IMenuSection
             {
                 var badge = new Rect2(r.End.X - 22, r.Position.Y + 3, 18, 18);
                 g.Fill(badge, F(tag == "L" ? C.Accent2 : C.Holo));
-                g.TextIn(tag, badge, F(C.Glass), 13, HorizontalAlignment.Center, UiTheme.Display);
+                g.TextIn(tag, badge, F(C.Glass), 13, HorizontalAlignment.Center, UiTheme.Heading);
             }
         }
 
