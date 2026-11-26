@@ -59,7 +59,7 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
  └─ Galaxy (made from the game seed)
      └─ Star (stable key from its seed, not its catalogue index)
          └─ Body: world, moon, rock field, station site (key from its orbital path)
-             └─ World, one per layer: surface, orbit, and each occupied ship's cabin
+             └─ World, one per layer: surface, orbit, and each occupied structure's cabin
                  Each is its own Godot world (rule 2), in play or a record on disk
                  ├─ its systems: ground and diggable bodies, weather, wildlife, places, loot, devices, query, events
                  └─ things held in it: each with one World field (rule 1)
@@ -77,10 +77,12 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
   - Today `Streamer.CollisionRadius` is set from one sleeper's vehicle (Game.cs:925), and rounds past it fall back to the height map.
   - Collision streaming is separate from drawing. An undrawn world streams collision only (rule 12).
 - **Frames:** the host simulates each world in one fixed frame centred on the zone (DESIGN.md 1580: pinned origin, the map wraps, about 2 mm precision). Simulation positions never shift. Only clients offset what they draw. An orbit zone's size is limited so precision holds. *(A-2.2, A-4.6.)*
-- **Cabins:** each occupied ship's cabin is its own world (DESIGN.md 1582), made when a sleeper boards and freed when the ship is empty and parked. Freeing it commits everything loose in it (cargo, bags, creatures) into the ship's record, through the ledger, and they come back when the cabin is made again. It isn't made for every vessel; today every vessel, wrecks included, builds a `CabinWorld` (Vessel.cs:406-409).
+- **Cabins:** the inside of any structure with a sleeper aboard, whatever its core's mode (base, hover or flight; owner, 26 Nov) is its own world (DESIGN.md 1582), made when a sleeper boards and freed when the structure is empty and parked or anchored. A cabin follows who is aboard, never the core's mode, because a core's mode can be switched at any time, even in flight, and nothing refuses it (DESIGN.md, switching modes): a base switched to flight lifts off, and a ship switched to base mode in mid-air falls. Freeing it commits everything loose in it (cargo, bags, creatures) into the ship's record, through the ledger, and they come back when the cabin is made again. It isn't made for every vessel; today every vessel, wrecks included, builds a `CabinWorld` (Vessel.cs:406-409).
   - A thing aboard has `World = cabin` (where it moves). It reads the ship first: its sealed rooms' air and its core's fixed 1 g while the core works. Then it reads its parent: the structure the ship is docked or parked in (`ParkedOn`), else `Outside = ship.World`, for weather, and for air and gravity where the ship gives none (owner, 25 Nov). A ship with its core off inside a powered carrier gets the carrier's 1 g.
-  - A base never moves, so it isn't a cabin world: it is a fixed body on its world, found by position through the "what am I inside" lookup (T4.4). Its core's 1 g covers anyone inside its bounds, and stays when its roof is gone while the core runs; its sealed rooms answer air.
-  - When a ship moves, only the ship goes through the ledger. Things aboard stay in the cabin and re-read `Outside`, in one call from the ship's `Move`.
+  - **Bases are cabins too.** An occupied base is a cabin world like an occupied ship: its core's 1 g covers anyone aboard, and stays when its roof is gone while the core runs; its sealed rooms answer air. An empty base, like an empty ship, is a body in its world.
+  - **Switching a core's mode changes nothing about worlds.** It only changes how the structure moves (anchored, hovering or flying). Nothing aboard is moved between worlds, so nothing jumps, drops or is lost, landed or in mid-air.
+  - **Walking aboard and off** is one move for everything (sleepers, people, creatures, loot): crossing a structure's bounds, through a door, a ramp or a blown-open roof, moves a thing between the structure's world and its cabin. A base door and a landed ship's ramp are the same case.
+  - When a structure moves, only the structure goes through the ledger. Things aboard stay in the cabin and re-read `Outside`, in one call from the ship's `Move`.
   - **Cabins nest to any depth** (owner, 26 Nov: "A cabin can be inside a cabin can be inside a cabin"). A shuttle can sit in a frigate's cabin, which sits in a carrier's cabin, and so on. Nothing assumes one level:
     - `Outside = ship.World`, and that world may itself be a cabin. Every lookup (air, gravity, weather, exposure, "what am I inside") walks the chain outward until it reaches a world that isn't a cabin. Nothing caches a resolved chain past a `Move`.
     - An occupied cabin keeps every world up its chain in play, since its ship is a body in the cabin around it. Each cabin in an occupied chain counts against section 2b's budget.
@@ -361,10 +363,10 @@ Reject a change that:
 
 5. **A frozen world stays loaded for about 2 minutes before it is freed,** so hopping between surface and orbit doesn't regenerate it. It is frozen the whole time and nothing ticks. DESIGN.md "Zones under the hood" is reworded to match.
 
-6. **Air and gravity follow cabin-world logic.** Inside a functioning ship or base you breathe its rooms' air and stand at its core's 1 g, whatever the world outside. Gravity follows the structure, air follows its sealed rooms: blow a base's roof off and its air vents, but you stay at 1 g while the core runs. Life support regulates oxygen and temperature in every enclosed space. Sealed volumes nest and are linked by openings; a core that's off hands gravity to its parent. Orbit is 0 g, and loose things drift there.
+6. **Air and gravity follow cabin-world logic.** Inside a functioning ship or base you breathe its rooms' air and stand at its core's 1 g, whatever the world outside. An occupied base is a cabin world like a ship, since a core's mode can be switched at any time, even in flight (owner, 26 Nov). Gravity follows the structure, air follows its sealed rooms: blow a base's roof off and its air vents, but you stay at 1 g while the core runs. Life support regulates oxygen and temperature in every enclosed space. Sealed volumes nest and are linked by openings; a core that's off hands gravity to its parent. Orbit is 0 g, and loose things drift there.
 
 7. **Respawn points are cryopods we build on our structures:** one block, the start bunker's pod reused (1 × 3 × 1 cells), respawn only. The healing booth is its own block (root-fix-tasks.md F8).
-8. **Up to 4 occupied worlds on a player host;** ships' cabins and destinations being prepared run on top of those 4.
+8. **Up to 4 occupied worlds on a player host;** cabins (ships' and bases') and destinations being prepared run on top of those 4.
 
 **Still open:** the engine options in section 2b. These come after the step 2a prototype measures the cost.
 
