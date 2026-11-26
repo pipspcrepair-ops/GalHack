@@ -2,7 +2,7 @@
 
 26 Nov sweep (owner: "Is there anything ELSE in one-metre-grid or any other doc that should be in DESIGN?"). Five read-only checks compared every design-bearing doc on this branch with DESIGN.md (audits left out). 266 items: 57 where DESIGN.md says something different (CONTRADICTS), 107 it lacks (MISSING), 102 it holds only in part (PARTLY). Confidence is the checker's. Line numbers are DESIGN.md and the side docs as of docs 04029080.
 
-Status of each item as it is folded into DESIGN.md is tracked here.
+**Resolved, 26 Nov.** Every item below is settled, newest dated decision first (owner: "where dated, use the most recent decision, then present me with the remainder"), with the owner's answers for the rest. The living design doc took 180 edits plus 37 merged into neighbours, and 32 owner answers (rev 921 to 1064), and DESIGN.md was refreshed from rev 1064. Stale side-doc lines were marked superseded (commits 4fff6ffa and 52769655). Items the owner kept out of DESIGN as tuning or UI work: part tooltips, mag boots (none), faction rosters (they stay in ship-forms.md), sealed bases in storms, first-vessel time, natural arches and spires, time scale, asteroid belts, the 357-entry weapon list, personal shield numbers, cyber-module odds and hoverbike speed. The 23 Nov life support pod, the survival climate pod and the 22 Nov heat-damage review note had only been in the old DESIGN.md copy, so they were written into the living doc too.
 
 ## A. one-metre-grid, grid-figures, tech-tree-pacing, ship-forms
 
