@@ -1,5 +1,7 @@
 # Off-world audit: what only works on the starter planet
 
+**26 Nov check, against test-build 5b4ded38: still current.** No game code has changed since this audit's base, f20ac912: the 48 commits since then on test-build touch only docs, the readme images and a few doc tools. So every finding stands as written, line numbers included. Its findings are the input to `root-fix-tasks.md`; that list, not this doc, tracks the fixes. proto/vacarms is still unmerged, as the owner decided.
+
 - **Branch:** proto/batch2 at f20ac912. Read only.
 - **Code path:** paths below are under `G:\GalHack-wt\batch\prototypes\slice\src`.
 - **proto/vacarms:** 7c11ef50 is a patch that swaps captured zones. It will **not** merge (owner, 25 Nov; playtest list). So the root fix also covers what it touched: ArmsHost's node is still a child of the starter zone, SleeperTool keeps `readonly _zone`, and Spaceflight.TakeHands still takes the hands off-world. BuildTool (`readonly _zone`, about 230 uses) is in the same root fix. Keep vacarms' tests (MoonTest.Hands).

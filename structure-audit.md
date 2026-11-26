@@ -1,5 +1,7 @@
 # Structure audit: where the code solves one case instead of the rule
 
+**26 Nov check, against test-build 5b4ded38: still current.** No game code has changed since this audit's base, f20ac912: the 48 commits since then on test-build touch only docs, the readme images and a few doc tools. So every finding stands as written, line numbers included. Its findings are the input to `root-fix-tasks.md`; that list, not this doc, tracks the fixes.
+
 - **Branch:** proto/batch2 at f20ac912. Read only, 25 Nov 2026. Three audit agents read the code, and the director spot-checked the key claims (marked ✔).
 - **Companion:** [offworld-audit.md](offworld-audit.md). Nothing here repeats it.
 - **Sure:** C = confirmed by reading, L = likely, U = unsure. **Fix:** S / M / L.

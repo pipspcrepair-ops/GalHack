@@ -1,5 +1,7 @@
 # Test audit: what the GalHack tests prove
 
+**26 Nov check, against test-build 5b4ded38: still current.** No game code has changed since this audit's base, f20ac912: the 48 commits since then on test-build touch only docs, the readme images and a few doc tools. So every finding stands as written, line numbers included. Its findings are the input to `root-fix-tasks.md`; that list, not this doc, tracks the fixes.
+
 > Read-only audit of proto/batch2 at f20ac912 (25 Nov 2026), by an audit agent. The director spot-checked MoonTest.cs:101-103 (calms weather and freezes wildlife before leaving) and SleeperToolTest.cs:286-297 (asserts the coreless-block exploit). The rule it proposes is in [ARCHITECTURE.md](ARCHITECTURE.md) section 9.
 
 - **Branch:** proto/batch2 at f20ac912 (G:\GalHack-wt\batch). Read only, nothing run.

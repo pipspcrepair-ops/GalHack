@@ -1,5 +1,7 @@
 # Adversarial review: docs/ARCHITECTURE.md (draft, 25 Nov)
 
+**26 Nov check: kept for history, not a working list.** All 19 findings were folded into ARCHITECTURE.md v2 on 25 Nov, and ARCHITECTURE.md has been reviewed and reordered since (section 12, owner 26 Nov). Read ARCHITECTURE.md for the current model.
+
 > Review of ARCHITECTURE.md draft v1 (25 Nov 2026) by a fresh-eyes agent. All 19 findings were folded into draft v2. The director checked findings 1 and 3 against the code and DESIGN.md 1578.
 
 Code checked: G:\GalHack-wt\batch (proto/batch2). Ranked worst first.

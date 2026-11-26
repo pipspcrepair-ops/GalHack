@@ -1,5 +1,7 @@
 # Silent-failure audit: where a missing or wrong system quietly does nothing
 
+**26 Nov check, against test-build 5b4ded38: still current.** No game code has changed since this audit's base, f20ac912: the 48 commits since then on test-build touch only docs, the readme images and a few doc tools. So every finding stands as written, line numbers included. Its findings are the input to `root-fix-tasks.md`; that list, not this doc, tracks the fixes.
+
 > Read-only audit of proto/batch2 at f20ac912 (25 Nov 2026), by an audit agent. The director spot-checked the worst findings: ArmsHost.cs:110 (orbit has no `Planet`), Spaceflight.Fold.cs:473, and `Progress.Earned` with no subscriber. The rule it proposes is in [ARCHITECTURE.md](ARCHITECTURE.md) section 8. Companion to [offworld-audit.md](offworld-audit.md) and [structure-audit.md](structure-audit.md).
 
 - **Branch:** proto/batch2 at f20ac912, worktree G:\GalHack-wt\batch. Read only, no runs. Paths are under `prototypes/slice/src` unless marked.
