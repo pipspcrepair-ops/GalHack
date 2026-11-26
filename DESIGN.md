@@ -1184,13 +1184,13 @@ Players can leave the pilot seat and walk around inside any vessel while it flie
 | Core gravity off or core unpowered, in space | Zero g | Floats and steers with the jetpack, still carried along with the ship |
 | Core gravity off or core unpowered, on or near a planet | The planet's gravity, toward the planet | Floors tilt with the ship |
 | Core gravity off or core unpowered, docked in a ship or base whose core gravity works | That structure's 1 g | Moves in the outer structure's frame |
-| Inside a base with its core working (its footprint: enclosed cells and the columns over its decks, dirt floors and open decks included; roof blown off or not) | 1 g, whatever the world's gravity | Air needs its sealed rooms, gravity doesn't: a holed room vents but stays at 1 g |
+| Inside a base with its core working (its inside-set: what its built shape encloses, walled courtyards and open decks included, up to its top; roof blown off or not) | 1 g, whatever the world's gravity | Air needs its sealed rooms, gravity doesn't: a holed room vents but stays at 1 g |
 | Stepping outside the hull | World gravity | Leaves the ship's frame, keeping the ship's velocity at that moment |
 
 - Inside the hull, players, guards, loose items and docked craft move in the ship's frame. They inherit its velocity and rotation, and its acceleration doesn't throw them around.
 - Hard hits, collisions and emergency stops cause a short jolt (camera shake and a stagger) but never fling players across the room.
 - When the pilot stands up, the ship holds course: it keeps its velocity and heading, or follows the active route. A jump that has committed completes without a pilot; leaving the pilot seat during the spool calls it off (owner, 25 Nov).
-- The ship's frame covers the sealed hull plus open hangar bays. Stepping out through a door's force field in space leaves the player drifting alongside; jumping out in atmosphere means a fall, so bring a jetpack.
+- Who is in the ship's frame follows "What's a child of what" (its inside-set: the enclosed hull and its open hangar bays). Stepping out through a door's force field in space leaves the player drifting alongside; jumping out in atmosphere means a fall, so bring a jetpack.
 - **What's a child of what** (12 Nov). Every body (player, creature, crate, vessel) has exactly one parent: the ground's world or a structure. It becomes a child of a structure by resting on it, or by being mostly enclosed by it even while touching nothing (floating in a hangar in zero g, or a small ship flying inside a big ship's bay). When more than one structure qualifies, the innermost wins: you in a small ship inside a big ship are a child of the small ship, and it of the big one. A body leaves only when neither holds, and then moves up one level to the next parent out, keeping its position and velocity in the world.
 - Boarding uses the same rules: once inside an enemy ship, the boarding party is in that ship's frame even while it's still flying.
 - In multiplayer, positions inside a ship are sent relative to the ship, so everyone aboard moves smoothly even at full speed.
