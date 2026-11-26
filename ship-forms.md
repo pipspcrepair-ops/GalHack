@@ -46,7 +46,7 @@ DESIGN.md section 5 had already set the direction. The first try ignored it:
 Stations follow the same body plans scaled up: a Meridian slab arcology, an Exchange pod-ring market, a Kessari lattice spire, a Vharn hive of segments, a Freeholder raft of clamped modules, a Reaver haven welded into a hollowed asteroid.
 
 
-**Samples (26 Nov):** the first forms sheet, five rolls per faction plus Husk hulls: [capital-forms-sheet.jpg](ship-forms/capital-forms-sheet.jpg). Its generator is not in git yet (see root-fix-tasks.md F13).
+**Samples (26 Nov):** the first forms sheet, five rolls per faction plus Husk hulls: [capital-forms-sheet.jpg](ship-forms/capital-forms-sheet.jpg), and the same rolls greyed: [capital-forms-grey.png](ship-forms/capital-forms-grey.png). The small craft likewise: [small-craft-sheet.png](ship-forms/small-craft-sheet.png) and [small-craft-grey.png](ship-forms/small-craft-grey.png). The capital generator is `ShipForm*.cs` in poi-generator on branch `proto/shipforms` (pushed 26 Nov, 35 commits past test-build, its tip a WIP on interiors).
 ## Small craft
 
 The lone Freeholder trader or scout in the start sky (`SmallCraft` in building, merged 16 Nov in batch2 c9e3a8be) is still the old box on stilts. It flies, lands, runs and burns fuel correctly, but its form doesn't follow these rules yet. The owner accepted it as it is (16 Nov): "It's fine for the starter planet trader ship, in this case it's acceptable." So it stays. Each faction's fighters and gunships still come later from that faction's own body plan, through the same body-plan code at small scale.
