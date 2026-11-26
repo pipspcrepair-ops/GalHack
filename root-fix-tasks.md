@@ -131,7 +131,7 @@ Nothing else can be shown fixed without these. **Order:** T0.2 and then T0.5 fir
 ---
 
 ## Tier 1: small root fixes for live bugs
-Once Tier 0 is in, T1.1, T1.2 and T1.3 are independent of each other. T1.4 and T1.6 follow T1.3, and T1.5 follows T1.1.
+Once Tier 0 is in, T1.1, T1.2, T1.3 and T1.7 are independent of each other. T1.4 and T1.6 follow T1.3, and T1.5 follows T1.1.
 
 **T1.1 A per-world build context instead of statics** (M, high effort; after T0.1a, which gives `WorldKey`)
 - **Replaces:**
@@ -200,6 +200,14 @@ Once Tier 0 is in, T1.1, T1.2 and T1.3 are independent of each other. T1.4 and T
 - **Today:** MoonTest fails "it crossed into orbit" on some worlds, on clean code too: the Skiff climbs at only about 5 m/s (playtest-list.md, "Open test failures (13 Nov)"). The entry's "6.8 km" can't be right with the 1,060 m crossing (orbit.json:59), so the job re-measures first. Before a guard in `Bindings.cs` it also threw at line 107 and never built the Skiff. That points at the vessel's climb (thrust, mass or drag against the world's gravity and air), not the surface-to-orbit seam.
 - **Finds and fixes the cause** in the vessel's climb, not by easing the test.
 - **Proof:** MoonTest's climb passes on fresh worlds, and the entry comes off T0.5's known-failure list.
+
+**T1.7 Z-fighting: one rule at every builder, one failing check** (M, high effort, 2 slices: the rule in every builder; the scene check as a failing test; after T0.5, whose test run it joins)
+- **Today (owner: "it's everywhere"; 9, 17 and 18 Nov: "z-fighting based into decos and ship parts across the entire game", cargo containers, painted floor finishes):** one detector and rule exist, `Coplanar` (shared/Geometry/Coplanar.cs: `Find` returns faces of different looks lying within `Gap` 2 mm and overlapping; `Separate` stands a part `Standoff` 3 mm off the face it lies on). But each builder opts in on its own: the POI generator (`MeshStandoff`), deco (`DecoStandoff`) and the bestiary (`MeshBuilder`) do; the block mesher for ships and bases (building `ChunkMesher`) and every other mesh builder don't. The whole-scene check (`Staging.ZFight`, `--view=zfight`) only prints pairs; nothing fails. The stand-off is a fixed 3 mm, which flickers at range and at grazing angles (the floor finishes). Unfinished work making `Find` fast enough for whole meshes (buckets, threads, block faces known apart) sits on `proto/zfix` (f917d188, saved 26 Nov, not reviewed).
+- **Builds:** every mesh the game draws passes one path that keeps the rule by construction: whatever lies on a face stands off it, or is cut into it or merged with it. No builder places a flush face of another look. The stand-off follows the depth buffer's precision at the distance the face is seen from, not one fixed figure.
+- **Replaces:** the per-builder stand-offs (`MeshStandoff`, `DecoStandoff`, the bestiary's) with that one path; the deco and bestiary coplanar tests fold into the one check.
+- **Proof:** `Staging.ZFight` becomes a check in the test run that fails on any fighting pair, at the start's place, a city lot, a ruin, a capital hulk, a player-built ship and base with every block and device, and the cargo containers, over fresh seeds; and one per generated piece (every block, device, deco, POI part, creature, ship form). Owner's shots re-taken from a distance and at grazing angles: floor finishes, containers, door insides, ship parts.
+- **Closes:** the playtest list's z-fighting entries ("Lots of z-fighting on a lot of objects", "Z-fighting still on painted floor finishes", "Z-FIGHTING ON ASSETS", "Z-fighting on the inside faces of doors").
+- **Every builder after it** (F10's places, F12's fauna, F13's ship forms from `proto/shipforms`) goes through the same path, and the check covers it.
 
 ---
 

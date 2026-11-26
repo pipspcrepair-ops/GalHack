@@ -373,7 +373,7 @@ The jobs, in build order, with what each closes, its proof and its size, are in 
 
 Each step is a root fix, merged green with its checks. A replacement merges only with the deletion of what it replaces. No step leaves the game broken.
 0. **The proof first (Tier 0):** repo tools (the test queue, the quiet frame check, the owner's settings file), then one scripted merge gate with its known-failure list and a frame check against the baseline, then the harness (`WorldChoice`, `Harness` with `Arrive`, `AddSleeper` and `SaveAndReload`, the world probe) beside the multi-world prototype (T0.4, the decision gate for step 2's world model). Each later task writes its own findings' failing checks first.
-1. **Small root fixes (Tier 1):** a per-world build context in place of the statics (S3); `Attach`/`Detach` with handles (S4); one settings object and rules per world (S5), with the core's 1 g a constant and a world's gravity from its own scale; every world has every system, with one oxygen figure; the same seed builds the same world; the Skiff's stalled climb.
+1. **Small root fixes (Tier 1):** a per-world build context in place of the statics (S3); `Attach`/`Detach` with handles (S4); one settings object and rules per world (S5), with the core's 1 g a constant and a world's gravity from its own scale; every world has every system, with one oxygen figure; the same seed builds the same world; the Skiff's stalled climb; z-fighting kept out by one rule at every mesh builder, with a failing check.
 2. **The world model (Tier 2),** in slices:
    - the galaxy from the game seed, with one star model;
    - each world its own Godot world and `WorldQuery` (rule 2), after the prototype;
