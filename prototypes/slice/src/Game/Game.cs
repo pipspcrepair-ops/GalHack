@@ -114,6 +114,9 @@ public partial class Game : Node3D
     /// <summary>Chase camera instead of first person.</summary>
     public bool ThirdPerson;
 
+    /// <summary>Tests: the chase view whenever seated at a vessel's controls, first person on foot (owner, 24 Nov: piloting is always seen from outside).</summary>
+    public bool ChaseWhenSeated;
+
     /// <summary>Screenshots: the camera stays here.</summary>
     public Transform3D? FixedCamera;
 
@@ -450,6 +453,7 @@ public partial class Game : Node3D
         if (Menu.IsOpen && c.KeyWasPressed(Key.A) && c.ModifierHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
+        if (ChaseWhenSeated) ThirdPerson = Survivor.Seated != null;
         StepOrbit(c, (float)delta);
         if (c.WasPressed(Key.L)) ToggleTorch();
         if (!Menu.IsOpen) StepGestures(c);

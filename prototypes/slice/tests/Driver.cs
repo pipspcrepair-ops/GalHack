@@ -577,6 +577,16 @@ public sealed class Driver
             foreach (int x in Tap(Key.F)) yield return x;
             for (int i = 0; i < 5; i++) yield return 0;
         }
+        Chase();
+    }
+
+    /// <summary>Piloting is seen from the external chase camera, windowed or headless (owner, 24 Nov), never first person or a free camera; on foot, first person as before.</summary>
+    public void Chase()
+    {
+        if (OS.GetCmdlineUserArgs().Contains("--first-person")) return; // TEMP experiment
+        Game.FixedCamera = null;
+        Game.ChaseWhenSeated = true;
+        Game.ThirdPerson = Game.Survivor.Seated != null;
     }
 
     public void ReleaseAll() => Controls.ReleaseAll();

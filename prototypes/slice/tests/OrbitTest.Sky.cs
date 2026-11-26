@@ -44,9 +44,11 @@ public partial class OrbitTest
         }
         else
         {
-            double x = Planets.Gen.Mathx.WrapX(cam.X, width), z = Planets.Gen.Mathx.Wrap(cam.Z, _game.Surface.Planet.Height);
+            // The ground's sky is stood where the sleeper or vessel is (its focus), not at the chase camera behind it.
+            Vector3 at = _game.Surface.Focus();
+            double x = Planets.Gen.Mathx.WrapX(at.X, width), z = Planets.Gen.Mathx.Wrap(at.Z, _game.Surface.Planet.Height);
             toGlobe = map.Frame(x, z);
-            eye = map.Direction(x, z) * (float)(width / Math.Tau + cam.Y);
+            eye = map.Direction(x, z) * (float)(width / Math.Tau + at.Y);
         }
         var d3 = new D3(eye.X, eye.Y, eye.Z);
         var bodies = new Dictionary<Orbiter, (Vector3, float)>();

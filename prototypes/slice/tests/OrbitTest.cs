@@ -68,7 +68,6 @@ public partial class OrbitTest : Node
         try
         {
             more = _run.MoveNext();
-            if (_game?.Survivor != null && DisplayServer.GetName() != "headless") _game.ThirdPerson = _game.Survivor.Seated != null; // piloting in a window: the chase view, as the owner flies (owner, 24 Nov)
             if (more)
             {
                 WatchZones();
@@ -598,11 +597,13 @@ public partial class OrbitTest : Node
 
         // Down on the gear, as a pilot would: the height under it sets the sink rate.
         int ticks = 0;
+        bool hurt = false;
         float hurtBefore = v.Body.Damage; // what it took out there (a drifting wreck's knock) is not the landing's
         Vector3 target = surface.GroundAt(down.PositionAfter.X, down.PositionAfter.Z);
         while (!v.Controller.Frozen && ticks++ < 60 * 120)
         {
             float agl = v.AboveGround, vy = v.Body.Velocity.Y;
+            if (agl < 300f && ticks % 30 == 0 || v.Body.Damage > hurtBefore && !hurt) { hurt |= v.Body.Damage > hurtBefore; GD.Print($"  (descent: {agl:F1} m up, {vy:F1} m/s, damage {v.Body.Damage - hurtBefore:F2}, tick {ticks})"); }
             float wanted = agl > 260f ? -60f : agl > 70f ? -20f : agl > 25f ? -8f : agl > 6f ? -3f : -1.2f;
             bool onGear = agl < 3f && MathF.Abs(vy) < 0.4f; // hands off, and it settles
             _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);

@@ -170,7 +170,6 @@ public partial class OrbitReliefTest : Node
         if (!Check(_skiff != null, "the Skiff is built")) yield break;
         foreach (int x in _pilot.Board(_skiff)) yield return x;
         // Piloted from the external chase camera, as the owner flies (V), never first person or a free camera.
-        if (!_game.ThirdPerson) foreach (int x in _drive.Tap(Key.V)) yield return x;
         if (!Check(_game.ThirdPerson && _game.FixedCamera == null, "the Skiff is flown from the external chase camera")) yield break;
 
         Hurry(4);

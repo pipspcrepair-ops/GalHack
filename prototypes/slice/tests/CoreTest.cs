@@ -153,6 +153,7 @@ public partial class CoreTest : Node
         GD.Print($"  (couldn't walk to the chair here, {v.NearestChair(_game.Survivor.WorldEye(), out _):F1} m off: seated directly)");
         v.TakeChair(v.Chairs.First());
         _game.Survivor.Sit(v);
+        _drive.Chase();
         foreach (int x in _drive.Wait(5)) yield return x;
     }
 

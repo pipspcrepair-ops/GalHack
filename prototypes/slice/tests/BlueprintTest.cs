@@ -251,6 +251,7 @@ public partial class BlueprintTest : Node
         Check(sat && _game.Figure.Visible && cam.GetCullMaskValue(CharacterModel.BodyLayer) && eyeOff < 0.03f,
             $"{name}: seated in its chair, the figure drawn, the camera at the chair's eye ({eyeOff * 100f:F1} cm off)");
 
+        _drive.Chase(); // flown from the external camera
         // Flown as in Survival, on fuel in its storage: its generator burns it to keep the capacitor charged.
         _game.Mode = GameMode.Survival;
         v.Power.ChargeMJ = 0; // STAGING: PLACE set it down on Creative's free power; built, its capacitor starts empty
