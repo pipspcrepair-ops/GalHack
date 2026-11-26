@@ -469,7 +469,7 @@ Each unifies a job and deletes the copies. Tier 4 needs only Tier 2, so it runs 
   - SA C-F (four definitions of a wreck).
 - **Proof:** the same block gives the same yield on the ground and in orbit.
 
-**T4.4 Shelter and air: air volumes like cabin worlds** (L, medium effort, 4 slices: volumes and the `Exposure` query; nesting and openings; life support on the power model; the bunker and the shelter tests; depends on T4.2, T1.4 for the world's air, and T2.7 for ships' cabins; saving the rooms' air, pressure included, is proven in T3.3b)
+**T4.4 Shelter and air: air volumes like cabin worlds** (L, medium effort, 4 slices: volumes and the `Exposure` query; nesting and openings; life support on the power model; the bunker and the shelter tests; depends on T4.2, T1.4 for the world's air, and T2.7 for ships' cabins)
 - **The model (owner, 25 Nov: air follows the cabin worlds' logic).** A ship owns its cabin world and anything aboard reads the cabin, then `Outside`. Air works the same way:
   - **every sealed volume owns its air:** a ship's or base's room, a closed room in a place, the bunker. It holds oxygen, temperature and pressure, and is kept with its structure or place;
   - **volumes nest:** each has a parent, another volume or the world's own air. A ship parked inside a sealed base room reads that room, which reads the planet;
