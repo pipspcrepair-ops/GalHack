@@ -1772,6 +1772,6 @@ Decided. These stand.
 3. Players never see a theme's name, only its effects. Names are for us and the debug screen.
 4. About three settled worlds in ten have no mood at all.
 5. Mid-collapse worlds stay at a few in every hundred.
-6. Husks need mid or high tech.
+6. ~~Husks need mid or high tech.~~ Dropped (owner, 26 Nov): that rule was about the old nanite Husks; the worm-parasite Husks can reach any world.
 7. The 112-row occupancy table is a record, not data: mixes come from adding layers.
 8. The Husks are the threat, and the names move with them (8 November). `bloom` now means the Hollow: fungal growth, and Hollow worlds, which remain as before, overrun by the growth, but rare (`flora.hollow_overrun` sets `hollow=world`, behind the soft `hollow` rule). What was `hollow` or `HOL`, "something wrong here", is the Husks' warping: the tag `warped` and the occupant `WRP` (the code `HOL` still reads as it). Value ids moved with them: `fall.hollow_front`, `feature.hollow_basin`, `feature.hollow_patch`, `presence.hollow_shore`, `orbit hollow`. Theme ids (`eye_bloom`, `hollow_orchards`) and POI family ids stay as they were.
