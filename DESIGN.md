@@ -1170,6 +1170,7 @@ Hostile fire is deadly when it lands: a capital-class turret will vaporise a pla
 | Capital T1 / T2 | 18,000 / 36,000 | Capital vessels |
 | Base T1 / T2 | 25,000 / 50,000 | Bases |
 
+- **Shield fields are ovaloid and local** (owner, 26 Nov). Each shield generator projects an ovaloid field around itself; parts of a ship outside every field are unprotected, and hits there land on blocks and devices directly. Big ships carry several shield generators to cover their length. If two fields overlap, every shield projector involved breaks at once, so generators must be spaced to fit together without touching.
 - Shields take about 15 s to come up, don't recharge while under fire (a short delay after each hit), and burn fold crystal while recharging.
 - Every weapon has a shield-damage multiplier: plasma strips shields, rockets punish hull and devices.
 - At zero shield HP, hits land on blocks and devices. Shield extenders and charged armor raise capacity.
