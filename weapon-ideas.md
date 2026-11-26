@@ -8,7 +8,7 @@ Design pool for GalHack's arsenal. Not a commitment and not code. All names are 
 
 Most weapons are not bespoke code. Each is a row of combinable parts (section 2) plus a look and a sound. Every entry says what situation it solves, what it costs the player and what counters it. Anything that can't be built without new engine work is marked **Needs** and grouped by shared upgrade in section 13; nothing was watered down to fit today's engine. The first 12 to build (section 8) need none of those upgrades.
 
-Settled rules applied throughout: effects on players last seconds during a fight, which keeps "no ailments". Living weapons use biomass as plain ammo with no upkeep. The level cap is 25. "No drones" only means no Empyrion-style drone waves invading you, so other machines are allowed as enemies and world content. Tech bands are low, mid and high. No weapon relies on speech, written logs or readable lore. Anything that lifts objects is a clearly visible anomaly with a visible cause. Wires and cables are always anchored. Hollow-related effects stay understated and are never labelled as such.
+Settled rules applied throughout: effects on players last seconds during a fight, which keeps "no ailments". Living weapons use biomass as plain ammo with no upkeep. The level cap is 25. Drones are allowed, Empyrion-style drone waves included (superseded: the owner withdrew the no-drones rule on 9 Nov, DESIGN section 17). Tech bands are low, mid and high. No weapon relies on speech, written logs or readable lore. Anything that lifts objects is a clearly visible anomaly with a visible cause. Wires and cables are always anchored. Hollow-related effects stay understated and are never labelled as such.
 
 **The owner's decisions (section 11).** The player has a personal shield, a bar alongside health that soaks hits first and refills after a short break from taking hits; health doesn't refill (section 5.11). There are no companions: nothing the player owns follows them or fights at their side. Static placed defences stay, and swarms fired as ammo stay, because they're short-lived shots. Weapons never wear out or jam. Antimatter, nuclear and orbital weapons leave permanent craters, with a server setting to turn them off. Self-harm is on by default and friendly fire is a server setting (section 5.12). Comic weapons stay as rare finds.
 
@@ -1283,7 +1283,7 @@ The rules are in section 5.11. Every suit has one shield slot, separate from its
 *Does:* a dart that gives a squadmate a third of their bar. *Look and sound:* a pale spark that runs over them. *Why:* the co-op medic's second job. *Cost:* can't be used on yourself. *Ammo:* capsules. *Counter:* a stall.
 
 **PS12 Ward Post** (placed recharger) | M | Placed | S | `placed field ward power` | Needs SHIELD
-*Does:* a post on a base or vessel floor that cuts the break to two seconds and doubles the refill for anyone within eight metres. *Look and sound:* a slow pulsing ring on the deck. *Why:* a place to fall back to, so a defended room is worth holding. *Cost:* CPU and power, and it does the same for anyone standing there, including boarders. *Ammo:* power. *Counter:* shoot it; cut the power.
+*Does:* a post on a base or vessel floor that cuts the break to two seconds and doubles the refill for anyone within eight metres. *Look and sound:* a slow pulsing ring on the deck. *Why:* a place to fall back to, so a defended room is worth holding. *Cost:* power (there is no CPU, DESIGN section 13, owner, 12 Nov), and it does the same for anyone standing there, including boarders. *Ammo:* power. *Counter:* shoot it; cut the power.
 
 ---
 
@@ -1524,7 +1524,7 @@ The design says weapons have jobs, not tier numbers, and this keeps to that: a m
 
 ### 6.4 Slots and limits
 
-Vessels need a cap on guns or everyone stacks one best weapon. Reforged Eden 2 uses three weapon sizes with a shared limit per class, and equal damage per minute within a size, with the difference being how the damage arrives. That's a useful target: small, medium and heavy weapon classes, with damage normalised inside a class, so a Fighter Rail and a Chatter Gun differ by what they do, not a bigger number. CPU already costs devices.
+Vessels need a cap on guns or everyone stacks one best weapon. Reforged Eden 2 uses three weapon sizes with a shared limit per class, and equal damage per minute within a size, with the difference being how the damage arrives. That's a useful target: small, medium and heavy weapon classes, with damage normalised inside a class, so a Fighter Rail and a Chatter Gun differ by what they do, not a bigger number. Power draw already limits devices (superseded: there is no CPU, DESIGN section 13, owner, 12 Nov).
 
 ---
 

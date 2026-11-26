@@ -577,7 +577,7 @@ Science:
 
 ## 8. Owner's decisions
 
-A rule for every start system: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold fold drive materials, fold fuel and capital ship materials. A system that fails either rule is fixed or rerolled.
+A rule for every start system: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold fold drive materials, fold fuel and capital ship materials. A system that fails either rule is fixed by adding what's missing, never rerolled (DESIGN section 10, availability guarantees; step 8 here).
 
 Rings on a moon: real rings only survive close inside a body's small zone of gravity (its Hill sphere), so a world orbiting near a bigger ringed planet would rarely hold rings of its own. Treat a ringed moon of a ringed giant as a very rare sight, not a common result. Rings aren't limited to gas giants: any world can have them, for example from a moon that broke apart, though on rocky worlds they're less common and narrower. Rings are real places: from afar they read as smooth bands, and up close they resolve into a field of tumbling rocks, in the manner of Elite Dangerous. Use the same rock field system as asteroid belts, so rings can be flown through and mined.
 

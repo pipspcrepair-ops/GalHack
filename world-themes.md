@@ -15,7 +15,7 @@ How to read an entry:
 
 Tech band letters: L low, M mid, H high. "Pre M > post L" means a modern-day world whose survivors now live at a low level.
 
-Faction note: Hollow presence is always "felt, not shown": sounds, stains, misplaced objects. It rises toward the core. A theme with no faction line simply has none on most rolls.
+Faction note (old naming: since 8 Nov this is the Husks' warping, and the Hollow is the loud fungal growth; world-layers.md section 11, item 8): Hollow presence is always "felt, not shown": sounds, stains, misplaced objects. It rises toward the core. A theme with no faction line simply has none on most rolls.
 
 ---
 
@@ -1649,7 +1649,7 @@ Occupancy is a layer separate from layout. The same hospital layout is built onc
 | --- | --- | --- |
 | EMP | Empty | No spawns at all. Dust, dead light, no tracks. Loot is intact but untouched, so it is often the best loot. Still gets logs and the frozen-moment dressing. |
 | NST | Nesters (creature nests) | Nests in rooms and vents, webbing and egg clusters, droppings, gnawed furniture, bones of prey, chewed doors, a smell sound-cue. Guarded brood rooms deeper in. |
-| HSK | Husks (bodies run by leftover medical nanites or implants) | Slumped figures in beds and corridors that rise when disturbed, with worm-like protuberances coming from their orifices; barricades broken from inside, scratch marks, bodies in uniform, a last stand at a stairwell. |
+| HSK | Husks (superseded: people hijacked by worm-like parasites, DESIGN section 1) | Slumped figures in beds and corridors that rise when disturbed, with worm-like protuberances coming from their orifices; barricades broken from inside, scratch marks, bodies in uniform, a last stand at a stairwell. |
 | SCV | Scavengers passing | A few people, in and out: a camp fire in the ward, a tripod over ash, picked-over shelves, bedrolls, fresh boot tracks, a chalk arrow, a stash they will return for. Often neutral until threatened. |
 | SQT | Squatters / settled survivors | A lived-in place: tidy bunks, cooking stove, water barrels, boarded windows, a notice board, a barter shelf. Friendly or wary; they trade. |
 | GNG | Gang-held | Fortified: welded barricades, spikes, trophy walls, loot piles, a boss room, hostages or cages. Always hostile. |
@@ -2105,7 +2105,7 @@ Key. Life: none / low / mid / high. Start: Y yes, R rim only, N no. Rarity: C co
 | # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 27 | High-gravity world | squat ranges, short cliffs, dense forest | thick, heavy air | stubby trees, low plants | mid | hard falls, slow movement, hover fails | dense metals | M | R | U | small (gravity profile; tune movement and vessels) |
-| 28 | Nascent world | broken young crust, shaking ground | dark ash sky | little | low | 3.8-4.3 g, quakes | rich mixed ore | S-M | N | R | small (doc entry; high gravity plus fresh crust) |
+| 28 | Nascent world | broken young crust, shaking ground | dark ash sky | little | low | quakes (gravity from size alone, 0.2 to 5 g: owner, 22 Nov, DESIGN section 8) | rich mixed ore | S-M | N | R | small (doc entry; high gravity plus fresh crust) |
 | 29 | Tidally locked world | day side scorched, night side frozen, a twilight ring of green | sun fixed on the horizon, never sets | life only in the ring | mid (ring) | two lethal faces | rare ore at both extremes | L | R (ring) | U | new (fixed light, latitude-to-face climate map) |
 | 30 | Ringed world | any base terrain; the ring is the show | huge ring arc across the sky | by base | by base | ring shadow bands cool the ground | ring ice (in orbit) | any | by base | U | small (ring look exists; add shadow bands, ring salvage) |
 | 31 | Gas-giant moon | rock or ice with a swollen planet overhead | giant filling a quarter of the sky | by base | low | radiation belts | volatiles | S-M | N | C | small (moons exist; add fixed giant overhead, radiation hazard) |
@@ -2131,7 +2131,7 @@ That is 40 types. Rows 1, 2, 4, 5, 7, 8, 11, 13, 18, 19, 33, 34 and 40 need no n
 A decoration pass cannot do these. The apocalypse rolls before terrain is finished and writes into three places: **stamps** (shapes pressed into the height field and biome map), **biome overrides** (a region repainted), and **planner hints** (where regions, roads and POIs may go). A stamp is a record with a position, a radius, a depth curve, a rim, a material patch and tags. The same stamp system serves natural craters, so building it once also feeds the vacuum worlds.
 
 **Nuclear exchange (Z1).** The region planner already knows the target sites: ports, cities, silos, bunkers, plants, rail hubs. Run it first, then roll a ground zero for each site:
-- Stamp: a bowl (3-12 m deep on a 16x8 km world, much wider than deep) with a raised rim, a ring of flattened rubble outside it, and a thick glass patch on the floor and inner slope. Surface bursts dig; air bursts leave a flat scorched disc with no bowl.
+- Stamp (size superseded: DESIGN section 4 makes a nuclear crater the scale of a moon's craters, with ground zero in the city it hit and the city flattened outward round it): a bowl (3-12 m deep on a 16x8 km world, much wider than deep) with a raised rim, a ring of flattened rubble outside it, and a thick glass patch on the floor and inner slope. Surface bursts dig; air bursts leave a flat scorched disc with no bowl.
 - Pattern: craters sit on the old targets, never random scatter. They cluster round the big cities, line up along coasts and rail corridors, and come in pairs and threes at big hubs. Bunker and silo sites get a deeper crater with a cracked-open lid.
 - Biome: a dead-grass disc 3-6 times the crater radius, dead forest out to ten times, and an ash plume downwind along the world's prevailing wind (the dune generator already has one).
 - Planner: roads and rail stop at the crater edge and resume past it; a ruin district fills the rubble ring; a fallout region is marked as a hazard.

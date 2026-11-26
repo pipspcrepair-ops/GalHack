@@ -58,7 +58,7 @@ POI family weights have no layer of their own, on purpose. Any value can carry `
 - **The warping stays subtle.** What the Husks do to a place (the tag `warped`, the occupant `WRP`, "something wrong here") is written only as what the player can notice. No `name` calls it anything, and `name` isn't player-facing anyway. The Hollow's growth (the tag `hollow`, which was `bloom`) is a separate, loud thing, kept to its own values and rare patches, and a whole Hollow world is rarer still (`flora.hollow_overrun`, owner's decision 8 in section 11).
 - **No Earth, no real brands, no copying.** New names are ours, and animals are described by what they do. Two old names that echo other works are flagged in section 11.
 - **Tech bands are low, mid and high.** The incomprehensible isn't a band. It appears only as a rare glimpse in the sky near the core.
-- **No invading drones.** Machine presences hold their ground. A sentry stays on post and a harvester stays in its field, and neither comes for a base in waves.
+- **No invading drones** (superseded: the owner withdrew the no-drones rule on 9 Nov; attack drones and Empyrion-style drone waves are fine, DESIGN section 17). Machine presences hold their ground. A sentry stays on post and a harvester stays in its field, and neither comes for a base in waves.
 - **The setting holds.** The collapse was fast, galaxy-wide and a century or two ago. A fall is how it played out here, never the one true cause. Mid-collapse is a phase of the same layers, not a list of its own.
 
 ## 4. The layer tables
@@ -69,7 +69,7 @@ Every table below is live data: the script reads these fenced blocks, so what yo
 
 These roll first and owe nothing to people. Position in the system comes from `docs/solar-systems.md`, which reads a type off its orbit zone. The `zones` field keeps that link; the roller here ignores it and uses `weight`, because it has no system to place a world in.
 
-**Galaxy zone.** Where the world sits. It gates factions, the Hollow's growth, the Husks' warping and glimpses of the incomprehensible.
+**Galaxy zone.** Where the world sits. (In the game this comes from the system's depth, 0 at the rim to 1 at the core, and its region: DESIGN section 4, owner, 15 Nov. The four weighted zones are only this roller's stand-in.) It gates factions, the Hollow's growth, the Husks' warping and glimpses of the incomprehensible.
 
 ```layers
 zone rim | name on the quiet rim | weight 38 | occ EMP 8
@@ -193,7 +193,7 @@ land sinkhole_country | name sinkhole country
 land terraces | name hillsides carved into terraces and canals | was 39
 ```
 
-**Modifiers.** The owner's day length, seasons and terraforming variables live here, and so do seven old world types, because each is true of many bodies rather than being a body of its own. Up to two. Gravity, spin and rings really come from the system generator; here they roll after the profile, because the terraforming values need a people to have done it.
+**Modifiers.** The owner's day length, seasons and terraforming variables live here, and so do seven old world types, because each is true of many bodies rather than being a body of its own. Up to two. Gravity, spin and rings really come from the system generator (superseded for gravity: it comes from size alone, owner, 22 Nov, DESIGN section 8, so `low_gravity` and `high_gravity` below should not roll); here they roll after the profile, because the terraforming values need a people to have done it.
 
 ```layers
 mod low_gravity | name low gravity | was 23 | weight 3
@@ -528,7 +528,7 @@ running billboards | name powered billboards still selling | weight 3 | is high 
 running hour_horn | name a great horn sounding once a day | weight 2 | is mid | like sound.hour_horn*20
 ```
 
-**Presences and factions.** Who holds ground now, and who's working the place. Faction rules from the design hold: the rim has none, start worlds have none, and machine presences hold ground, they never come at a base in waves. The Husks' warping is written only as what the player can notice, and `name` never calls it anything.
+**Presences and factions.** Who holds ground now, and who's working the place. Faction rules from the design hold: the rim has none, start worlds have none, and machine presences hold ground, they never come at a base in waves (this describes the presences only: drone waves are allowed since 9 Nov, DESIGN section 17). The Husks' warping is written only as what the player can notice, and `name` never calls it anything.
 
 ```layers
 presence vharn_garrison | name a Vharn garrison | weight 4 | is faction | occ FAC 18 | poi vharn_outpost 4 vharn_sam_site 2 | like marks.faction_sigils*3 | orbit patrol | bias strife 0.3

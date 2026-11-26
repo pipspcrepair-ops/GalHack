@@ -396,7 +396,7 @@ Hardness changes the child in three ways.
 
 **How others react to them.** Adults treat a hardened child with a mix of respect and pity: a nod rather than a pat on the head, and a step aside at a stall. Kind adults kneel to them and get a level stare back. Other children follow them like a leader. Guards let them pass where they'd stop other children, and raiders sometimes taunt them, which they meet without flinching. Traders deal with them as with adults, but they're harder to frighten into an offer, and they'll stand their ground with a warning gesture over a younger child or the family's goods.
 
-Under the suggestion in decision 1 (section 12), hardened children still can't be harmed or targeted, and they never fight: they warn, guard, trade, scavenge and lead other children, and when a fight starts they take the younger ones and go. Their weapon is part of the look and their warning, never something they fire at the player. If the owner chooses differently, that's where the line moves.
+(Superseded: the owner decided children can be harmed like anyone else; see section 12.) Under the old suggestion in decision 1 (section 12), hardened children still can't be harmed or targeted, and they never fight: they warn, guard, trade, scavenge and lead other children, and when a fight starts they take the younger ones and go. Their weapon is part of the look and their warning, never something they fire at the player. If the owner chooses differently, that's where the line moves.
 
 **How adults change with children near.** These are modifiers on the gestures above, not new gestures:
 - **Interpose.** An adult steps between the child and the cause, facing it, and sweeps an arm back to keep the child behind them. Nerve rises when children are near, so a timid farmer who would flee alone stands their ground.
@@ -412,7 +412,7 @@ Under the suggestion in decision 1 (section 12), hardened children still can't b
 - **Young play** when the herd is calm: play bows, chases and mock fights.
 - **A mother interposes** like a human parent and charges sooner. A grazer that would flee from the player alone may stand and stamp when its young is near.
 
-**Children's voices** are covered in section 6.4. Whether children and young can be harmed is a decision for the owner (section 12).
+**Children's voices** are covered in section 6.4. Children can be harmed like anyone else (owner's decision, section 12).
 
 ## 4. Moving between states
 
@@ -1003,7 +1003,7 @@ Used for concepts and roles only. Pages were read as data.
 **Decided already:** children can be harmed like anyone else, with no special case, and follow normal occupancy rules. Young have child roles; a few hardened children act like adults out of necessity. Most children run and play, while adults walk. Wherever this doc says otherwise, the owner's decision wins.
 
 
-1. **Can children and animal young be harmed?** Most games make children unharmable or leave them out. My suggestion: people's children can't be damaged or targeted, they hide early so they're rarely near a fight, and raiders and gangs have none in combat. Animal young are ordinary wildlife and can be hunted, as in nature, with their mothers defending them. Hardened children (section 3.6) carry weapons for the look and the warning but never fire them. The alternative is full realism, which would change the game's tone and how it's rated.
+1. **Can children and animal young be harmed?** (Answered: yes, children like anyone else; see Decided already above.) Most games make children unharmable or leave them out. My suggestion: people's children can't be damaged or targeted, they hide early so they're rarely near a fight, and raiders and gangs have none in combat. Animal young are ordinary wildlife and can be hunted, as in nature, with their mothers defending them. Hardened children (section 3.6) carry weapons for the look and the warning but never fire them. The alternative is full realism, which would change the game's tone and how it's rated.
 2. **Should the player have gestures of their own?** A small quick wheel (wave, hands up, beckon, halt, point, hush) that NPCs read like any other body, and that co-op players see on each other. It's cheap because the rig already exists, it makes peaceful play deliberate, and it gives co-op wordless talk in the spirit of Journey. Without it, the player's only signals are the weapon's position and movement.
 3. **Do factionless settlements get their own standing number?** The design gives each settlement a mood that shooting changes, and robbing needs somewhere to land. My suggestion: each settlement gets a local standing on the same bands, stored in its ledger, and the envoy consoles don't reach it, so you have to make amends in person with gifts and help.
 4. **How harsh is robbery?** My reference losses are in section 5.4 (about 1,500 for a seen robbery, double for killing someone who surrendered). Is threatening and robbing friendly people meant to be a real, costly way to get goods, or mostly flavour that's quickly punished?

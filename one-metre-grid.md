@@ -141,7 +141,7 @@ Footprints don't have to be cubes or even. A thruster can be long, a hover plate
 - **Redundancy:** losing one of eight costs an eighth of the output.
 - **Price:** they cost less and unlock earlier.
 
-**Fixed, with no tiers:** see [section 10](#10-other-decisions-from-the-12-nov-brainstorm). Cloning bays are for home spawns.
+**Fixed, with no tiers:** see [section 10](#10-other-decisions-from-the-12-nov-brainstorm). Cryopods (owner, 25 Nov; once cloning bays) are for home spawns.
 
 ### Starting points per device
 
@@ -345,7 +345,7 @@ These came up while planning the grid. Where they conflict with anything above, 
 - **Bases are cheaper to run** because they don't power hover plates or thrusters. They still pay for life support, forcefields, fridges, fabricators and every other powered device.
 - **Capacitors** form the shared bank. They **leak** (a bank slowly loses charge) and are **volatile** (they explode when destroyed), so stacking them doesn't pay.
 - **Life support** is a small flat draw while anyone's aboard: at most 4 players, no crew NPCs. No vents: every sealed room has air. You top up your suit's air at the life support block. Air has no material cost for now.
-- **Gravity** comes from a gravity generator part, not the core, and it draws power. This reverses "there is no separate gravity generator" in `DESIGN.md`.
+- ~~**Gravity** comes from a gravity generator part, not the core, and it draws power.~~ Superseded 23 Nov: gravity stays in the core (owner; see DESIGN.md's Air and life support).
 
 **Energy flow:** generators and solar panels → capacitors → anything that needs energy.
 
@@ -361,13 +361,13 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Tiered devices** (bigger, heavier and hungrier, but more efficient than lower tiers in the same space): thrusters, generators, storage containers, fuel tanks, landing and docking pads, warp drive, fold drive, fabricators, capacitors, shield generators, forcefield emitters, hover plates, gyros or RCS, solar panels, drill modules (T1 mechanical, T2 laser turret, T3 laser turret), and the comms array.
 
-**Fixed devices:** cloning bay, medical bay, command chairs, gravity generator, life support block, refrigeration, harvester module, scanners (specialist types such as deep-space scanners later), teleporter, spotlights, core, doors, grav lifts, ladders, lights.
+**Fixed devices:** cryopod (replaces the cloning bay, owner, 25 Nov), medical bay, command chairs, life support block (gravity generator superseded 23 Nov: gravity stays in the core), refrigeration, harvester module, scanners (specialist types such as deep-space scanners later), teleporter, spotlights, core, doors, grav lifts, ladders, lights.
 
 **Parts**
 - **Doors and landing gear:** one item each. The size or length is picked from the block's variant list, the same way you pick an armour shape. Cost and hit points scale with the size.
-- **Forcefield portals** replace ramps and cargo doors. They're built from **emitter blocks** placed along two opposite edges of an opening, and the field fills the rectangle between them, so a portal can be any size, including very long and thin. The field seals air but lets players and vehicles through, and it only seals while powered. Power draw scales with the field's area. Options such as who can pass sit on the emitters.
+- **Forcefield portals** replace ramps and cargo doors. ~~They're built from emitter blocks placed along two opposite edges of an opening, and the field fills the rectangle between them.~~ Superseded 15 Nov: a force field is one item placed by dragging a rectangle, with L-shaped emitters at its four corners (owner; see DESIGN.md's Force fields). A field can be any size, including very long and thin. The field seals air but lets players and vehicles through, and it only seals while powered. Power draw scales with the field's area. Options such as who can pass sit on the emitters.
 - **No repair bays.** Repair is by the plating gun only.
-- **Cloning bays:** build as many as you like. You nominate one as where you respawn.
+- ~~**Cloning bays:** build as many as you like. You nominate one as where you respawn.~~ Superseded 25 Nov: respawn points are cryopods built on our structures, not clone chambers (owner; see DESIGN.md's Death and respawn).
 - **Teleporters:** no range limit. Only sending needs power, and only at the moment of sending: nothing is drawn while idle, and the receiving end needs no power at all. The destinations you can pick are every teleporter the sleeper faction (the players) has built.
 - **Grav lifts,** borrowed from Empyrion: a lift shaft you step into to float up or down between decks. Each block is **2×2** across so the shaft isn't cramped, and you stack blocks to make the shaft as tall as you need. It costs almost nothing to run, but it still needs power, so it stops when the power goes out and anyone riding it drops down the shaft. It's fixed, with no tiers.
 - **No ramps** for now. Ramps in Empyrion were mostly decorative and a design nightmare.

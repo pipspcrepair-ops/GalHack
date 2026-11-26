@@ -270,7 +270,7 @@ As on the ground, one seed, one order, and everything is stored by its seed. Unv
 | `bloom_region` | Bright growth | Hard rule: no Bloom growth outside a Bloom region |
 | `region` | `danger`, `era_built` | Core sites skew Precursor |
 
-**Hard rules, which no break can pass.** Air and heat logic, the vacuum rule, no live faction in a start system, no Bloom growth outside Bloom regions, no invasion drones, no bands above high. FAC shares in a start system go to EMP. The incomprehensible is never a site with loot. **Soft rules, which a break can pass.** Tech filters, theme mix, the place's usual age.
+**Hard rules, which no break can pass.** Air and heat logic, the vacuum rule, no live faction in a start system, no Bloom growth outside Bloom regions, no bands above high. (No invasion drones is superseded: drones and drone waves are allowed, DESIGN section 17, owner, 9 Nov.) FAC shares in a start system go to EMP. The incomprehensible is never a site with loot. **Soft rules, which a break can pass.** Tech filters, theme mix, the place's usual age.
 
 ### How an orbit reads its parent's tech
 
@@ -3138,7 +3138,7 @@ The ladder from the design and from `StarSystem`: fuel moon (warp fuel and warp 
 | First flight | Low shell of the start world | Scrap, salvage grade, air cells, patch kits, repair kits, first claimable small hull | `holding_pattern`, `jettison_trail`, `lifeboat_raft`, `graveyard_shell`, `national_capsule` | No drives |
 | Fuel moon | The moon, its shells and its L points | Warp cells, a few warp parts, ore stocks, a catcher to claim | `catcher`, `fuel_stop`, `lost_property`, `quarried_moon` | Warp drive parts, never a whole drive |
 | Warp | The rest of the start system | Fold drive materials and fuel in stock form, gravium, gold, fold crystal in small amounts | `scoop_rig`, `fuel_stop`, `company_rock`, `trojan_warehouse`, `unfinished_keel` | Capital hull with no core, no drive, no fuel |
-| Capital | First capital hull, claimed or built | Claim targets, components, CPU parts | `alert_fleet`, `unfinished_keel`, `rush_ark`, `founder_carrier`, `breakers_orbit` | Claimed hulls need your own core and your own fold drive |
+| Capital | First capital hull, claimed or built | Claim targets, components (no CPU parts: there is no CPU, DESIGN section 13, owner, 12 Nov) | `alert_fleet`, `unfinished_keel`, `rush_ark`, `founder_carrier`, `breakers_orbit` | Claimed hulls need your own core and your own fold drive |
 | Stars | Neighbouring systems | Emberite, starsilver, faction goods | `sun_tap`, `star_bridge`, `black_yard`, `continuity_vault` | By danger |
 | Frontier | Core, voids, periphery | Precursor alloy, echo shards, unique items | Part 4 | Finite: see below |
 
