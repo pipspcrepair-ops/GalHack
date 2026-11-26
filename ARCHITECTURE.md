@@ -37,10 +37,13 @@ These rules are the general case. No band-aids: a fix that patches one case brea
    - `Attach(world)` makes every registration (physics, weather, tracking, lists, events) and returns a handle holding them.
    - `Detach` disposes that handle. It never undoes by looking the world up again.
    - `Move(from, to)` is the only way across (section 4c). Spawning, crossing and removal call only these.
-6. **Who claims a thing and where it is held are two separate facts** (section 3). Every physical thing is held by the world it is in and carries a `Source` (the sleeper or NPC that made it, for blame and XP) and a `Claim` (sleeper faction, NPC faction, or none). Only non-physical state is held by a sleeper or by the game.
+6. **Who claims a thing and where it is held are two separate facts** (section 3). Every physical thing is held by the world it is in and carries a `Source` and a `Claim` (sleeper faction, NPC faction, or none; a structure's is its core's, section 6). Only non-physical state is held by a sleeper or by the game.
+   - **`Source` is any thing's ID:** a sleeper, a person, a device such as a turret, or the world (weather, a chain-exploding drum).
+   - **Harm compares the source's claim with the target's once,** in the shared path, under the friendly-fire setting (off by default, DESIGN.md 1514), with self-harm as DESIGN.md 659 states.
+   - **XP goes only when the source is a sleeper** (turret kills give none, DESIGN.md 613).
 7. **Everything that lasts has a stable identity** (section 4).
-   - IDs are a typed `WorldKey` plus a generation key or a persistent counter.
-   - Stored positions are a `WorldKey` plus coordinates in that world's fixed frame.
+   - IDs of things that last are opaque, from a generation key or a persistent counter, and carry no location. Nothing reads "where it is" out of an ID; that comes only from the record of what holds it.
+   - Stored positions are the holder's key (a `WorldKey`, or a structure's ID aboard) plus coordinates in its fixed frame.
    - Seeds come from one helper.
    - Never list order, object references, session counters, or a key parsed from a string.
 8. **One job, one path.** Damage, salvage, digging, shelter, ground and gravity, queries, events and markers each have one shared path (section 6).
@@ -49,7 +52,7 @@ These rules are the general case. No band-aids: a fix that patches one case brea
 9. **Facts, not names.** What a thing is comes from a data field or tag, never from comparing an ID, name or label string. "Space" means facts about the place (no air, no ground under you), never "the zone is an orbit".
 10. **Every world has every system, and missing ones fail loudly** (section 8). A system with nothing to hold is the same class holding empty data, never a stub class and never a null. A cabin isn't a world in this sense: it reads its systems up the chain (section 2). A world attaches only once all its systems are `Ready`, so no caller checks or waits. `?.` on a system is not allowed.
 11. **Game-wide settings and game data live in one place.** Mode and the owner's options sit in one game-level object, read when acting, never copied into worlds or machines. Items and blueprints are game-wide. Planet and climate rules come from each world's spec, read through `thing.World`. Simulation size is never set by a client's display settings.
-12. **Simulation and view are separate.** A world nobody is looking at runs simulation only: physics, AI, weather and survival, no drawing, sky field, foliage, sound or effects. View systems exist only for the drawn world and are made in its view attach. The drawn world is the outermost world of the local sleeper's chain (the first world out from their cabins that isn't a cabin); cabins are never drawn, and everything in them is drawn at structure × local. Engine-wide state (global shader values, environment, `AudioServer` buses) is written only by the drawn world's view (section 2b).
+12. **Simulation and view are separate.** A world not drawn on this machine runs simulation only: physics, AI, weather and survival, no drawing, sky field, foliage, sound or effects. Whether a world is drawn is a view question only and never changes its simulation (its rate is section 2b's). View systems exist only for the drawn world and are made in its view attach. The drawn world is the outermost world of the local sleeper's chain (the first world out from their cabins that isn't a cabin); cabins are never drawn, and everything in them is drawn at structure × local. Engine-wide state (global shader values, environment, `AudioServer` buses) is written only by the drawn world's view (section 2b).
 
 ---
 
@@ -57,21 +60,28 @@ These rules are the general case. No band-aids: a fix that patches one case brea
 ```
 Game (one per host: the seed, the clock, the faction record, the list of sleepers)
  └─ Galaxy (made from the game seed)
-     └─ Star (stable key from its seed, not its catalogue index)
-         └─ Body: world, moon, rock field, station site (key from its orbital path)
-             └─ World, one per layer: surface, orbit, and each structure's cabin (a physics space whose systems are its world's)
+     └─ System (stable key from its seed, not its catalogue index)
+         └─ Anchor tree: system → barycentre → star or body → … → site, each anchor with its own orbital path
+             (stars, barycentres of close binaries and circumbinary planets, worlds, moons, rock fields and rings,
+              gap sites between orbits, rogue bodies with no star, a black hole's inner systems)
+             └─ World = anchor + layer (a fact of its anchor: surface, orbit, rock field, …)
+                 Also: each structure's cabin (key: the structure's ID; a physics space whose systems are its world's)
+                 and each jump's transit world (key: the jump's ID)
                  Each is its own Godot world (rule 2), in play or a record on disk
                  ├─ its systems: ground and diggable bodies, weather, wildlife, places, loot, devices, query, events
                  └─ things held in it: each with one World field (rule 1)
 ```
-- **The galaxy comes from the game seed.** The start star and start body are chosen inside it. The start world is generated like any other body: one path, no `SkySystem.For(spec)` beside `StarProfile.Of`. *(Structure A-6.1 and A-6.2.)*
-- **One star model.** Each star carries its class's temperature, radius, mass and brightness, and everything it lights comes from those: colour, light, its size in the sky, the zones and its worlds' temperatures. There is no second star class (today's `StarClass` and the 12-to-5 `SkyRig.ClassOf` go). The start star is picked first, and is always G or K (solar-systems.md).
+- **The galaxy comes from the game seed.** The start world is generated like any other body: one path, no `SkySystem.For(spec)` beside `StarProfile.Of`. *(Structure A-6.1 and A-6.2.)*
+- **Guarantees are requirements, not a start flag.** Any system can carry a set of requirements into the one generator. The start's set is: a G or K star, at the rim, the player's chosen world kind (DESIGN.md 1528), a 16 × 8 km world, a vacuum moon and the drive materials (solar-systems.md section 8). The start star is found by searching rim stars that can meet the set, never by flagging the start, and no generation step asks whether a system is the start.
+- **One star model.** Each star carries its class's temperature, radius, mass and brightness, and everything it lights comes from those: colour, light, its size in the sky, the zones and its worlds' temperatures. There is no second star class (today's `StarClass` and the 12-to-5 `SkyRig.ClassOf` go).
 - **What keeps a world in play (interest points), and nothing else:**
-  - a sleeper on it;
-  - a sleeper in any cabin on it (a cabin's chain runs out to its world);
-  - a destination being prepared for a crossing, for up to its tunnel's length.
+  - a connected sleeper on it;
+  - a connected sleeper in any cabin on it (a cabin's chain runs out to its world);
+  - a destination, from "transition likely" (nearing the atmosphere edge, or a warp spooling, DESIGN.md 169) until arrival or a stated cancel (the spool called off, or the ship leaving the approach band);
+  - a committed jump, for its transit world and its destination, until arrival commits, whoever is aboard (section 2c).
 
   Bases, turrets, machines and parked ships never hold a world. A world with no points is frozen at once (owner: "there is literally no reason to have them active in memory"). It stays loaded but frozen for about 2 minutes (owner, 25 Nov), so hopping between surface and orbit doesn't regenerate it. Nothing in it ticks during that time. Then it is freed to its record.
+- **Offline sleepers are records, never bodies.** Only connected sleepers are interest points. An offline sleeper is a record held by the structure (their seat) or the world they left, as parent ID plus local position, and is never a body in a world. So a logged-off friend holds none of the 4 world slots, and their seat follows the ship. Logging in spawns them through `Move` at that record's current place.
 - **Several points on one world:** streaming, wildlife, weather hazards and places run around each point, not one `Focus`. *(A-R2.)*
   - Collision streams around every interest point, and around any fight the host simulates.
   - Today `Streamer.CollisionRadius` is set from one sleeper's vehicle (Game.cs:925), and rounds past it fall back to the height map.
@@ -79,7 +89,7 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
 - **Frames:** the host simulates each world in one fixed frame centred on the zone (DESIGN.md 1723: pinned origin, the map wraps, about 2 mm precision). Simulation positions never shift. Only clients offset what they draw. An orbit zone's size is limited so precision holds. *(A-2.2, A-4.6.)*
 - **Cabins (owner, 26 Nov: one model for every structure).** A structure's cabin is its own physics world (DESIGN.md 1725) in which everything that is the structure's child moves in the structure's frame. Bases, hover and flight vessels alike: the core's mode never decides anything about worlds, since it can be switched at any time, even in flight (DESIGN.md, switching modes).
   - **A cabin is a physics space, not a full world.** Its systems (weather, wildlife, places, air, sky) are its `Outside`'s, read up the chain (rule 10 holds for the world at the chain's end). It owns only its space, its children and the structure's still collider copy.
-  - **Every structure has a cabin from the moment it exists:** made with the structure (at world make, at spawn, when built, when severed), its space taken from a pool, inside the world's budget. It runs where its world's per-point sims run and wakes whenever anything moving enters its extent; it is paused otherwise, and freed only with its world or its structure, inner cabins before outer ones. When a structure moves to another world, its cabin's budget and freeing move with it in that `Move`. Freeing commits everything aboard (cargo, bags, creatures, crews, craft) into the structure's record, through the ledger. No cabin is made or freed because something boarded or left. T0.4 measures the cost per cabin and the real count per world, and section 2b states the cap. Today every vessel, wrecks and bases included, already builds a `CabinWorld` in `Furnish` (StructureShapes.cs:153); what goes is everything that bypasses it.
+  - **Every structure has a cabin from the moment it exists,** keyed by the structure's ID with no location fields (where it is comes only from the structure's record in its outer world): made with the structure (at world make, at spawn, when built, when severed), its space taken from a pool, inside the world's budget. It runs where its world's per-point sims run and wakes whenever anything moving enters its extent; it is paused otherwise, and freed only with its world or its structure, inner cabins before outer ones. When a structure moves to another world, its cabin's budget and freeing move with it in that `Move`. Freeing commits everything aboard (cargo, bags, creatures, crews, craft) into the structure's record, through the ledger. No cabin is made or freed because something boarded or left. T0.4 measures the cost per cabin and the real count per world, and section 2b states the cap. Today every vessel, wrecks and bases included, already builds a `CabinWorld` in `Furnish` (StructureShapes.cs:153); what goes is everything that bypasses it.
   - **The inside-set, defined once per structure:** a flood fill from its built shape (the cells it encloses, walled courtyards and decks' columns included, capped at the structure's top). It is recomputed when the structure is built onto or taken apart, never when damage removes blocks, so a blown-off roof leaves the set, and the 1 g, as they were (owner, 25 Nov). Membership and gravity both read it.
   - **Who is a child: one test** (DESIGN.md, "What's a child of what"). **Support decides first:** a body with a support (the dominant support under its centre of mass, carried through stacked bodies) is the child of whatever holds that support, the innermost structure, or the world when it is the world's ground. **Enclosure decides only for unsupported bodies** (falling, floating, flying): one whose centre of mass is in a structure's inside-set is that structure's child. This is DESIGN's "mostly enclosed by it even while touching nothing", not a ground exception: ground is simply the world's support. The innermost structure wins; when neither holds, it moves up one level, keeping its position and velocity. It runs every physics tick for bodies near a structure, with hysteresis both ways: a distance past the set's edge, and on losing support a hold (a short time, or until the body is a set height clear of where it stood) during which it keeps its last support's parent, so a hop, a stumble or bumpy ground never flips it; the hold also ends once the body is the hysteresis distance sideways, so it never leaves the mirrored zone, and `Move` runs only when the answer changes. There is no other definition of "aboard": no bounds box, no door rule, no lookup by position, no kind check.
   - **Nothing moves a crowd between worlds except a change to the structure itself.** Boarding, a mode switch and liftoff move nobody: things join and leave one at a time. A split, merge or destruction re-runs the test on every child of the cabins affected, and the moves commit as one batch through the ledger (a severed half's crew go to the new wreck's cabin; a destroyed structure's children move up a level).
@@ -91,7 +101,7 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
   - When a structure moves, only the structure goes through the ledger. Things aboard stay in the cabin and re-read `Outside`, in one call from the ship's `Move`.
   - **Cabins nest to any depth** (owner, 26 Nov: "A cabin can be inside a cabin can be inside a cabin"). A shuttle can sit in a frigate's cabin, which sits in a carrier's cabin, and so on. Nothing assumes one level:
     - `Outside = ship.World`, and that world may itself be a cabin. Every lookup (air, gravity, weather, exposure, "what am I inside") walks the chain outward until it reaches a world that isn't a cabin. Nothing caches a resolved chain past a `Move`.
-    - A sleeper in a cabin keeps every world up its chain in play, since each structure is a body in the cabin around it. Every running cabin counts against section 2b's budget.
+    - A connected sleeper in a cabin keeps every world up its chain in play, since each structure is a body in the cabin around it. Every running cabin counts against section 2b's budget.
     - Freeing works from the inside out, with the world: an inner cabin is freed before the one around it, and freeing a cabin commits the ships in it into its ship's record, each with its own record inside, to any depth (section 4c).
     - Jumps, climbs and docking carry the whole nest: ships inside a cabin ride along with their own cabins and everything in them.
 - **Diggable bodies:** a world's ground and each asteroid in a field are each a diggable body, with their own terrain, ore, change record and gravity. Digging acts on the body the ray hits, never on "the zone's planet".
@@ -104,13 +114,13 @@ Game (one per host: the seed, the clock, the faction record, the list of sleeper
 
 ## 2b. Running several worlds
 Co-op players may be any distance apart, systems apart included (owner). The host runs every world with an interest point, up to:
-- one per sleeper (4);
+- one per connected sleeper (4); an offline sleeper is a record (section 2) and holds no world;
 - plus the cabins of the structures in those worlds (running where the per-point sims run, paused elsewhere: memory only), up to the cap T0.4 sets;
-- plus any destination being prepared.
+- plus the destinations being prepared and the committed jumps' transit worlds.
 
 The frame budget has to hold that peak.
 - **Simulation only, off the view:** the worlds not drawn run simulation only (rule 12).
-- **A tick budget per world:** each extra world runs AI, wildlife and places at a lower rate. *Its numbers come from the step 2a prototype.*
+- **Every occupied world runs at the full rate:** a world is occupied when a connected sleeper is in it or in a cabin in it. The budget is split by the number of occupied worlds. A lower rate applies only to worlds nobody occupies: cabins away from every sleeper, and destinations being prepared. *Its numbers come from the step 2a prototype.*
 - **Process-wide budgets are split or shared by a stated rule:**
   - `FramePacer` paces at 60, and `TerrainStreamer.UploadBudgetMs = Pacer.Room` (Game.cs:924) is one room per frame.
   - `GcPacer` collects every 16 MB, and the garbage from every world shares it. Damage work doubled the allocations.
@@ -119,7 +129,7 @@ The frame budget has to hold that peak.
   - Freeing a world must also give its memory back. `GcPacer` only collects young objects, so a parked or freed world's native memory waits for a full collection (warp work's memory trace). A freed world triggers one, spread so it doesn't cost a frame.
 - **Threads:** heavy world work (generation, place building, AI batches, record writing) runs on workers across the cores (owner: "use all the cores"). The plan for which thread runs which world comes from the prototype.
 - **No whole-world writes on the main thread:** records are dirty-tracked and written in small pieces off the main thread. *(The ledger's own note, Fold.cs:487-490: one wreck's blueprint at every commit "was 140 ms a fold".)*
-- **The gate:** the stated peak: 4 occupied worlds, each sleeper inside a three-deep cabin chain, plus every structure's cabin within the per-point sims' range at the count T0.4 measures, with their seam mirrors, on the 4-core GTX 1050 stand-in at the lowest preset, holding 16.7 ms with headroom.
+- **The gate:** the full stated peak: 4 occupied worlds, each at the full rate with all its per-world sims, each sleeper inside a three-deep cabin chain, plus every structure's cabin within the per-point sims' range at the count T0.4 measures, with their seam mirrors, plus four destinations being prepared at once, on the 4-core GTX 1050 stand-in at the lowest preset, holding 16.7 ms with headroom.
   - It runs as a multi-world PopRoute route.
   - There is no headroom to assume. Today's single world on the owner's settings already fails bike and fly frame checks (13 fails on 18 Nov), so step 2a starts from a measured baseline.
   - It's measured on the Mobile renderer. Forward+ was rolled back on 23 Nov (far lamps bloomed into flickering blobs) and stays off until that's understood.
@@ -134,54 +144,63 @@ Players warp and fold independently and may each be in any system (owner, 25 Nov
 - The tunnel isn't a place. The ship stays frozen in the world it left (`Hold`, Spaceflight.Jump.cs:169), and the tunnel is only drawn over the screen. A sleeper who opened a door mid-tunnel would step into the old world and be left behind.
 
 **The rules:**
-1. **Every vessel has its own jump.** Spool, tunnel and arrival are the vessel's state. Any number of ships can jump at once, to different destinations. Each destination is prepared as its own interest point (section 2b), and each ship's tunnel lasts until its own destination is ready.
+1. **Every vessel has its own jump.** Spool, tunnel and arrival are the vessel's state. Any number of ships can jump at once, to different destinations. Each destination is its own interest point (section 2) from "transition likely" (the warp spooling, DESIGN.md 169) until arrival or a stated cancel (the spool called off, or the ship leaving the approach band). Arrival waits until the host's world is ready and every sleeper aboard has reported their client ready, so each ship's tunnel lasts until then.
 2. **The pilot jumps the ship.**
    - The sleeper in the pilot seat chooses the target and starts the spool.
    - Leaving the pilot seat during the spool calls it off.
    - Once committed at the end of the spool, the jump finishes without a pilot.
    - **Calling it off:** only the sleeper piloting from the command chair can, by pressing J during the spool (owner, 25 Nov). Passengers can't. Once the jump commits it can't be called off: J does nothing in the tunnel.
 3. **Everyone aboard is warned.** The spool shows on every aboard sleeper's visor and its sound is heard, seated or standing, on the hull or inside.
-4. **The tunnel is a real world.** At commit the ship moves into its own transit world, which exists only for that jump, with the tunnel as its sky. Everything always has a world (rule 1). Two ships' tunnels never meet.
+4. **A jump is two ordinary `Move`s.** At commit the ship moves from its source into its own transit world, with the tunnel as its sky; at arrival it moves from the transit world to the destination. The transit world's key is the jump's ID, and it keeps records like any world, so nothing exists twice. Everything always has a world (rule 1). Two ships' tunnels never meet. A committed jump is an interest point for its transit world and its destination until arrival commits, whoever is aboard.
 5. **What goes is decided at commit:**
    - **Only the jumping ship enters the transit world, with its cabin** (owner, 25 Nov). Everything that is the ship's child at commit (section 2's test) is in its cabin and rides along: sleepers seated, standing or on the outer hull, cargo, crews, and ships clamped to it or parked inside, each with its own cabin. There is no second list of hull riders or clamped ships.
    - Every other ship is unaffected, however near. Anything that stepped off before commit stays behind.
-6. **Stepping out of the cabin mid-tunnel** puts the sleeper in the transit world, outside the hull. At arrival they come out floating beside the ship at the destination (owner, 25 Nov: "arrive beside the ship"). Leaving the hull, from a hatch or off the outer hull, is the same move up one level. Nobody is lost in a jump.
-7. **Saves:**
-   - The ship's record stays in its source world until arrival commits, through section 4c's queue. A crash mid-tunnel reloads the ship where the jump began.
-   - Passengers ride inside the ship's record.
-   - Sleepers outside the hull in the transit world are committed with the ship's arrival, in the same commit.
-8. **Disconnects:** a sleeper who drops out mid-tunnel stays where they were, in the cabin or in the transit world. They're aboard, or beside the ship, at the destination when they reconnect.
+6. **At arrival, everything the transit world holds moves to the destination** in the ship's frame, as one ledger batch. It is decided by "held in the transit world", never by being a sleeper. That covers the ship, a sleeper who stepped out, their death bag, a crate thrown out and a shuttle that undocked mid-tunnel. Stepping out of the cabin mid-tunnel, from a hatch or off the outer hull, is the ordinary move up one level into the transit world, so that sleeper comes out floating beside the ship (owner, 25 Nov: "arrive beside the ship"). Nothing is lost in a jump.
+7. **Saves:** the transit world's dirty records are flushed by section 4c's queue like any world's. A crash mid-jump reloads transit records by one rule: back to where the jump began. Passengers ride inside the ship's record.
+8. **Disconnects:** a sleeper who drops out mid-tunnel becomes a record held by the structure they were aboard (their seat's, if seated) or by the transit world, like any offline sleeper (section 2). That record moves with what holds it: with the ship, or in the arrival batch. They log in at its place at the destination.
 
 ## 3. Who claims what, and where it is held
 Owner decisions, 25 Nov.
 
 | Thing | Claim (owner) | Held by (where it lives) |
 |---|---|---|
-| Body, suit | that sleeper | the world they're in (the cabin when aboard) |
-| Vitals, pack contents, level, XP, unlock points, tech tree, destination, chosen star | that sleeper | the sleeper's record (not physical) |
-| Shots in flight, effects, debris, gibs, blood | none; `Source` = who made it | the world they're in |
-| Structures, vessels, bags of any sleeper | Sleepers faction | the world they're in; the Sleepers faction record keeps only an index of them by ID (T3.1b) |
-| Lockers in the four cryopods | Sleepers faction, labelled with the pod's sleeper | the start world |
+| A connected sleeper's living body and suit | that sleeper | the world they're in (the cabin when aboard) |
+| A dead sleeper's corpse | none; labelled with the sleeper's ID, like a bag | the world it's in, an ordinary world thing |
+| Vitals, pack contents, level, XP, unlock points, tech tree, destination, chosen star, respawn choices (pod IDs: start pod, home, others), the home flag | that sleeper | the sleeper's record (not physical) |
+| Shots in flight, effects, debris, gibs, blood | none; `Source` = the ID of what made it | the world they're in |
+| Structures, vessels, bags a sleeper drops | Sleepers faction (a structure's claim is its core's) | the world they're in; the Sleepers faction record keeps only an index of them by ID (T3.1b) |
+| Lockers in the four cryopods | Sleepers faction, labelled with the pod's sleeper | the world it's in |
 | Star charts (visited stars, marks, wrecks seen), standing | Sleepers faction | the faction record |
 | Towns, raiders, NPC ships, owned wrecks | that NPC faction | the world they're in |
 | Terrain edits, felled plants, deposits, wildlife, places' memory, unowned loot | none | the world's change record |
 | Seed, galaxy, clock, mode, settings, list of sleepers | the game | the game record |
 | Camera, visor, menus, map pan and zoom, audio listener, hands' viewmodel, torch light | the local client | the local view only (rule 12) |
 
-- A bag records which sleeper died, for its label. A teammate's bag is "ours".
+- **A bag's label** is the ID of whoever's things they were, of any kind (sleeper, person or creature), so there is one generic bag (DESIGN.md 683) and the corpse check matches people and animals. "Ours" reads only the claim, so a teammate's bag is ours by its claim, never by its label.
+- **Death makes a corpse.** The body becomes an ordinary world thing: a corpse held by its world, with no claim, labelled with the sleeper's ID like a bag; it can rise as a Husk (DESIGN.md 682). The sleeper gets a new body at respawn.
+- **Respawn choices are pod IDs** in each sleeper's record: the start pod, home and others. The home flag is per sleeper, in their record, never on the shared block. A fresh start (DESIGN.md 680) just adds a new start pod ID. "Nearest" is taken over the faction's index of pods, and a pod takes one waking sleeper at a time.
 - `Lootables.Spill` and every spill take a claim, so a stranger's cargo is never "ours".
 - NPC factions have no tech tree.
 
 ## 4. Identity and the change record
-- **`WorldKey`** is a typed value: game seed, star key (from the star's seed), body's orbital path, and layer (surface, orbit, cabin, rock). Code reads its fields. It is never parsed from a string. Today's `StartsWith` checks on zone names go (ZoneLedger.cs:284, Fold.cs:440), as do the `"b"+index`, `moon<index>` and `star<n>` names. It is stable across generator changes that don't move the body.
-- **The ID of anything that lasts** = `WorldKey` + a generation key (site seed, cell, species and spawn slot) or a counter kept in the world record. This covers places, caches, creatures worth remembering, structures, containers, devices, marks and discoveries. Maps that persist are keyed by ID. Runtime caches keyed by reference are rebuilt from IDs.
+- **`WorldKey`** is a typed value: game seed, an anchor in the system tree, and a layer.
+  - **The tree** runs system → barycentre → star or body → … → site. A star, a barycentre (close binaries, circumbinary planets), a gap site (a deep-space site between orbits), a rogue body (no star) and a black hole's inner systems are each an anchor with its own orbital path. Which asteroid field or ring is part of an orbit world, and which is its own world, is settled in the same tree. A fold arrives in orbit of a star, which is an anchor.
+  - **The layer is a fact of its anchor** (surface, orbit, rock field, and so on).
+  - **A cabin's key is its structure's ID,** with no location fields: where it is comes only from the structure's record in its outer world. **A transit world's key is its jump's ID.**
+  - Code reads its fields. It is never parsed from a string. Today's `StartsWith` checks on zone names go (ZoneLedger.cs:284, Fold.cs:440), as do the `"b"+index`, `moon<index>` and `star<n>` names. It is stable across generator changes that don't move an anchor, and adding suns to a system (F1) changes no keys.
+- **The ID of anything that lasts is opaque and carries no location.** It is made from a generation key (site seed, cell, species and spawn slot, through the seed helper) or a counter kept in the world record. Nothing reads "where it is" out of an ID; that comes only from the record of what holds it. This covers places, caches, creatures worth remembering, structures, containers, devices, marks and discoveries. Maps that persist are keyed by ID. Runtime caches keyed by reference are rebuilt from IDs.
 - **One seed helper:** `Seed(worldKey, siteId, purpose, …)`. Every persistent roll goes through it. *(Fixes structure A-5.1, the same loot in every copy of a layout.)*
 - **The same seed always builds the same world,** on every run and every machine. Storage keeps only the seed and the changes, so a world that rebuilds differently puts its changes on the wrong things. No generation step may depend on run order, time or threads. The fingerprint check (build twice, compare) runs in every merge gate. *(Today city planning differs between runs on some seeds: root-fix task T1.5.)*
 - **Change record per world:**
   - Terrain edits per chunk; for a rock field, one record keyed by rock ID, written only for rocks that were touched.
   - Felled plants, mined deposits, deaths, place memory (doors, damage, loot taken), salvage progress, standing changes, things set down.
   - It's what a save writes (DESIGN.md 747: edit lists on top of the seed).
-- **Time passing while frozen:** one game-owned galaxy clock. A frozen world doesn't tick (owner). When it's made again, a catch-up hook works out what should have moved on from the elapsed time: the sun's and moons' places, running timers and rooms' air, on every record, claimed or not (root-fix-tasks.md T3.2). Regrowth, decay and resource meteorites below about 10% deposits (DESIGN.md 706) are feature F9 on that hook, and touch only records with no claim (DESIGN.md 1592). Rolls use `Seed(worldKey, …, elapsed bucket)`, so a reload gives the same result.
+- **Time passing: one catch-up path.** One game-owned galaxy clock. A frozen world doesn't tick (owner). Every simulated thing stamps its last tick on the galaxy clock. Whenever it ticks again (thawed inside the grace, rebuilt from its record, a cabin unpaused, a slow tick), it advances by the elapsed time, once its state is complete, meaning after its folder is applied (section 4b). Frozen, grace, paused and rebuilt are then one path, on every record, claimed or not (root-fix-tasks.md T3.2):
+  - the sun's and moons' places and running timers;
+  - **a room's air, held by its structure, not the suit,** advanced together with that structure's power and fuel timers, as one step over the elapsed time, so a generator that ran dry while away is accounted for. Today Suit.cs:69-71 and 255 keep rooms' air and an air clock per suit;
+  - large-scale weather (fronts, storm cells) is never caught up: it is a pure function of seed and galaxy clock (section 8), so it is simply read at the new time.
+
+  Regrowth, decay and resource meteorites below about 10% deposits (DESIGN.md 706) are feature F9 on that path, and touch only records with no claim (DESIGN.md 1592). Rolls use `Seed(worldKey, …, elapsed bucket)`, so a reload gives the same result.
 
 ## 4b. Storage
 The foundation is designed and proven already. GalHack builds on it and does not invent a new one:
@@ -202,7 +221,8 @@ saves/<game>/
   manifest              last commit, counts of records, items, blocks and claimed structures
   game                  seed, galaxy clock, mode and settings, list of sleepers
   faction               star charts, standing, an index of claimed things by ID
-  sleepers/<id>         vitals, pack, progress and tech, which world (key) and where, or which cabin
+  sleepers/<id>         vitals, pack, progress and tech, respawn choices (pod IDs) and home flag;
+                        while offline, the holder's ID (structure or world) and local position
   worlds/<world key>/
     world               last visited (galaxy-clock time), world-level facts
     terrain/<chunk>     edit lists for that chunk
@@ -215,7 +235,7 @@ saves/<game>/
   - The host is the only writer, and clients are sent the differences (section 9b).
   - A world writes its dirty records in pieces while it runs, and its last ones before it is freed.
   - Timed autosave and rolling backups run as in the saves prototype.
-- **Loading a world:** generate it from the seed, apply the clock catch-up (section 4), then apply its folder. Finally check that every recorded thing came back.
+- **Loading a world:** generate it from the seed, apply its folder, and check that every recorded thing came back. Only then does each thing's first tick advance it by the elapsed time (section 4).
 - **One choice is left until it's built:** a file per chunk, or chunks packed per region. The record format is the same either way.
 
 ## 4c. Crossings, parking and freeing never lose a thing
@@ -224,24 +244,24 @@ These are the paths the new model adds. Item loss is a release blocker (DESIGN.m
 - It handles one crossing at a time (ZoneLedger.cs:194-196).
 
 The rules:
-- **One commit queue.** Commits run one at a time, on a worker. Parks, frees and every sleeper's crossings queue up; none overlap.
-- **Gone only when destroyed.** A record is removed only when its holder reports it destroyed: a body emptied, a block taken apart, or a death bag that vanishes when its last item is taken (`Lootables.Tick`, owner 17 Nov). A holder that is merely missing, because its world is parked, freed or loading, is never "gone".
-- **The order of a `Move`:**
-  1. commit the thing's new world;
-  2. `Detach(from)`;
-  3. `Attach(to)`.
+- **A `Move` happens at once; saving it is separate.** `Move(from, to)` changes the holder in memory at once:
+  1. `Detach(from)`;
+  2. `Attach(to)`;
+  3. mark the thing's record dirty, with its new holder.
 
-  If `Attach` fails, the thing is put back in `from` with a second commit, and the failure is reported loudly.
+  If `Attach` fails, the thing is put back in `from` and the failure is reported loudly. A sleeper stepping through a hatch is never kept waiting behind another world's record write.
+- **One commit queue, for durability only.** Dirty records are flushed by one queue on a worker as shadow-paged snapshots, one at a time; parks, frees and every sleeper's crossings feed it, and no two snapshots overlap. "One atomic write per crossing" (DESIGN.md 1726) applies to the snapshot, not to the timing of each handover: a snapshot holds whole moves, so a crash leaves a thing on one side or the other, never both and never nowhere.
+- **Gone only when destroyed.** A record is removed only when its holder reports it destroyed: a body emptied, a block taken apart, or a death bag that vanishes when its last item is taken (`Lootables.Tick`, owner 17 Nov). A holder that is merely missing, because its world is parked, freed or loading, is never "gone".
 - **Every sleeper is a holder, by ID.** Today `Holders()` yields one constant sleeper record (Spaceflight.cs:684-687).
 - **The conservation audit refuses.** A crossing or jump that loses or duplicates an item is refused and rolled back, never only printed (today `Ledger.Audit` prints, Spaceflight.cs:677, Jump.cs:251). A failed restore keeps its record and blocks the commit.
-- **A record whose world won't load** is moved to the faction's last base, never dropped (DESIGN.md 1583).
+- **A record whose world won't load** goes to the most recent Home-flagged claimed structure whose world loads. If there is none, it goes to the faction's first structure, the bunker, which the seed can always rebuild. It is never dropped, and never keyed on core mode (DESIGN.md 1726).
 - **The test:** crash at every step of a park, a free, and two crossings at once; reload; every count matches.
 
 ## 5. Joining and leaving a world
 ```
 handle = Attach(world)   every registration with the world's physics, weather, tracking, lists and events
 Detach(handle)           disposes exactly those
-Move(from, to)           section 4c's order
+Move(from, to)           changes the holder in memory at once (section 4c); the commit queue saves it later
 ```
 - `Town.Open`/`Close` (Town.cs:428-452) is the nearest existing model. It isn't exact: `Close` finds what to unsubscribe from by reading `_places.Zone.Wildlife` again, rather than through a handle.
 - Player-claimed systems that act in a world (suit, tools, arms, the doors' animator) attach to their sleeper's world, through the sleeper's `Move`.
@@ -251,16 +271,16 @@ Move(from, to)           section 4c's order
 | Job | The one path (proposed) | It replaces |
 |---|---|---|
 | Queries | `WorldQuery` per world, on that world's own physics space (rule 2), with named masks (Sight, ShotStop, Cover, Use); the look, the cabin and the ignore list handled once. **Across a cabin's line:** wherever a ray's segment overlaps a structure's extent, the span is also tested in its cabin in the structure's frame, both ways, to any depth; the nearest hit wins. Events and AI targets follow the same chain (section 2) | About 29 direct `GetWorld3D().DirectSpaceState` calls, ArmsHost's own `RayCast3D` node (ArmsHost.cs:50, 68), separate AI sight masks, along-the-look tests, the E-prompt order (B-R7) |
-| Harm | `Harm` event (amount, type, point, direction, radius, `Source`, tags) plus one spatial query; each target kind has an adapter with its own armour, resistance and HP; one falloff, one health unit. Weather hits and exposure (suffocation, cold, heat, radiation) are Harm sources, replacing `Suit.Hit`'s own damage kind; the adapter carries a "doesn't breathe" flag | Three blast copies, two ram copies, two people sims' damage, two health units (B-R1); the per-target damage copies in `ArmsHost.World.cs`, `PoiPlaces.Damage.cs` and `SurfaceZone.Felling.cs` (`WearPlant`) |
+| Harm | `Harm` event (amount, type, point, direction, radius, `Source`, tags) plus one spatial query; each target kind has an adapter with its own armour, resistance and HP; one falloff, one health unit. `Source` is any thing's ID (a sleeper, a person, a device such as a turret, or the world); the source's claim is compared with the target's once, here, under the friendly-fire setting (off by default, DESIGN.md 1514), with self-harm as DESIGN.md 659 states; XP only when the source is a sleeper (DESIGN.md 613). Weather hits and exposure (suffocation, cold, heat, radiation) are Harm sources, replacing `Suit.Hit`'s own damage kind; the adapter carries a "doesn't breathe" flag | Three blast copies, two ram copies, two people sims' damage, two health units (B-R1); the per-target damage copies in `ArmsHost.World.cs`, `PoiPlaces.Damage.cs` and `SurfaceZone.Felling.cs` (`WearPlant`) |
 | Take-apart | Salvage is harm by the tool class on a thing with HP and a bill; one yield formula, with the claim check inside it | Seven yield formulas, `SleeperTool.CutPlant`, and orbit's hand salvage (B-R2, offworld #26) |
 | Built things | One block-world interface for `Structure` and `Place`: cells, HP, doors, rooms, collapse, damage look; doors, caches and collapse written once against it. It carries a read-only surface query that runs on a worker. Wear stays paint, apart from the HP damage look | Three forms of built thing, three door systems, two collapse rules (B-R3) |
-| Shelter and air | `Exposure(point)` on the world: sky open, roof, depth, and the innermost air volume at the point. Air volumes work like cabin worlds: each sealed room owns its air, held by its structure or place; volumes nest, each reading its parent and then the world; openings (doors, breaches) link a volume to its parent. Powered life support (the existing pod, on the power model) eases a sealed room to full oxygen and 20 °C; unpowered, the room holds a while, then drifts to its parent's air. Area sources such as the climate pod warm a radius and aren't volumes. One "what am I inside" lookup (innermost volume and structure, then the parent) serves air and gravity | Nine shelter tests, the bunker special case (B-R4, C-E) |
+| Shelter and air | `Exposure(point)` on the world: sky open, roof, depth, and the innermost air volume at the point. Air volumes work like cabin worlds: each sealed room owns its air, held by its structure or place; volumes nest, each reading its parent and then the world; an opening is any boundary face that isn't airtight now, read from the block world's seal report (a breach, an open door with no holding field, a failed field), and links a volume to its parent; door and bay force fields hold the air (DESIGN.md 1026). Powered life support (the existing pod, on the power model) eases a sealed room to full oxygen and 20 °C; unpowered, the room holds a while, then drifts to its parent's air. Area sources such as the climate pod warm a radius and aren't volumes. One "what am I inside" lookup (innermost volume and structure, then the parent) serves air and gravity | Nine shelter tests, the bunker special case (B-R4, C-E) |
 | Ground and gravity | A `Ground` service per diggable body (`Top`, `Natural`). Gravity follows cabin-world logic: the innermost working core gives a fixed 1 g, else its parent structure, else the world (its own: standard g × its scale; orbit 0 g), read through the same "what am I inside" lookup | Five ground lookups; `ArmsHost.SolidHit` (ArmsHost.cs around 559-638), whose height-map fallback is `Streamer.CollidesAt` plus `TerrainStore.Raycast`; gravity constants per system (B-R5) |
 | Vehicles and seats | The bike is a small hover body in the shared physics; riding is one seated state | The bike's own integrator, the `Seated`/`OnBike` split (B-R6) |
 | Events | `WorldEvent` (kind, point, loudness, material, `Source`); audio, AI hearing, visor cues and effects subscribe | Four hand-made calls per event, four voice pools (B-R8); `WildlifePatch.Noise` and `Town.Gunfire` from the NPC reactions work, turret gunfire included |
-| Markers | `Markers(world, viewer)`; the visor and maps only filter and draw. It keeps the owner's 17 Nov rule: only the viewer's own map marks and scan results, plus always our bags, our structures, and the bunker on its own world | Three marker lists (B-R9), `Visor.Markers`' `Game.Bunker` and `Zone == Surface` checks (Visor.cs:415) |
+| Markers | `Markers(world, viewer)`, built from faction records (marks, discoveries, claimed things, respawn points) plus the viewer's own live scan pings; only transient scan results are filtered per viewer (DESIGN.md 621, 215). Places not yet discovered show only through a live scan, within its range and for its time (owner, 8 and 17 Nov). The visor and maps only filter and draw | Three marker lists (B-R9), `Visor.Markers`' `Game.Bunker` and `Zone == Surface` checks (Visor.cs:415) |
 | Entry points | The shared path is the only way in (`Planet.Felled` private to `Fell`; one inventory `Receive(bill, at, from)`) | Callers going round `Fell`, `Add`, `Spill` (B-R10) |
-| Wreck | One wreck state on the structure (no core, no claim) | Four definitions (C-F) |
+| Wreck | No state of its own: a structure's claim is its core's claim, so with no core there is no claim, and "wreck" is just "no core" (DESIGN.md 964, 911, 1321). Placing a core claims; destroying or removing it unclaims; a severed piece has no core, so no claim. No field is set by hand | Four definitions (C-F); the unsubscribed `CoreDestroyed` (PoiPlaces.Interact.cs:327-335) |
 
 **The owner's damage rules (17 Nov) that Harm and Take-apart must keep** (playtest list, Combat, "SHOTS DAMAGE EVERYTHING"):
 - Any weapon, from any source, damages any block, place piece, door, piece of dressing, the ground and trees.
@@ -286,7 +306,8 @@ From [silent-failure-audit.md](silent-failure-audit.md).
 - Worst: `Zone?.Planet == null` returns silence everything in orbit, because an orbit zone never has a `Planet`. That covers ArmsHost.cs:110 (no shots), BlockDoors:166, ForceFields:62, SkyLight:91, PoiPlaces:127/144, RuinLoot:36, Underworld:57, PlaceFauna:599 and Hulks:61.
 
 **The rule:**
-- **Every world has the same set of systems, made in one place.** "Nothing here" is the same class holding empty data from the generator, plus a named fact (`HasAir`, `HasLife`, `HasWater`). An orbit's weather holds no weather, and its wildlife holds whatever lives there. Never a stub class: that is how the empty stand-in wildlife in orbit (structure C-G1) went silent.
+- **Every world has the same set of systems, made in one place.** "Nothing here" is the same class holding empty data from the generator, plus a named fact (`HasAir`, `HasLife`, `HasWater`). A world's weather comes from its facts (air, star activity, fields), never its layer, so orbit holds what its facts give, which is none today; its wildlife holds whatever lives there. Never a stub class: that is how the empty stand-in wildlife in orbit (structure C-G1) went silent.
+- **Large-scale weather is a function, not a sim.** Fronts and storm cells are a pure function of seed and galaxy clock, like the timetable, so a viewer in orbit and a world's catch-up read the same storms. Only hazards near an interest point are simulated. Space weather (ion storms, magnetar storms) is feature F14.
 - **"Not ready" is never seen.** A world attaches only once every system is `Ready` (rule 10), so no caller checks or waits.
 - **A missing system throws** (tests and debug), so broken wiring shows the first time it runs. In release, the host stops and offers a backup, as it does on a failed load audit (DESIGN.md 1595). There is no half-working mode.
 - **No swallowed errors.** A failure that would drop a thing keeps the record and blocks the commit. Fold.cs:473 drops a structure that won't restore, with only a console line.
@@ -323,11 +344,11 @@ Co-op is host-authoritative (DESIGN.md 1532, 1550, 1581). To be confirmed agains
 
 | What | Simulated where | Sent how |
 |---|---|---|
-| Worlds: physics, AI, weather, wildlife, places, survival | The host, every world in play | Only to clients on that world. Every networked object carries its `WorldKey`. |
+| Worlds: physics, AI, weather, wildlife, places, survival | The host, every world in play | A client gets and loads every world up its sleeper's chain (its cabins out to the outer world). Every networked object carries its `WorldKey`, and the per-key send filter checks it against that chain, not against one world. |
 | A sleeper's own movement and the shots they fire | The client, trusted (inputs named in one list) | To the host, which checks and applies them |
 | Positions aboard a ship | The host | Relative to the ship (DESIGN.md 1088) |
 | Saves | The host only | Never sent |
-| View (rule 12) | Each client, for its own world | Not sent |
+| View (rule 12) | Each client, for its drawn world | Not sent |
 
 ## 10. Merge review checklist
 Reject a change that:
@@ -343,7 +364,7 @@ Reject a change that:
 - starts a worker job without a world generation check;
 - writes a second implementation of a job in section 6, or merges a replacement without deleting the old;
 - compares an ID or name string to decide behaviour, or parses a world key or ID from a string;
-- makes an ID, seed or stored position without the `WorldKey`;
+- makes a seed or stored position without its holder's key, or reads where a thing is out of its ID;
 - makes world generation depend on run order, time or threads (the fingerprint check fails);
 - uses `?.` on a system;
 - removes a ledger record without its holder reporting it destroyed;
@@ -355,10 +376,10 @@ Reject a change that:
 - is frame-sensitive and hasn't passed the frame check both quiet and live.
 
 ## 11. Owner decisions, 25 Nov
-1. **Worlds with no one on them stay frozen.** Nothing ticks in the background. What should have moved on is worked out from the clock when the world is made again (section 4).
+1. **Worlds with no one on them stay frozen.** Nothing ticks in the background. What should have moved on is worked out from the clock when anything in it ticks again (section 4).
 2. **NPC travel is light, and later.** NPC traffic isn't tracked between worlds, systems or stars. It is placed by rule when a world is made. NPC ships may still `Move` between two worlds in play (section 2).
 3. **Co-op players can be any distance apart,** systems apart included, and it must not matter. The world model has no shared frame, focus or "system you are in". The host's cost is set by how many worlds are occupied (section 2b), not by distance.
-4. **Each sleeper has their own numbered cryopod and locker,** four in all, so co-op is up to four sleepers. Each pod is its sleeper's wake point and first respawn record. Each locker is a Sleepers-faction container labelled with its sleeper. Today only one pod is alive and only `Pods[0]` is a locker (structure A-6.3).
+4. **Each sleeper has their own numbered cryopod and locker,** four in all, so co-op is up to four sleepers. Each pod is its sleeper's wake point, and its ID is the start pod among the respawn choices in that sleeper's record (section 3). Each locker is a Sleepers-faction container labelled with its sleeper. Today only one pod is alive and only `Pods[0]` is a locker (structure A-6.3).
 
 5. **A frozen world stays loaded for about 2 minutes before it is freed,** so hopping between surface and orbit doesn't regenerate it. It is frozen the whole time and nothing ticks. DESIGN.md "Zones under the hood" is reworded to match.
 
@@ -389,4 +410,4 @@ Each step is a root fix, merged green with its checks. A replacement merges only
 5. **Facts, not names (Tier 5).**
 6. **After the core (owner, 26 Nov):** the climb and descent between surface and orbit, then crash safety and the saved game (the game, faction and sleeper records, and loading).
 
-New behaviour found in the reviews is listed apart in root-fix-tasks.md as features (F1 to F13), built on the core once the owner picks them.
+New behaviour found in the reviews is listed apart in root-fix-tasks.md as features (F1 to F14), built on the core once the owner picks them.

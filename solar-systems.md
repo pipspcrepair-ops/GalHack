@@ -164,7 +164,7 @@ Air warms a world by 30 °C or more, which is why Z4 is comfortable. Use S direc
 
 - Start at h = 0.28 to 0.42.
 - Multiply by 1.45 to 1.95 for each next slot, until h passes 2.4.
-- In 70% of systems, and always in a start system, scale the whole chain so its nearest slot lands on h = 1.0 to 1.3. The rest take their chances. Overall, about 75 to 90% of systems end up with a rock slot in Z4. What keeps a true goldilocks world special is the star's life limit and the rarity of the green types, not the slot.
+- In 70% of systems, and always when the system carries the start's requirements, scale the whole chain so its nearest slot lands on h = 1.0 to 1.3. The rest take their chances. Overall, about 75 to 90% of systems end up with a rock slot in Z4. What keeps a true goldilocks world special is the star's life limit and the rarity of the green types, not the slot.
 - Drop any slot under 0.2 or over 3.
 
 ### Step 4: the outer chain
@@ -175,7 +175,7 @@ Air warms a world by 30 °C or more, which is why Z4 is comfortable. Use S direc
 ### Step 5: what fills each slot
 
 - Everything under h = 2.7 is rock.
-- The first outer slot is a giant on the star's giant chance, always in a start system. Later outer slots are giants 55% of the time if a giant already exists. Otherwise they're ice worlds.
+- The first outer slot is a giant on the star's giant chance, always when the system carries the start's requirements. Later outer slots are giants 55% of the time if a giant already exists. Otherwise they're ice worlds.
 - **Warm giant:** in 20% of G, K and F systems, the first rock slot between h 1.0 and 1.6 becomes a giant that migrated in. This is what makes temperate gas-giant moons possible.
 - Giants split about evenly into banded gas giants and blue ice giants, with ice giants more likely further out. Radius is 8 to 11 times a start world's, so 20 to 28 km.
 - Rock sizes use the four classes from world-themes.md. A giant's moons can be any size; any other moon is smaller than what it orbits, and a giant's moons can have moons of their own (owner, 22 Nov, section 8).
@@ -217,7 +217,7 @@ Section 5 covers what's inside belts.
 Add, never reroll, as the design already says for resources.
 
 - At least 8 worlds: while short, add a moon to a random body at h 0.75 or beyond.
-- **Start system:** a temperate world of size M in Z4, or a start moon on a warm giant. A cold neighbour in reach (a Z5 or Z6 world, or an ice moon, added if missing). An asteroid field, which any belt or Trojan swarm provides. A trading station, best placed at the start world's own 60° point or in its orbit.
+- **When the system carries the start's requirements:** a temperate world of size M in Z4, or a start moon on a warm giant. A cold neighbour in reach (a Z5 or Z6 world, or an ice moon, added if missing). An asteroid field, which any belt or Trojan swarm provides. A trading station, best placed at the start world's own 60° point or in its orbit.
 
 ### Step 9: types and exceptions
 
@@ -577,7 +577,7 @@ Science:
 
 ## 8. Owner's decisions
 
-A rule for every start system: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold fold drive materials, fold fuel and capital ship materials. A system that fails either rule is fixed by adding what's missing, never rerolled (DESIGN section 10, availability guarantees; step 8 here).
+A rule whenever the system carries the start's requirements: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold fold drive materials, fold fuel and capital ship materials. A system that fails either rule is fixed by adding what's missing, never rerolled (DESIGN section 10, availability guarantees; step 8 here).
 
 Rings on a moon: real rings only survive close inside a body's small zone of gravity (its Hill sphere), so a world orbiting near a bigger ringed planet would rarely hold rings of its own. Treat a ringed moon of a ringed giant as a very rare sight, not a common result. Rings aren't limited to gas giants: any world can have them, for example from a moon that broke apart, though on rocky worlds they're less common and narrower. Rings are real places: from afar they read as smooth bands, and up close they resolve into a field of tumbling rocks, in the manner of Elite Dangerous. Use the same rock field system as asteroid belts, so rings can be flown through and mined.
 
