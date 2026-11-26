@@ -66,8 +66,21 @@ The faction comes from the region: the world's place on the journey to the core 
 - **What broke:** a crumpled prow; torn sections showing their decks; drives and pods thrown clear into a debris field; scorch on the ground. The terrain itself is cut to match: a crater, a trench or a burn.
 - **Age:** fresh (smoke, small fires, bright metal) or old (rust, sand drifts, plants growing through, collapsed sections).
 
+## Interiors that work
+
+Owner, 26 Nov: every ship, of every size and faction, is laid out as a working vessel, with crew and passenger living quarters, operational areas, and storage and drive spaces, arranged the way a real crew would need them. The reference is the Traveller deck plans at https://www.ace-dog.com/Traveller/DeckPlans/DECKPLAN.HTM (free traders, scouts, liners, escorts, mercenary cruisers and troop carriers, deck by deck): for layout ideas only, with GalHack's own names and figures, as DESIGN.md asks of Traveller ideas.
+
+- **Space by role and size, before rooms.** A hull's volume is budgeted by its role first, then fitted inside the body plan: a freighter is mostly cargo hold, a liner mostly staterooms and lounges, a warship mostly weapons, armour, magazines and crew, a carrier mostly hangar and launch bays, a miner mostly ore holds and processing. Small craft get the same rule scaled down: a cockpit, a bunk or two, a galley corner, a hold and the drive.
+- **Crew from the ship.** Crew size follows hull size and role (pilots, engineers, gunners, hangar and mining crews, stewards on a liner). Every crew member and passenger has a berth, so berths are at least crew plus passengers.
+- **Living quarters:** staterooms (officers apart from crew on bigger ships), washrooms, a galley and mess or common room, a medbay, and low berths (cryopods, F8's block) where the role carries cold passengers. Passenger staterooms cluster round their own lounge.
+- **Operational areas:** the bridge (never a tower on a deck: rule 3), sensors, comms and the ship's computer; engineering with the power plant and drives; fire control and turrets on warships; hangars and launch bays on carriers; processing bays on miners; life support.
+- **Storage and drive spaces:** cargo holds by the big doors and ramps, ship's stores, lockers and an armoury; fuel tanks; the drives where the body plan puts its drive section (a Freeholder's stern cluster, a Kessari's thrust axis, a Vharn's rear segment).
+- **Getting about:** corridors link every space; airlocks at every hatch; ladders or lifts between decks; and a crew can reach every drive, tank and plant room for repair (one of the reference plans, as first published, had no access hatch to its drives).
+- **Starting point:** the hull builder's room fitting today (`HullVessel.Rooms.cs`, `HullVessel.Fit.cs`: bays, corridors, purposes such as `engine-room`), which already fits rooms inside a hull.
+
 ## Gates
 
 1. **Forms.** Before any interior, livery or test work, build only the six outer forms plus a Husk one, five rolls each, greyed out, at a 3/4 view from a little above. Put them on one contact sheet. The lead checks it, then the owner sees it.
 2. **Crashes.** One contact sheet of 12 crash sites from fresh seeds. No two may share pose, faction and breakup.
 3. **Checks.** The silhouette check counts as proof only alongside the sheets, never instead of them. It weighs outlines without the hull under test and with livery off, and needs 30 of 30 on two fresh runs.
+4. **Interiors.** A deck-plan sheet for one roll of each faction and role, top-down per deck with rooms labelled, and a check over 50 fresh rolls: every space the role needs is present, every space is reachable from an airlock, berths cover crew and passengers, and every drive, tank and plant room has crew access.
