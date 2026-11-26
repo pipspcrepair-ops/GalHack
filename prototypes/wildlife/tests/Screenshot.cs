@@ -30,6 +30,8 @@ public partial class Screenshot : Node
     string _view = "herd", _out = "shot.png", _worlds = "temperate,alien,bloom";
     float _time = -1f;
     string _pick = "";
+    ulong _seed = (ulong)DateTime.UtcNow.Ticks; // (fresh each run; --seed=N rolls a run's people again, for a before and after)
+    float _pad = 1.15f; // the acts' first person: in a coat at least this thick (--pad=X)
     bool _hud, _captured, _live;
     int _at;
     Func<(Vector3 eye, Vector3 at)> _aim;
@@ -46,6 +48,8 @@ public partial class Screenshot : Node
             else if (arg.StartsWith("--at=")) _at = int.Parse(arg["--at=".Length..]);
             else if (arg.StartsWith("--worlds=")) _worlds = arg["--worlds=".Length..];
             else if (arg.StartsWith("--pick=")) _pick = arg["--pick=".Length..];
+            else if (arg.StartsWith("--seed=")) _seed = ulong.Parse(arg["--seed=".Length..]);
+            else if (arg.StartsWith("--pad=")) _pad = float.Parse(arg["--pad=".Length..], System.Globalization.CultureInfo.InvariantCulture);
             else if (arg.StartsWith("--frames=")) _frames = int.Parse(arg["--frames=".Length..]);
             else if (arg.StartsWith("--time=")) _time = float.Parse(arg["--time=".Length..], System.Globalization.CultureInfo.InvariantCulture);
         }

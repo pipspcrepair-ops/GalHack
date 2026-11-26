@@ -86,19 +86,20 @@ public partial class Screenshot
         Main m = _main;
         Stage(0.42f);
         m.Sim.Frozen = true;
-        var rng = new Rng((ulong)DateTime.UtcNow.Ticks);
+        var rng = new Rng(_seed);
+        GD.Print($"(people rolled from seed {_seed}: --seed={_seed} rolls them again)");
         _actList = ActScenes.Where(s => _pick.Length == 0 || _pick.Split(',').Contains(s.Name)).ToList();
         // Four people of different folk and builds, a big-chested one among them: fresh worlds until found.
         _actPeople = new List<Species>();
         var folks = new HashSet<string>();
-        for (int i = 0; i < 300 && _actPeople.Count < 4; i++)
+        for (int i = 0; i < 2000 && _actPeople.Count < 4; i++)
         {
             var w = new WorldConditions { Seed = rng.NextU64(), Alienness = rng.Range(0f, 0.6f), TempC = rng.Range(-15f, 30f) };
             PeopleGenerator g = Bestiary.Roll(m.Data, w).People;
             PersonRole role = _actPeople.Count switch { 0 => PersonRole.Guard, 1 => PersonRole.Child, 2 => PersonRole.Elder, _ => PersonRole.Worker };
             Species s = g.Person(rng.NextU64(), role, founders: g.FoundersOf(rng.NextU64()));
             if (s.Mechanical || s.Figure.Husk || !folks.Add(s.Figure.Folk?.Id ?? "human") && i < 200) continue;
-            if (_actPeople.Count == 0 && s.Figure.Padding < 1.15f && i < 200) { folks.Remove(s.Figure.Folk?.Id ?? "human"); continue; }
+            if (_actPeople.Count == 0 && s.Figure.Padding < _pad && i < 1500) { folks.Remove(s.Figure.Folk?.Id ?? "human"); continue; }
             _actPeople.Add(s);
         }
         _actHusks = HuskHosts().Take(4).ToList();
